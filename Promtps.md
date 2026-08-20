@@ -20,20 +20,20 @@ Two phases, both stored here so you paste (or reference) the same prompts every 
 
 ```text
 You are setting up a new project. Do NOT write any application code in this phase. Your only
-job now is to produce two files — SPEC.md and setup.sh — that a later autonomous session will
+job now is to edit/produce two files — SPEC.md and setup.sh — that a later autonomous session will
 build from.
 
 Step 1 — Interview me. Ask ONE batched set of concise, high-signal questions (one round if
 possible, two maximum), covering only what materially changes the build:
   - What the app does, and who uses it
-  - Language / framework, storage, and deploy target
+  - Language/framework, storage, and deploy target
   - Must-haves for v1, and what is explicitly OUT of scope for v1
   - 2–4 concrete input → output examples
   - Any hard constraints (must / must-not), and any existing code or conventions to match
-Infer sensible defaults for anything minor and state them as assumptions instead of asking.
+Infer sensible defaults for minor details and state them as assumptions rather than asking.
 Do not drip questions one at a time.
 
-Step 2 — After I answer, write SPEC.md with these sections: Goal (1–2 sentences); Users;
+Step 2 — After I answer, edit SPEC.md with these sections: Goal (1–2 sentences); Users;
 Stack / constraints; In scope (v1); Explicitly OUT of scope; Behaviour by example (the concrete
 input→output cases); Acceptance criteria (a checklist, including "app runs from a clean checkout
 via setup.sh"); Known open decisions. Be specific and unambiguous — this file is the single
@@ -45,7 +45,7 @@ parallel with & and a final wait, background the largest downloads, avoid long r
 append "|| true" to non-critical commands so they don't block session start. Begin the script
 with: set -euo pipefail  and  set -x.
 
-Step 4 — Commit SPEC.md and setup.sh. Then STOP — do not begin implementing features. Summarize
+Step 4 — Commit SPEC.md and setup.sh. Then STOP — do not begin implementing features. Summarise
 what SPEC.md commits to, list every assumption you made, and tell me to review the two files and
 then run Phase 2 to build.
 ```
