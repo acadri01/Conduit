@@ -22,6 +22,7 @@ Optimize for finishing correctly with the fewest interruptions to me.
 - A change to the public API, data schema, or external contract
 - Security-, auth-, payment-, or secret-handling-related
 - Something that incurs real cost or hits an external/paid service
+- Something requiring human/social contact
 - A genuine requirement ambiguity where the branches lead to materially different products
 - A direct contradiction inside SPEC.md
 → Batch ALL currently-known blocking questions into QUESTIONS.md, make as much unblocked
