@@ -210,7 +210,7 @@ Per direct user instruction:
   files this locator points at (same "no format spec yet" situation as before); this only answers
   "where," matching the scope of what was asked.
 
-## Blocking question, per CLAUDE.md (stop-and-ask): does "hold off on committing the example files" also mean reverting the already-merged `fixtures/caesar.cfg`?
+## Resolved: "hold off on committing the example files" does NOT mean reverting `fixtures/caesar.cfg`
 The same message that gave the install-path info above also said "Hold off on comitting the
 example files." This is genuinely ambiguous between two materially different actions:
 1. **Forward-looking only**: keep not committing the four real `.cii` sample files (already the
@@ -224,13 +224,8 @@ example files." This is genuinely ambiguous between two materially different act
 I did not guess — reading (1) requires no action (already the plan); reading (2) means removing
 content from `main`'s history, which isn't cleanly undoable (it's already public/merged) and is
 exactly the kind of "irreversible-feeling" content decision CLAUDE.md says to confirm rather than
-assume. Asked the user directly via `AskUserQuestion` in the same turn this was logged.
+assume. Asked the user directly via `AskUserQuestion`.
 
-**Next step once answered:**
-- If (1) only: no code/repo change needed — already compliant. Just note the confirmation here.
-- If (2), revert wanted: `git rm fixtures/caesar.cfg`, remove its `<None Include>` entry from
-  `tests/Conduit.Tests/Conduit.Tests.csproj`, delete
-  `tests/Conduit.Tests/Configuration/CaesarConfigReaderTests.cs`'s `RealExampleFile_ParsesKnownFields`
-  test (or the whole file if nothing else in it stays meaningful — check `CaesarConfigTests.cs`
-  too, since it doesn't depend on the fixture file and can stay), update SPEC.md/QUESTIONS.md's
-  references to the committed example accordingly, commit, and push.
+**Answered (2026-08-21): reading (1) — keep `fixtures/caesar.cfg` as-is.** The instruction was
+forward-looking only: don't commit the real `.cii` sample files or fabricate new install-tree
+example files going forward (already the plan either way). No repo change needed.
