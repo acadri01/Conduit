@@ -64,3 +64,24 @@ for `StressResult`, instead of pulling values through interactive COM calls one 
 documented the real load-case/stress-type model (OPE/SUS/EXP/OCC/FAT/HGR/HYD/CRP + combination
 methods) as context for future non-mock stress-check work — v1's `MockStressSolver` stays a
 deliberate simplification, unchanged in scope.
+
+## Native format (.C2/._A) adapter requirement identified (2026-08-21)
+User shared two Python files (`iecho.py`, `lift_case_builder.py`) from a different internal
+project, for context/requirements only — explicitly not to copy the logic, and neither file is
+committed here. They wrap `iecho.exe` (CAESAR II's own `.C2`↔`.cii` converter) to let that other
+tool patch neutral files without the user manually running iecho by hand each time.
+- Real production files are `.C2`/`._A` (CAESAR II's native format), never `.cii` directly.
+  `.cii` is purely an interchange format Conduit (and this other tool) work with internally.
+- Added a new `INeutralFileConverter` interface (skeleton `IechoConverter`, same treatment as
+  `CaesarComStressSolver` — not implemented/tested in this container, deferred to Windows) so
+  Conduit's architecture has the seam for this, even though v1's CLI still only accepts `.cii`
+  directly. Logged as an assumption per CLAUDE.md, not a blocking question — the interface shape
+  is a routine, reversible engineering call.
+- Noted an asymmetry visible in the reference implementation worth validating later, not
+  guessing at now: `.cii` → `.C2` ran as a silent scripted subprocess call; `.C2` → `.cii` was
+  done via an interactive `iecho.exe` launch + poll-for-output-file, which may be a real
+  `iecho.exe` limitation on the export direction or just that tool's design choice. Flagged as
+  an open decision in SPEC.md rather than asserting either way.
+- This did not change the `.cii` format documentation itself (still the real, official CAESAR II
+  neutral file format from the Hexagon PDF) — only added the layer above it that converts to/from
+  what users actually have on disk.

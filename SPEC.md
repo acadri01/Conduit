@@ -18,9 +18,11 @@ itself.
 - Storage: none — the neutral file (and its Conduit-generated output copy) is the only
   persistent artifact. No database.
 - Deploy target: local CLI tool run by the engineer next to their Caesar II install (Windows, in
-  production). The build/test loop itself must also work headless on Linux (this dev container
-  has no Windows/Caesar II/COM available), so all Caesar II access is isolated behind an
-  interface — see "Caesar II abstraction" below.
+  production), with real project files handed to it in CAESAR II's native `.C2`/`._A` format, not
+  `.cii` — see "Native file adapter (iecho)" below. The build/test loop itself must also work
+  headless on Linux (this dev container has no Windows/Caesar II/COM/`iecho.exe` available), so
+  all Caesar II access (stress solving *and* native file conversion) is isolated behind
+  interfaces — see "Caesar II abstraction" and "Native file adapter (iecho)" below.
 - Hard constraints (must / must-not):
   - MUST be a clean-room implementation: no proprietary project files, employer data, or
     Caesar II-licensed material (docs, DLLs, sample files) may be copied into the repo.
@@ -87,6 +89,41 @@ deliberate simplification, not an oversight — but any future work implementing
 stress checks (out of v1 scope, see below) needs this load-case/stress-type framework, not just
 a bigger span table.
 
+### Native file adapter (iecho)
+The `.cii` neutral file is an interchange format, not what a piping engineer actually has on
+disk day to day — their working files are CAESAR II's native format, `.C2` (current) or `._A`
+(legacy). CAESAR II ships a converter, `iecho.exe`, that translates between the two; it is the
+*only* documented way to get a `.C2`/`._A` file into `.cii` (or back). The user shared (for
+context only, not to copy — internal, project-specific code, not committed here) a Python
+wrapper they use elsewhere that shells out to `iecho.exe`, which clarifies the real-world
+requirement precisely: **Conduit's users should never have to run `iecho` by hand.** The CLI's
+job is to accept whatever file CAESAR II actually produces (`.C2`/`._A`) and hand back the same,
+converting through `.cii` transparently in between.
+
+This implies a second small abstraction, alongside `IStressSolver`, with the same shape of
+problem (a Windows-only external tool this container can't exercise):
+- `INeutralFileConverter` (or similar) with two operations — `ToNeutralFile(nativePath) ->
+  ciiPath` and `ToNativeFile(ciiPath) -> nativePath` — mirroring `iecho.exe`'s two conversion
+  directions.
+- v1 implementation: a compiled skeleton only (`IechoConverter`, `NotImplementedException`
+  bodies, XML-doc notes on the `iecho.exe` invocation), exactly like `CaesarComStressSolver` —
+  not wired up or tested here, completed later on Windows with a licensed CAESAR II install.
+  `iecho.exe`'s location isn't fixed; expect to search common install paths (Intergraph CAS and
+  Hexagon-branded, multiple CAESAR II versions) plus a config/environment-variable override, the
+  same pattern as any external-tool discovery.
+- One asymmetry worth flagging for whoever implements this: in the reference wrapper, `.cii` →
+  `.C2` (writing Conduit's changes back to the native format) ran as a plain silent subprocess
+  call, but `.C2` → `.cii` (reading a native file in) was done by launching `iecho.exe`
+  interactively and polling for the output file to appear, then terminating it. That may be a
+  hard `iecho.exe` limitation on the export direction, or just a conservative design choice in
+  that tool — worth verifying directly against `iecho.exe` on Windows rather than assuming
+  either way. Design `IechoConverter`'s interface to tolerate either (synchronous return, or an
+  async/pollable variant) so the real implementation isn't forced to fake synchronicity.
+- v1's CLI (`conduit optimize <input.cii> <output.cii>`) still speaks `.cii` directly, since
+  that's what's parseable/testable in this container. `INeutralFileConverter` is the seam a
+  later, Windows-side CLI wraps around it (`conduit optimize <input.C2> <output.C2>`) so the
+  `.cii` round-trip becomes an internal implementation detail the user never sees.
+
 ## In scope (v1)
 - Neutral file model + parser/writer for the **real, official CAESAR II neutral file format**
   (see "Neutral file format" below) — round-trips the whole file byte-for-byte except for the
@@ -104,11 +141,15 @@ a bigger span table.
   write them as new `#$ RESTRANT` records.
 - `IStressSolver` interface + `MockStressSolver` (functional) + `CaesarComStressSolver` (skeleton,
   see above).
+- `INeutralFileConverter` interface + `IechoConverter` (skeleton only, see "Native file adapter
+  (iecho)" above) — not wired up or tested in v1, exists so the seam is in place for later.
 - Iterate-and-adjust loop: run placement → `IStressSolver.Evaluate` → if any check fails, adjust
   (tighten span / add support / change type) → re-evaluate, up to a bounded iteration count, then
   report pass/fail with reasons.
 - CLI: `conduit optimize <input.cii> <output.cii>` reads input, runs the loop against
-  `MockStressSolver` by default, writes the modified neutral file, prints a summary report.
+  `MockStressSolver` by default, writes the modified neutral file, prints a summary report. Only
+  `.cii` is accepted/produced in v1 — `.C2`/`._A` support is future work once `IechoConverter` is
+  implemented (see "Explicitly OUT of scope").
 - Unit tests covering: parser round-trip (including sections Conduit doesn't interpret), span
   heuristic table lookups, support-type classification, placement algorithm on synthetic
   fixtures, and the iterate loop against `MockStressSolver`.
@@ -116,6 +157,9 @@ a bigger span table.
 ## Explicitly OUT of scope (do not build)
 - Any real Caesar II COM automation that actually runs (only the `CaesarComStressSolver`
   skeleton/interface — no working implementation, no COM calls executed).
+- Any real `iecho.exe` invocation, and any direct handling of `.C2`/`._A` files (only the
+  `IechoConverter` skeleton/interface — no working implementation, no subprocess/COM calls
+  executed). CLI-level `.C2`/`._A` support is future work built on top of it.
 - Interpreting (parsing into a rich model) any `#$ AUX_DATA` subsection other than `NODENAME`
   and `RESTRANT` — `BEND`, `RIGID`, `EXPJT`, `DISPLMNT`, `FORCMNT`, `UNIFORM`, `WIND`, `OFFSETS`,
   `ALLOWBLS`, `SIF&TEES`, `REDUCERS`, `FLANGES`, `EQUIPMNT`, hanger data, and `#$ MISCEL_1` /
@@ -200,8 +244,8 @@ Key structural facts the parser/writer must honor:
       pass/fail summary.
 - [ ] Neutral file format, span-heuristic table, and support-type rules are documented in code
       (XML doc comments) with their simplifying assumptions stated explicitly.
-- [ ] `CaesarComStressSolver` exists as a skeleton (compiles, not implemented) and does not block
-      build/test.
+- [ ] `CaesarComStressSolver` and `IechoConverter` exist as skeletons (compile, not implemented)
+      and do not block build/test.
 - [ ] PROGRESS.md and QUESTIONS.md updated per CLAUDE.md as work proceeds.
 
 ## Known open decisions (pre-answer what you can)
@@ -214,8 +258,13 @@ Key structural facts the parser/writer must honor:
   piping-support heuristics, explicitly not a substitute for a real B31.3 span calculation —
   documented inline as simplifying assumptions.
 - `CaesarComStressSolver`'s exact COM call sequence is deferred until it can be developed/tested
-  against a real licensed Caesar II install (Windows, out of this container's reach). Checked
-  the CAESAR II 15.1 "Output Tab" and "New Analysis Reviewer Help" docs specifically for a
-  batch/parseable results file format that might avoid needing COM — none is documented (results
-  review is GUI-only, exported to PDF/Word/Excel for humans), so COM automation is confirmed as
-  the only viable integration path, not just the default assumption.
+  against a real licensed Caesar II install (Windows, out of this container's reach). Triggering
+  an analysis and its reports requires COM/GUI automation (no headless/CLI report generator
+  exists), but *reading* results doesn't need deep interactive COM calls — CAESAR II can save
+  standard reports (Code Compliance, Restraints, …), or a custom Report Template with a stable
+  column layout, to plain ASCII text files; the plan is COM to drive analysis + emit a report to
+  text, then parse that file. See "Caesar II abstraction" for the full reasoning.
+- `IechoConverter`'s exact `iecho.exe` invocation (arguments, working directory, whether export
+  is truly silent or needs the interactive-launch-and-poll pattern) is deferred the same way —
+  developed/tested later on Windows against a real licensed CAESAR II install. See "Native file
+  adapter (iecho)" for what's known so far from the user's reference implementation.

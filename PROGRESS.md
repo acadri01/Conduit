@@ -30,3 +30,14 @@ running status log Claude appends to (skim this from mobile)
   those files) and documented the real load-case/stress-type model (OPE/SUS/EXP/OCC/FAT/etc. +
   combination methods) as context for future non-mock stress work. `MockStressSolver`'s v1 scope
   is unchanged. No application code written yet.
+- 2026-08-21: User shared two Python files (iecho.py, lift_case_builder.py) from a different
+  internal project, for requirements context only (not copied, not committed). Clarified that
+  real production files are CAESAR II's native `.C2`/`._A` format, not `.cii` — `.cii` is purely
+  an interchange format. Added a new `INeutralFileConverter` interface + `IechoConverter`
+  skeleton to SPEC.md (same treatment as `CaesarComStressSolver`: not implemented/tested here,
+  deferred to Windows), so users won't have to run `iecho.exe` by hand once it's built. Flagged
+  an open question about whether iecho's `.C2`→`.cii` export direction can be silent or needs
+  interactive-launch-and-poll, per an asymmetry seen in the reference implementation. v1's CLI
+  still only accepts `.cii` directly. No application code written yet. PR #1 already merged, so
+  restarted this branch from the current `main` (same content, no reset needed) before this
+  commit.
