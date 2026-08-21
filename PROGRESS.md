@@ -14,3 +14,10 @@ running status log Claude appends to (skim this from mobile)
   freshly authored synthetic `.cii` files instead. setup.sh unchanged (still just a headless
   .NET bootstrap; no new dependency from adopting the real format, since it's a plain-text
   parser with no vendor SDK). Reasoning logged in QUESTIONS.md. No application code written yet.
+- 2026-08-21: User supplied CAESAR II 15.1 "Output Tab" and "New Analysis Reviewer Help" docs.
+  These cover results review/reporting only (GUI reviewers, PDF/Word/Excel export) — no
+  batch-parseable results file format is documented, which confirms (rather than changes) the
+  existing `CaesarComStressSolver`-via-COM design; added a note to SPEC.md explaining why, plus
+  the list of piping codes CAESAR II 15.1 supports (for citing which B31.3 edition v1's
+  heuristics approximate). No change to the `.cii` input format already documented — these docs
+  don't touch it. No application code written yet.

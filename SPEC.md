@@ -38,6 +38,24 @@ with two implementations:
   intended to be completed and validated later on a Windows machine with a licensed Caesar II
   install. Building/testing the rest of the project must not require this class to be functional.
 
+**Why COM automation, not a parsed output-report file.** CAESAR II 15.1's results workflow
+(per the vendor's "Output Tab" and "New Analysis Reviewer Help" documentation) is built around
+two interactive GUI reviewers — the Classic "Static Output Processor" and the modern "New
+Analysis Reviewer" — with results exported as PDF/Word/Excel/custom "Report Package" output for
+human reporting. No batch/scriptable flat-file results format is documented (unlike the input
+`.cii` neutral file, which is explicitly designed for external interchange). This confirms the
+existing design: `CaesarComStressSolver` must drive CAESAR II through its COM automation API and
+read results from the live analysis (or an exported Excel report, as a fallback), not by parsing
+a static report file — there isn't one meant for this purpose. Nothing here changes v1's `.cii`
+input parsing, since these docs only cover results/output, not the input neutral file.
+
+The New Analysis Reviewer (and so CAESAR II 15.1 generally) supports these piping codes: ASME
+B31.1 (1967, 2018, 2020, 2022, 2024), ASME B31.3 (2018, 2020, 2022, 2024), ASME B31.3-IX (2018,
+2020, 2022, 2024), ASME NC (2009), ASME ND (2009), EN 13480 (2017, 2017/A5:2022). v1's
+simplified span/stress heuristics should be understood as approximating ASME B31.3 (the most
+common process-piping code), latest edition, without claiming conformance to any specific
+edition — see the stress-math caveat under "Explicitly OUT of scope".
+
 ## In scope (v1)
 - Neutral file model + parser/writer for the **real, official CAESAR II neutral file format**
   (see "Neutral file format" below) — round-trips the whole file byte-for-byte except for the
@@ -165,4 +183,8 @@ Key structural facts the parser/writer must honor:
   piping-support heuristics, explicitly not a substitute for a real B31.3 span calculation —
   documented inline as simplifying assumptions.
 - `CaesarComStressSolver`'s exact COM call sequence is deferred until it can be developed/tested
-  against a real licensed Caesar II install (Windows, out of this container's reach).
+  against a real licensed Caesar II install (Windows, out of this container's reach). Checked
+  the CAESAR II 15.1 "Output Tab" and "New Analysis Reviewer Help" docs specifically for a
+  batch/parseable results file format that might avoid needing COM — none is documented (results
+  review is GUI-only, exported to PDF/Word/Excel for humans), so COM automation is confirmed as
+  the only viable integration path, not just the default assumption.
