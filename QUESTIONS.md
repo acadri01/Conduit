@@ -47,3 +47,20 @@ considerations" section, i.e. not a new rule Claude is inventing here):
 - Flagged explicitly to the user in the Phase 1 chat response (not just buried here) given the
   IP/legal stakes — if the user did intend for the real files to be committed (e.g. they already
   have clearance to do so), they can say so and this decision is easy to reverse.
+
+## Results/output workflow documented (2026-08-21)
+User supplied three more vendor PDFs: CAESAR II 15.1 "Output Tab", "New Analysis Reviewer Help"
+(17 pages), "Static Analysis Help" (69 pages), and "Static Analysis Output Help" (76 pages, read
+40 of 76 — Standard Reports section covered in full; stopped after Report Template Editor/
+Available Commands since remaining pages are GUI menu reference not needed for the spec). All
+public vendor docs, no IP concern. Key correction to the earlier (2026-08-21, same day) COM note
+in SPEC.md: it is NOT true that no batch/parseable results format exists — CAESAR II can save
+standard reports (Code Compliance, Restraints, Displacements, Stresses, …) to plain ASCII text
+files, and a custom Report Template (Report Template Editor) gives a stable, fixed column layout
+per field. Revised `CaesarComStressSolver` plan in SPEC.md: drive analysis via COM (still
+required — no headless/CLI report generator exists outside COM/GUI), then have it emit a Code
+Compliance + Restraints report to text files via a custom template, then parse those text files
+for `StressResult`, instead of pulling values through interactive COM calls one at a time. Also
+documented the real load-case/stress-type model (OPE/SUS/EXP/OCC/FAT/HGR/HYD/CRP + combination
+methods) as context for future non-mock stress-check work — v1's `MockStressSolver` stays a
+deliberate simplification, unchanged in scope.

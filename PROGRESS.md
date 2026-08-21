@@ -21,3 +21,12 @@ running status log Claude appends to (skim this from mobile)
   the list of piping codes CAESAR II 15.1 supports (for citing which B31.3 edition v1's
   heuristics approximate). No change to the `.cii` input format already documented — these docs
   don't touch it. No application code written yet.
+- 2026-08-21: User supplied CAESAR II 15.1 "Static Analysis Help" and "Static Analysis Output
+  Help" docs (the latter read through the Standard Reports section, ~40 of 76 pages). These
+  corrected the earlier "no parseable results format" claim: CAESAR II can save standard reports
+  (Code Compliance, Restraints, Displacements, Stresses) to ASCII text files, and a custom Report
+  Template gives a stable per-field column layout. Revised SPEC.md's `CaesarComStressSolver` plan
+  accordingly (drive analysis via COM, emit reports to text files via a custom template, parse
+  those files) and documented the real load-case/stress-type model (OPE/SUS/EXP/OCC/FAT/etc. +
+  combination methods) as context for future non-mock stress work. `MockStressSolver`'s v1 scope
+  is unchanged. No application code written yet.

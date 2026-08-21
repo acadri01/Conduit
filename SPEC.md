@@ -38,16 +38,32 @@ with two implementations:
   intended to be completed and validated later on a Windows machine with a licensed Caesar II
   install. Building/testing the rest of the project must not require this class to be functional.
 
-**Why COM automation, not a parsed output-report file.** CAESAR II 15.1's results workflow
-(per the vendor's "Output Tab" and "New Analysis Reviewer Help" documentation) is built around
-two interactive GUI reviewers — the Classic "Static Output Processor" and the modern "New
-Analysis Reviewer" — with results exported as PDF/Word/Excel/custom "Report Package" output for
-human reporting. No batch/scriptable flat-file results format is documented (unlike the input
-`.cii` neutral file, which is explicitly designed for external interchange). This confirms the
-existing design: `CaesarComStressSolver` must drive CAESAR II through its COM automation API and
-read results from the live analysis (or an exported Excel report, as a fallback), not by parsing
-a static report file — there isn't one meant for this purpose. Nothing here changes v1's `.cii`
-input parsing, since these docs only cover results/output, not the input neutral file.
+**How `CaesarComStressSolver` should eventually get results.** CAESAR II 15.1's results live
+behind two interactive GUI reviewers — the Classic "Static Output Processor" and the modern "New
+Analysis Reviewer" (per the vendor's "Output Tab", "New Analysis Reviewer Help", and "Static
+Analysis Output Help" documentation) — there is no headless/CLI batch report generator outside
+COM automation, so *triggering* an analysis and its reports always requires driving CAESAR II
+through COM (or its GUI). *Reading back* results, though, does not require deep interactive COM
+calls: both reviewers can save standard reports (Code Compliance, Restraints/Restraint Summary,
+Displacements, Stresses, …) to plain ASCII text files ("Send to Text (ASCII) File" / Output
+Processor "Save"), and the Report Template Editor lets you define a **custom report template**
+with an exact, fixed column layout, order, and precision per field — built once and reused, so
+its output is stable to parse. The revised plan for `CaesarComStressSolver`:
+1. Drive CAESAR II via COM: load the neutral file, error-check, run static analysis (the
+   "Batch Run" action — error check + analyze + generate results in one step).
+2. Have it emit a Code Compliance Report (stress ratios) and a Restraints/Restraint Summary
+   Report (support loads) — ideally via a custom Report Template authored for this purpose — to
+   ASCII text files.
+3. Parse those text files for `StressResult`, rather than pulling values through interactive COM
+   calls one field at a time.
+
+The Code Compliance Report's real shape (per the vendor docs) is richer than v1's simplified
+boolean pass/fail: per load case, per element (From node → To node), it reports Code Stress,
+Allowable Stress, and Ratio % — plus job-level "Highest Stresses" (worst ratio, axial/bending/
+torsion/hoop stress, each with its node). `MockStressSolver`'s span/utilisation proxy is a
+deliberate v1 simplification of this; a future non-mock, code-compliant solver should target
+this ratio-based shape rather than a bare pass/fail. Nothing here changes v1's `.cii` input
+parsing — these docs cover results/output only.
 
 The New Analysis Reviewer (and so CAESAR II 15.1 generally) supports these piping codes: ASME
 B31.1 (1967, 2018, 2020, 2022, 2024), ASME B31.3 (2018, 2020, 2022, 2024), ASME B31.3-IX (2018,
@@ -55,6 +71,21 @@ B31.1 (1967, 2018, 2020, 2022, 2024), ASME B31.3 (2018, 2020, 2022, 2024), ASME 
 simplified span/stress heuristics should be understood as approximating ASME B31.3 (the most
 common process-piping code), latest edition, without claiming conformance to any specific
 edition — see the stress-math caveat under "Explicitly OUT of scope".
+
+**Real load cases vs. v1's simplification.** A real CAESAR II analysis doesn't produce one
+pass/fail — it runs a set of *load cases*, each tagged with a stress type: `OPE` (operating,
+hot displacements/loads, not itself a code-compliance case for B31.1/B31.3), `SUS` (sustained —
+weight + pressure, the primary code-compliance case), `EXP` (expansion — the range between
+operating and sustained, a combination case), `OCC` (occasional, user-defined), `FAT` (fatigue,
+needs a load-cycle count), plus special types (`HGR` for hanger design, `HYD` for hydrotest,
+`CRP` for creep). Combination cases (e.g. `L4 = L1-L3 (EXP)`) are built from basic cases via a
+combination method — `Algebraic` (default), `Scalar`, `SRSS`, `Abs`, `Max`, `Min`, `SignMax`,
+`SignMin` — each combining displacements/forces/stresses differently. B31.3's recommended set is
+just `L1=W+T1+P1 (OPE)`, `L2=W+P1 (SUS)`, `L3=W+P1 (SUS, alternate)`, `L4=L1-L3 (EXP, Algebraic)`.
+v1's `MockStressSolver` collapses all of this to a single span/utilisation pass/fail — a
+deliberate simplification, not an oversight — but any future work implementing real B31.3
+stress checks (out of v1 scope, see below) needs this load-case/stress-type framework, not just
+a bigger span table.
 
 ## In scope (v1)
 - Neutral file model + parser/writer for the **real, official CAESAR II neutral file format**
