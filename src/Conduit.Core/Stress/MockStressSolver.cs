@@ -35,7 +35,7 @@ public sealed class MockStressSolver : IStressSolver
             }
 
             var actualSpan = segment.Sum(e => e.Length);
-            var allowableSpan = segment.Min(SpanLimitCalculator.ComputeMaxSpan);
+            var allowableSpan = segment.Min(e => SpanLimitCalculator.ComputeMaxSpan(file, e));
             var fromNode = segment[0].FromNode;
             var toNode = segment[^1].ToNode;
 

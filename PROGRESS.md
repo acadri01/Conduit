@@ -58,3 +58,43 @@ running status log Claude appends to (skim this from mobile)
   decisions/assumptions logged in QUESTIONS.md (notably: span-limit as a documented formula
   rather than a recited table; spring-candidate as a loop escalation, not an initial placement
   rule; mandatory guides on vertical risers, found via a failing test).
+- 2026-08-21: Responded to PR #3's architectural review. Parsed `#$ ALLOWBLS` (allowable stress,
+  linked via each element's pointer array) and wired the real cold allowable stress into
+  `SpanLimitCalculator` in place of the placeholder constant; parsed `#$ MISCEL_1`'s `RRMAT`
+  material-ID array onto `NeutralFile.MaterialIds`; parsed `#$ EQUIPMNT` nozzle/load-limit
+  records and used real nozzle node positions (when present) as `SupportPlacer`'s near-equipment
+  signal instead of the run-endpoint-fraction proxy. Removed the "mandatory guide at every
+  vertical segment's start" rule the reviewer flagged as unsound (breaks on short verticals);
+  reverted to classifying only the element that actually triggers the span-overflow check, with
+  the resulting gap (a short riser not always getting its own guide) documented as a known
+  limitation pending element-splitting. Corrected the restraint taxonomy per review: rest is
+  one-directional `+Y`/`+Z` (not bidirectional `Y`), hold-down is the opposite one-directional
+  restraint, guide/line-stop/anchor per `GUI`/`LIM`/`ANC`, via a new `RestraintTypeMapper`.
+  Corrected SPEC.md/QUESTIONS.md wording that had mischaracterized the supplied sample `.cii`
+  files as real client project files — they're demonstration/example files per the user's
+  clarification; the not-committed decision itself is unchanged pending explicit confirmation.
+  Updated SPEC.md's in/out-of-scope and "Known open decisions" sections to match. Fixed fallout in
+  `NeutralFileFixtureBuilder` (needs real `#$ MISCEL_1` content now) and `SupportPlacerTests`
+  (restraint-code assertions, reworked the riser test to match the corrected, honest trigger
+  condition); all 22 tests green, `dotnet build`/`test`/CLI verified end-to-end. Two items from
+  the review are logged as blocking questions in SPEC.md's "Known open decisions" rather than
+  resolved here (material database source for allowable/density lookups; database-backed
+  iteration tracking, which contradicts the existing "no database" hard constraint) — everything
+  else unblocked was completed first, per CLAUDE.md. PR #3 turned out to already be merged, so per
+  the merged-PR convention the branch was restarted from `main` and this commit rebased onto it
+  (force-with-lease, user-approved); opened PR #4 as the follow-up since #3 can't track new work.
+- 2026-08-21: User answered both blocking questions on PR #4's thread, and shared a real
+  `caesar.cfg` example (confirmed a pure demonstration case, committed at `fixtures/caesar.cfg`).
+  Material-database question: every model directory's `caesar.cfg` names the database locations
+  (`SYSTEM_DIRECTORY_NAME`, `User_Material_File_Name`) and the default piping code+edition
+  (`DEFAULT_CODE`) directly. Added `CaesarConfig`/`CaesarConfigReader` (best-effort parser, no
+  vendor doc for this format — same treatment as `iecho.exe`) and wired it into the CLI: looks for
+  `caesar.cfg` next to the input file, cross-checks its `Z_AXIS_UP` against the file's own
+  `#$ CONTROL.Izup` (warns, doesn't override — logged as a reversible decision in QUESTIONS.md),
+  and surfaces `DefaultCode`/material-file locations in the run summary. Actually parsing the
+  referenced material-database files stays deferred (no format spec, and `#$ ALLOWBLS` already
+  covers v1's need). Storage question: confirmed not needed yet, so the "no database" constraint
+  is unchanged for v1; logged as a real future direction (empirical-knowledge accumulation over
+  iteration history, once placement itself is solid) in SPEC.md rather than built now. Added
+  `CaesarConfigReader` unit tests (4 new, 22 → 26 total); `dotnet build`/`test`/CLI verified
+  end-to-end including a run with `caesar.cfg` present.

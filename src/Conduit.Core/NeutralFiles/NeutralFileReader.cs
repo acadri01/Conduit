@@ -30,6 +30,21 @@ public static class NeutralFileReader
         var restraintBlock = RequireBlock(blocks, "RESTRANT");
         var restraints = Restraint.ParseMany(restraintBlock.RawLines, control.NumRestraints);
 
+        var allowblsBlock = FindBlock(blocks, "ALLOWBLS");
+        var allowableStresses = allowblsBlock is null
+            ? new List<AllowableStress>()
+            : AllowableStress.ParseMany(allowblsBlock.RawLines, control.NumAllowableStress);
+
+        var equipmntBlock = FindBlock(blocks, "EQUIPMNT");
+        var nozzleLimits = equipmntBlock is null
+            ? new List<NozzleLimit>()
+            : NozzleLimit.ParseMany(equipmntBlock.RawLines, control.NumEquipmentChecks);
+
+        var miscel1Block = FindBlock(blocks, "MISCEL_1");
+        var materialIds = miscel1Block is null
+            ? new List<int>()
+            : ParseMaterialIds(miscel1Block.RawLines, control.NumElements);
+
         return new NeutralFile
         {
             Blocks = blocks,
@@ -37,7 +52,22 @@ public static class NeutralFileReader
             Elements = elements,
             NodeNames = nodeNames,
             Restraints = restraints,
+            MaterialIds = materialIds,
+            AllowableStresses = allowableStresses,
+            NozzleLimits = nozzleLimits,
         };
+    }
+
+    /// <summary>
+    /// Parses the RRMAT array — the first item in <c>#$ MISCEL_1</c>, one material ID per
+    /// element, packed 6-per-line. The rest of <c>MISCEL_1</c> (nozzle flex data, hanger data,
+    /// execution options) isn't modeled in v1; since the section is never written back by
+    /// Conduit, leaving the remainder unparsed doesn't affect round-trip fidelity.
+    /// </summary>
+    private static List<int> ParseMaterialIds(IReadOnlyList<string> lines, int numElements)
+    {
+        var lineIndex = 0;
+        return FixedWidth.ParseReals(lines, ref lineIndex, numElements).Select(v => (int)v).ToList();
     }
 
     private static List<NeutralFileBlock> SplitIntoBlocks(IReadOnlyList<string> lines)

@@ -12,7 +12,7 @@ public class SpanLimitCalculatorTests
         real[5] = outsideDiameter;
         real[6] = wallThickness;
         real[29] = pipeDensity;
-        return new Element { RealValues = real };
+        return new Element { RealValues = real, AuxiliaryPointers = new int[15] };
     }
 
     [Fact]

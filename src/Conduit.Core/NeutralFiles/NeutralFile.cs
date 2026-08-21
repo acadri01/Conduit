@@ -15,6 +15,15 @@ public sealed class NeutralFile
     public required IReadOnlyList<NodeName> NodeNames { get; init; }
     public required List<Restraint> Restraints { get; init; }
 
+    /// <summary>Per-element material ID (1-699), same order/count as <see cref="Elements"/>. From <c>#$ MISCEL_1</c>'s RRMAT array.</summary>
+    public required IReadOnlyList<int> MaterialIds { get; init; }
+
+    /// <summary>Allowable-stress records from <c>#$ ALLOWBLS</c> — look up an element's via <see cref="TryGetAllowableStress"/>.</summary>
+    public required IReadOnlyList<AllowableStress> AllowableStresses { get; init; }
+
+    /// <summary>Nozzle/equipment load limits from <c>#$ EQUIPMNT</c>.</summary>
+    public required IReadOnlyList<NozzleLimit> NozzleLimits { get; init; }
+
     /// <summary>
     /// Appends a new support and keeps <see cref="Control"/>'s restraint count in sync so the
     /// regenerated <c>#$ CONTROL</c> section matches the regenerated <c>#$ RESTRANT</c> section.
@@ -23,6 +32,13 @@ public sealed class NeutralFile
     {
         Restraints.Add(restraint);
         Control.NumRestraints = Restraints.Count;
+    }
+
+    /// <summary>Resolves an element's <c>#$ ALLOWBLS</c> record via its 1-based pointer, or null if it has none.</summary>
+    public AllowableStress? TryGetAllowableStress(Element element)
+    {
+        var pointer = element.AllowableStressPointer;
+        return pointer > 0 && pointer <= AllowableStresses.Count ? AllowableStresses[pointer - 1] : null;
     }
 
     /// <summary>
