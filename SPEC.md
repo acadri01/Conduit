@@ -71,8 +71,13 @@ The New Analysis Reviewer (and so CAESAR II 15.1 generally) supports these pipin
 B31.1 (1967, 2018, 2020, 2022, 2024), ASME B31.3 (2018, 2020, 2022, 2024), ASME B31.3-IX (2018,
 2020, 2022, 2024), ASME NC (2009), ASME ND (2009), EN 13480 (2017, 2017/A5:2022). v1's
 simplified span/stress heuristics should be understood as approximating ASME B31.3 (the most
-common process-piping code), latest edition, without claiming conformance to any specific
-edition — see the stress-math caveat under "Explicitly OUT of scope".
+common process-piping code), without claiming conformance to any specific edition — see the
+stress-math caveat under "Explicitly OUT of scope". The code Conduit reports for a run
+(`CaesarConfig.EffectiveCode`) always prefers `caesar.cfg`'s own `DEFAULT_CODE` when one is
+found; only when no `caesar.cfg`/`DEFAULT_CODE` is available does it fall back to a hardcoded
+default, **B31.3-2024** (`CaesarConfig.DefaultAssumedCode` — the latest B31.3 edition CAESAR II
+15.1 supports, per the list above). This is reporting/context only in v1 — no calculation
+actually varies by code edition yet (see "Real load cases vs. v1's simplification" below).
 
 **Real load cases vs. v1's simplification.** A real CAESAR II analysis doesn't produce one
 pass/fail — it runs a set of *load cases*, each tagged with a stress type: `OPE` (operating,

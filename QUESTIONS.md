@@ -42,6 +42,12 @@ section, i.e. not a new rule Claude is inventing here):
   repo, not committed, not used as the literal content of any fixture** — kept out pending
   explicit confirmation that committing them is wanted, independent of the provenance correction
   below.
+  **Next step if you confirm they may be committed:** add them under `fixtures/` alongside (not
+  replacing) the synthetic ones, add a `NeutralFileRoundTripTests` case per file (byte-identical
+  round-trip + expected element/restraint counts, same pattern as the existing fixtures), and
+  register each under the test project's `<None Include="..\..\fixtures\*.cii">` glob — no code
+  changes needed, since the reader/writer already handle real files (that's how they were
+  validated originally).
 - v1's `fixtures/` directory will instead contain freshly authored, structurally-valid `.cii`
   files with invented node numbers/geometry/tags — real CAESAR II syntax, fictitious project.
 - Flagged explicitly to the user in the Phase 1 chat response (not just buried here) given the
@@ -165,3 +171,22 @@ demonstration case, safe to commit directly (now at `fixtures/caesar.cfg`).
   first-principles heuristics with empirical knowledge from stored outcomes (the user's stated
   design philosophy, citing leap71/noyron-style computational engineering). Logged as a roadmap
   note in SPEC.md's "Known open decisions", not built now.
+
+## Default piping code, TESTING.md, and process conventions (2026-08-21)
+Per direct user instruction (not a PR review comment this time):
+- **Default piping code is now `CaesarConfig.DefaultAssumedCode = "B31.3_2024"`** (was previously
+  no hardcoded default at all — the CLI only ever printed a code when `caesar.cfg` had one).
+  `CaesarConfig.EffectiveCode(config)` always prefers `config.DefaultCode` when present, falling
+  back to `DefaultAssumedCode` only when there's no `caesar.cfg`/no `DEFAULT_CODE` in it. The CLI
+  now always prints the effective code (previously conditional on `caesar.cfg` existing). No
+  calculation actually varies by code edition yet in v1 (`#$ ALLOWBLS` already carries the real
+  allowable regardless) — this is reporting/context, matching the user's "always take from the
+  config" instruction.
+- **Added TESTING.md** — instructions for testing Conduit (automated + manual), kept up to date
+  per a new CLAUDE.md instruction; consult/update it whenever testing is relevant, not just when
+  writing new tests.
+- **Process convention, now in CLAUDE.md**: every blocking-question entry logged here must also
+  state the concrete next implementation step to take once the user decides, so an answer alone
+  is enough to unblock work without another round-trip. Retrofitted the one still-open item above
+  (the real `.cii` sample files) with this framing; everything else in this file is already either
+  resolved or a non-blocking decide-and-proceed assumption, so nothing else needed retrofitting.

@@ -98,3 +98,12 @@ running status log Claude appends to (skim this from mobile)
   iteration history, once placement itself is solid) in SPEC.md rather than built now. Added
   `CaesarConfigReader` unit tests (4 new, 22 → 26 total); `dotnet build`/`test`/CLI verified
   end-to-end including a run with `caesar.cfg` present.
+- 2026-08-21: Per direct user instruction: defaulted the piping code to `B31.3_2024`
+  (`CaesarConfig.DefaultAssumedCode`) when no `caesar.cfg`/`DEFAULT_CODE` is found, with
+  `CaesarConfig.EffectiveCode` always preferring the config's own value when present; the CLI now
+  always prints the effective code (was previously conditional on `caesar.cfg` existing) — verified
+  both paths manually. Added TESTING.md (automated + manual test instructions, fixture-generation
+  workflow, what's intentionally untested) and a CLAUDE.md instruction to keep it current. Added a
+  CLAUDE.md instruction that every blocking-question entry in QUESTIONS.md must state its own next
+  implementation step; retrofitted the one still-open item (real `.cii` sample files) with this.
+  4 new tests (`CaesarConfigTests`, 26 → 30 total); `dotnet build`/`test` clean.

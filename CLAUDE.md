@@ -9,6 +9,9 @@ Optimize for finishing correctly with the fewest interruptions to me.
 - Append a one-line status to PROGRESS.md after each meaningful step (what changed + why).
 - Never halt on the first blocker. Keep working every unblocked path; accumulate open
   questions in QUESTIONS.md and continue elsewhere.
+- Keep TESTING.md current — instructions for how to test the program (automated and manual).
+  Update it whenever what/how to test changes (a new project, a new fixture convention, a new
+  manual check that matters), and consult it whenever testing is relevant to the task at hand.
 
 ## Decide-and-proceed (do NOT interrupt me) when the choice is:
 - Reversible and low-stakes, OR internal-only (naming, file layout, helper structure)
@@ -27,6 +30,9 @@ Optimize for finishing correctly with the fewest interruptions to me.
 - A direct contradiction inside SPEC.md
 → Batch ALL currently-known blocking questions into QUESTIONS.md, make as much unblocked
   progress as possible first, then pause. Do not drip-feed one question at a time.
+  Every blocking-question entry in QUESTIONS.md MUST also state the concrete next
+  implementation step to take once I decide — so answering it is enough to unblock work
+  immediately, with no extra round-trip to re-derive what happens next.
 
 ## When unsure which bucket applies
 Prefer the most reversible action, log it, and keep moving.
