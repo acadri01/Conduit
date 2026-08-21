@@ -161,6 +161,9 @@ problem (a Windows-only external tool this container can't exercise):
   see above).
 - `INeutralFileConverter` interface + `IechoConverter` (skeleton only, see "Native file adapter
   (iecho)" above) — not wired up or tested in v1, exists so the seam is in place for later.
+- `CaesarConfig`/`CaesarConfigReader` for the directory-level `caesar.cfg` (see "CAESAR II global
+  configuration" below) — the CLI looks for one next to the input file and uses it to cross-check
+  the axis setting and surface the default piping code/material-database locations.
 - Iterate-and-adjust loop: run placement → `IStressSolver.Evaluate` → if any check fails, adjust
   (tighten span / add support / change type) → re-evaluate, up to a bounded iteration count, then
   report pass/fail with reasons.
@@ -254,6 +257,30 @@ Key structural facts the parser/writer must honor:
   changes is byte-identical, and a file with only `#$ RESTRANT` changes preserves everything
   else CAESAR II needs to re-import it.
 
+## CAESAR II global configuration (`caesar.cfg`)
+Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —
+install/directory-wide settings (axis convention, default piping code, material/component
+database locations, and many analysis-behavior toggles not relevant to v1) that applied when jobs
+in that directory were built and analyzed. There's no vendor documentation for this format (unlike
+the neutral file); the user shared one real example, confirmed as a non-proprietary demonstration
+case safe to use directly, committed at `fixtures/caesar.cfg`.
+
+- Format (best-effort, inferred from the one example): each recognized line is `KEY = VALUE`
+  followed by loosely-aligned numeric column metadata that v1 ignores, e.g.
+  `DEFAULT_CODE =                    B31.3_2020        43      43.` parses to key `DEFAULT_CODE`,
+  value `B31.3_2020`. Lines without an `=` (e.g. the leading `Ver. 15.010` version line) are
+  skipped rather than treated as an error, since the exact grammar beyond this one example is
+  unconfirmed. `CaesarConfigReader.Parse`/`Read` implement this.
+- Fields v1 reads: `Z_AXIS_UP` (`YES`/`NO`, cross-checked against — never overriding — each file's
+  own `#$ CONTROL.Izup`, see "Known open decisions"), `DEFAULT_CODE` (piping code *and edition*,
+  e.g. `B31.3_2020`), `SYSTEM_DIRECTORY_NAME` and `User_Material_File_Name` (material database
+  locations — surfaced for context; not parsed further, see "Known open decisions"). Everything
+  else the parser recognizes is still available on `CaesarConfig.Values` for future use.
+- The CLI looks for `caesar.cfg` next to the input `.cii` file (the directory convention above)
+  and treats it as optional/supplementary: a missing or unreadable config doesn't fail the run,
+  and its fields are used only to cross-check or add context, never to override anything the
+  neutral file itself says.
+
 ## Behaviour by example
 1. Given a synthetic `.cii` file with two anchors (`#$ RESTRANT` type `ANC`) 18 m apart connected
    by a straight 6" Sch 40 carbon-steel `#$ ELEMENTS` run and no intermediate supports →
@@ -318,15 +345,32 @@ Key structural facts the parser/writer must honor:
   start regardless of span was tried and found unsound in review (breaks on short verticals) and
   has been removed. The real fix — splitting elements to place a support mid-span — is deferred,
   not papered over with that heuristic.
-- **Blocking, per CLAUDE.md (stop-and-ask):** review asked that material allowable stress/density
-  be looked up from "the material database... available in the system folder", keyed by piping
-  code and edition year. v1 instead reads the allowable stress CAESAR II already computed and
-  stored per-element in the file's own `#$ ALLOWBLS` (see "Explicitly OUT of scope"), which
-  satisfies "dynamically retrieve from the input" without an external database — but this
-  container has no CAESAR II install, so there's no "system folder" to locate, and using a
-  proprietary CAESAR II material database file would risk the clean-room constraint above. Need
-  the user to clarify what this database is/where it lives before building against it.
-- **Blocking, per CLAUDE.md (stop-and-ask):** review asked for optimizer iterations to be
-  tracked internally via a database. This directly contradicts this file's explicit "Storage:
-  none... No database" hard constraint from Phase 1. Need the user to confirm before adding one —
-  reversing an explicit prior constraint isn't a decide-and-proceed call.
+- **Resolved (2026-08-21):** the "material database... in the system folder" question above is
+  clarified — every CAESAR II model directory carries a `caesar.cfg` global-settings file (the
+  user shared a real example, confirmed as a non-proprietary demonstration case and now committed
+  at `fixtures/caesar.cfg`), which names `SYSTEM_DIRECTORY_NAME` (the CAESAR II system directory
+  containing its material/component databases) and `User_Material_File_Name` (a user-defined
+  `.UMD` material file), plus `DEFAULT_CODE` (the piping code *and edition*, e.g. `B31.3_2020` —
+  answering the "which standard and year" half of the question directly). v1 now parses this file
+  (`CaesarConfig`/`CaesarConfigReader`, see "CAESAR II global configuration" below) and surfaces
+  these fields. What's still deferred: actually reading the referenced material database files
+  (`.UMD`/system database) — there's no format documentation for them (same situation as
+  `iecho.exe`), and v1 doesn't need to, since `#$ ALLOWBLS` already gives the allowable stress
+  CAESAR II computed per-element from whatever that lookup would have produced. Parsing those
+  database files becomes necessary only if a future non-mock solver needs to compute allowables
+  itself rather than reading what CAESAR II already computed.
+- **Resolved (2026-08-21):** the database-for-iteration-tracking question above is answered — not
+  needed yet ("the first step of this program is to have a fully functioning support placement
+  program"), so SPEC.md's "Storage: none... No database" constraint stands unchanged for v1. It
+  is, however, a real planned direction once placement itself is solid: accumulating iteration
+  history so later runs can supplement first-principles heuristics with empirical knowledge
+  learned from stored outcomes (the user's stated design philosophy, citing leap71/noyron-style
+  computational engineering). Captured here as a roadmap item, not built now — no schema, no
+  storage code, nothing to reverse if the direction changes before it's built.
+- Axis handling: `RestraintTypeMapper`/`SupportPlacer` use each file's own `#$ CONTROL.Izup` as
+  the authoritative vertical-axis source (baked in by CAESAR II at generation time, so it should
+  already reflect whatever `caesar.cfg` was active for that model). `caesar.cfg`'s `Z_AXIS_UP` is
+  used only as a cross-check — the CLI prints a warning if the two disagree, but doesn't override
+  `Izup` with it. Decided this way (reversible, logged in QUESTIONS.md) rather than making
+  `caesar.cfg` authoritative, since it's an external file located by directory convention with no
+  guaranteed correspondence to a given input file, whereas `Izup` is intrinsic to the file itself.

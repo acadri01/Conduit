@@ -132,3 +132,36 @@ reversible/internal:
   scenario. Example 3 (spring escalation near a nozzle) is covered by targeted in-memory tests
   using the shared `NeutralFileFixtureBuilder` test helper instead of a fourth committed file,
   to keep the fixture set lean while still meeting the acceptance criterion.
+
+## Blocking questions answered; caesar.cfg support added (2026-08-21)
+The user answered both items previously logged as blocking (per CLAUDE.md's stop-and-ask rules)
+in a PR #4 review comment, and shared a real `caesar.cfg` example — confirmed a pure/non-client
+demonstration case, safe to commit directly (now at `fixtures/caesar.cfg`).
+
+- **Material database question, answered.** Every CAESAR II model directory carries a
+  `caesar.cfg` naming the material-database locations (`SYSTEM_DIRECTORY_NAME`,
+  `User_Material_File_Name`) and the default piping code *and edition* (`DEFAULT_CODE`, e.g.
+  `B31.3_2020`) — directly answering "which standard and year". Added `CaesarConfig`/
+  `CaesarConfigReader` (`src/Conduit.Core/Configuration/`) to parse this file (best-effort format,
+  no vendor doc — inferred from the one example, same treatment as `iecho.exe`) and wired it into
+  the CLI: it looks for `caesar.cfg` next to the input `.cii`, and if present, surfaces
+  `DefaultCode`/`SystemDirectoryName`/`UserMaterialFileName` in the run summary. Actually reading
+  the referenced material-database *files* stays deferred — no format spec for them either, and
+  v1 doesn't need to since `#$ ALLOWBLS` already has the allowable stress CAESAR II computed from
+  whatever that lookup produced.
+- **Decide-and-proceed (reversible, logged per CLAUDE.md): `caesar.cfg`'s `Z_AXIS_UP` cross-checks
+  rather than overrides each file's own `#$ CONTROL.Izup`.** `Izup` is baked into the neutral file
+  itself at generation time by CAESAR II, so it should already be correct for that specific job;
+  `caesar.cfg` is found by directory convention next to the input file, with no guaranteed
+  correspondence to it (wrong directory, stale config, etc.). `RestraintTypeMapper`/
+  `SupportPlacer` keep using `Izup` unchanged; the CLI just prints a warning if the two disagree.
+  Chose this over making `caesar.cfg` authoritative because overriding intrinsic per-file data
+  with an externally-located file on a naming convention is the riskier, less-reversible-feeling
+  direction of the two — easy to revisit if the user wants the override behavior instead.
+- **Storage/database question, answered.** Not needed yet — "the first step of this program is to
+  have a fully functioning support placement program" — so SPEC.md's "Storage: none... No
+  database" constraint is unchanged for v1. Confirmed as a real future direction once placement
+  itself is solid, though: accumulating iteration history so later runs can supplement
+  first-principles heuristics with empirical knowledge from stored outcomes (the user's stated
+  design philosophy, citing leap71/noyron-style computational engineering). Logged as a roadmap
+  note in SPEC.md's "Known open decisions", not built now.
