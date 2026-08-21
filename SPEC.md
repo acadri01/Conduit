@@ -235,18 +235,18 @@ Key structural facts the parser/writer must honor:
    parse-error message (section/line reference), writes no output file.
 
 ## Acceptance criteria (definition of done)
-- [ ] `dotnet build` succeeds from a clean checkout via `setup.sh`, with no Caesar II/Windows
+- [x] `dotnet build` succeeds from a clean checkout via `setup.sh`, with no Caesar II/Windows
       dependency.
-- [ ] `dotnet test` passes, covering parser round-trip, span heuristic, support-type
+- [x] `dotnet test` passes, covering parser round-trip, span heuristic, support-type
       classification, placement, and iterate-loop-against-mock scenarios.
-- [ ] `conduit optimize <in> <out>` runs end-to-end on the synthetic (non-proprietary) `.cii`
+- [x] `conduit optimize <in> <out>` runs end-to-end on the synthetic (non-proprietary) `.cii`
       fixture files committed under `fixtures/`, producing a modified neutral file and a printed
       pass/fail summary.
-- [ ] Neutral file format, span-heuristic table, and support-type rules are documented in code
+- [x] Neutral file format, span-heuristic table, and support-type rules are documented in code
       (XML doc comments) with their simplifying assumptions stated explicitly.
-- [ ] `CaesarComStressSolver` and `IechoConverter` exist as skeletons (compile, not implemented)
+- [x] `CaesarComStressSolver` and `IechoConverter` exist as skeletons (compile, not implemented)
       and do not block build/test.
-- [ ] PROGRESS.md and QUESTIONS.md updated per CLAUDE.md as work proceeds.
+- [x] PROGRESS.md and QUESTIONS.md updated per CLAUDE.md as work proceeds.
 
 ## Known open decisions (pre-answer what you can)
 - Real sample `.cii` files and the official Hexagon format documentation (CAESAR II Users Guide,

@@ -1,0 +1,62 @@
+namespace Conduit.Core.NeutralFiles;
+
+/// <summary>
+/// One record from <c>#$ ELEMENTS</c> — a pipe (or other) element between two nodes. This is a
+/// read-only projection: Conduit never adds or modifies pipe elements, so the source
+/// <c>#$ ELEMENTS</c> block is always written back verbatim from its raw lines, never
+/// regenerated from this model.
+/// </summary>
+public sealed class Element
+{
+    /// <summary>All 53 real values from the element's basic-data block, in vendor-doc order (0-based).</summary>
+    public required IReadOnlyList<double> RealValues { get; init; }
+
+    public int FromNode => (int)RealValues[0];
+    public int ToNode => (int)RealValues[1];
+    public double DeltaX => RealValues[2];
+    public double DeltaY => RealValues[3];
+    public double DeltaZ => RealValues[4];
+
+    /// <summary>Actual outside diameter, in the file's length units.</summary>
+    public double OutsideDiameter => RealValues[5];
+
+    /// <summary>Actual wall thickness, in the file's length units.</summary>
+    public double WallThickness => RealValues[6];
+
+    /// <summary>Straight-line length of this element (from the delta coordinates).</summary>
+    public double Length => Math.Sqrt((DeltaX * DeltaX) + (DeltaY * DeltaY) + (DeltaZ * DeltaZ));
+
+    public string Name { get; init; } = string.Empty;
+    public string LineNumber { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Parses <paramref name="count"/> elements starting at <paramref name="lineIndex"/>, each a
+    /// fixed 15-line record: 53 reals (9 lines), name, line number, 2-value color/visibility line,
+    /// then 15 pointer ints (3 lines).
+    /// </summary>
+    public static List<Element> ParseMany(IReadOnlyList<string> lines, int startLineIndex, int count)
+    {
+        var elements = new List<Element>(count);
+        var lineIndex = startLineIndex;
+        for (var i = 0; i < count; i++)
+        {
+            var real = FixedWidth.ParseReals(lines, ref lineIndex, 53);
+            var name = FixedWidth.ParseLengthPrefixedString(RequireLine(lines, lineIndex++));
+            var lineNumber = FixedWidth.ParseLengthPrefixedString(RequireLine(lines, lineIndex++));
+            _ = FixedWidth.ParseReals(lines, ref lineIndex, 2); // color, visibility — not needed by v1 heuristics
+            _ = FixedWidth.ParseInts(lines, ref lineIndex, 15); // auxiliary-data pointer array — see IEL in the vendor doc
+
+            elements.Add(new Element { RealValues = real, Name = name, LineNumber = lineNumber });
+        }
+        return elements;
+    }
+
+    private static string RequireLine(IReadOnlyList<string> lines, int lineIndex)
+    {
+        if (lineIndex >= lines.Count)
+        {
+            throw new NeutralFileParseException("Expected an element name/line-number line, but reached the end of the section.");
+        }
+        return lines[lineIndex];
+    }
+}

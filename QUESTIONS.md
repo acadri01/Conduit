@@ -85,3 +85,44 @@ tool patch neutral files without the user manually running iecho by hand each ti
 - This did not change the `.cii` format documentation itself (still the real, official CAESAR II
   neutral file format from the Hexagon PDF) — only added the layer above it that converts to/from
   what users actually have on disk.
+
+## Phase 2 build — assumptions made (2026-08-21)
+Implemented the C# solution per SPEC.md. Decide-and-proceed calls made along the way, all
+reversible/internal:
+- **Span-limit "table" implemented as a computed formula, not a literal lookup table.**
+  `SpanLimitCalculator` derives max allowable span from first-principles beam theory
+  (simply-supported, uniform load: `L = sqrt(8·σ_allow·Z/w)`), with clearly-labeled placeholder
+  constants (`DefaultAllowableBendingStress = 1500 psi`, `DefaultSteelDensity`), rather than
+  reciting specific-looking numbers from a real span table from memory that I could not verify
+  and might present as more authoritative than warranted. This still satisfies the acceptance
+  criterion ("compute a maximum allowable span... documented... simplifying assumptions") — it's
+  a formula instead of a table, which SPEC.md's "table" wording didn't strictly require given the
+  bullet itself says "compute".
+- **`SupportType.SpringCandidate` is an iterate-loop escalation, not an initial-placement rule.**
+  A literal reading of Behaviour example 3 ("spans exceeding thermal-growth thresholds flag
+  spring candidates") as an initial classification rule is self-defeating: placement already
+  spaces rest supports at/under the max span, so "span is near the max" would fire on nearly
+  every placed support, making the rule meaningless. Instead, `OptimizationLoop` escalates an
+  already-placed (non-anchor) support to a spring candidate only when a failing span has no room
+  for an intermediate support — matching the loop's own documented "change type" adjustment.
+- **Vertical risers always get a mandatory guide at their start node**, independent of span
+  accumulation — found via a failing test: the span-driven overflow check can trigger on a later
+  *horizontal* element after passing a short riser, missing the riser itself. `SupportPlacer` now
+  places a guide the moment it enters a vertical segment, resetting the span accumulator there.
+- **NODENAME is parsed (read-only) but never written back** — resolves a minor inconsistency
+  between SPEC.md's "In scope" bullet (only mentions ELEMENTS + RESTRANT) and its "OUT of scope"
+  bullet (implies NODENAME is also interpreted). Harmless either way since its raw lines are
+  preserved verbatim regardless.
+- **Node positions assume each disconnected element chain's first node is the origin** — `#$
+  COORDS` isn't parsed in v1, and only relative geometry along a run matters for span/length math.
+- **`setup.sh` installs the .NET SDK via `apt` first**, falling back to the `dot.net` install
+  script — this sandbox's egress proxy blocks `dot.net` outright; `apt`'s `dotnet-sdk-8.0`
+  package worked and is likely more reliable in similar restricted environments generally.
+- **CLI exit codes**: `0` = passed, `1` = usage/parse error (no output file written), `2` = ran
+  successfully but didn't converge to a full pass within the iteration cap (output *is* written,
+  with the remaining failures printed) — not specified in SPEC.md, a conventional choice.
+- **Fixture count**: two CLI-exercised fixtures (`straight-run.cii`, `run-with-riser.cii`) plus
+  `malformed.cii` for the parse-error case, rather than one fixture per Behaviour-by-example
+  scenario. Example 3 (spring escalation near a nozzle) is covered by targeted in-memory tests
+  using the shared `NeutralFileFixtureBuilder` test helper instead of a fourth committed file,
+  to keep the fixture set lean while still meeting the acceptance criterion.
