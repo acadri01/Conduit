@@ -113,9 +113,13 @@ problem (a Windows-only external tool this container can't exercise):
 - v1 implementation: a compiled skeleton only (`IechoConverter`, `NotImplementedException`
   bodies, XML-doc notes on the `iecho.exe` invocation), exactly like `CaesarComStressSolver` —
   not wired up or tested here, completed later on Windows with a licensed CAESAR II install.
-  `iecho.exe`'s location isn't fixed; expect to search common install paths (Intergraph CAS and
-  Hexagon-branded, multiple CAESAR II versions) plus a config/environment-variable override, the
-  same pattern as any external-tool discovery.
+  **`iecho.exe` is not under the `C:\ProgramData\Intergraph CAS\CAESAR II\<version>\System`
+  data-directory tree** (see "CAESAR II installation layout" below) — per the user's confirmation
+  and reference wrapper, it lives in a different branch of the install (the application/program
+  directory), so it needs its own, separate discovery logic — expect to search common install
+  paths (Intergraph CAS and Hexagon-branded, multiple CAESAR II versions, 15.00 and up per
+  Conduit's supported floor) plus a config/environment-variable override, the same pattern as any
+  external-tool discovery, but **do not** assume `CaesarInstallationLocator`'s paths apply to it.
 - One asymmetry worth flagging for whoever implements this: in the reference wrapper, `.cii` →
   `.C2` (writing Conduit's changes back to the native format) ran as a plain silent subprocess
   call, but `.C2` → `.cii` (reading a native file in) was done by launching `iecho.exe`
@@ -169,6 +173,11 @@ problem (a Windows-only external tool this container can't exercise):
 - `CaesarConfig`/`CaesarConfigReader` for the directory-level `caesar.cfg` (see "CAESAR II global
   configuration" below) — the CLI looks for one next to the input file and uses it to cross-check
   the axis setting and surface the default piping code/material-database locations.
+- `CaesarInstallationLocator` (see "CAESAR II installation layout" below) — finds installed CAESAR
+  II versions (15.00+) under the real, confirmed `ProgramData\Intergraph CAS\CAESAR II\<version>`
+  data-directory layout, and resolves each version's `System` (material/component database)
+  folder. Not wired into the CLI in v1 (nothing yet consumes the database files it points at) —
+  exists so the path is known once that becomes necessary.
 - Iterate-and-adjust loop: run placement → `IStressSolver.Evaluate` → if any check fails, adjust
   (tighten span / add support / change type) → re-evaluate, up to a bounded iteration count, then
   report pass/fail with reasons.
@@ -286,6 +295,28 @@ case safe to use directly, committed at `fixtures/caesar.cfg`.
   and its fields are used only to cross-check or add context, never to override anything the
   neutral file itself says.
 
+### CAESAR II installation layout
+Confirmed by the user, resolving where `caesar.cfg`'s `SYSTEM_DIRECTORY_NAME` actually points:
+CAESAR II's data directory (material/component databases, not the application binaries) lives at
+`C:\ProgramData\Intergraph CAS\CAESAR II\<version>\System` — one version-numbered subfolder per
+installed release (e.g. `15.01`), each with its own `System` folder. **Conduit's supported version
+floor is 15.00 and up** — "we will begin the build from 15.00 and up" — older installations are
+out of scope, not just untested. `CaesarInstallationLocator` (`src/Conduit.Core/Configuration/`)
+implements this: `FindInstallations`/`FindLatest` enumerate version subfolders under an injectable
+root (default `DefaultInstallRoot`, the Windows path above), filtering to `>= MinimumSupportedVersion`
+(15.0). It's pure `System.IO` directory listing, so — unlike COM automation or invoking
+`iecho.exe` — the logic itself is fully unit-testable without Windows; only the *default* root is
+Windows-specific.
+
+**`iecho.exe` is not here.** Per the user's explicit correction, the converter binary lives in a
+different branch of the install (the application directory), not under this `ProgramData`/`System`
+tree — see "Native file adapter (iecho)" above. Don't reuse `CaesarInstallationLocator`'s paths for
+it; it needs independent discovery logic when `IechoConverter` is implemented.
+
+Actually parsing the material/component database *files* this locator can now point at is still
+deferred — no format documentation for them, same situation `iecho.exe` is in (see "Known open
+decisions"). This locator only answers "where," not "how to read what's there."
+
 ## Behaviour by example
 1. Given a synthetic `.cii` file with two anchors (`#$ RESTRANT` type `ANC`) 18 m apart connected
    by a straight 6" Sch 40 carbon-steel `#$ ELEMENTS` run and no intermediate supports →
@@ -350,15 +381,18 @@ case safe to use directly, committed at `fixtures/caesar.cfg`.
   start regardless of span was tried and found unsound in review (breaks on short verticals) and
   has been removed. The real fix — splitting elements to place a support mid-span — is deferred,
   not papered over with that heuristic.
-- **Resolved (2026-08-21):** the "material database... in the system folder" question above is
-  clarified — every CAESAR II model directory carries a `caesar.cfg` global-settings file (the
-  user shared a real example, confirmed as a non-proprietary demonstration case and now committed
-  at `fixtures/caesar.cfg`), which names `SYSTEM_DIRECTORY_NAME` (the CAESAR II system directory
-  containing its material/component databases) and `User_Material_File_Name` (a user-defined
+- **Resolved (2026-08-21, updated with the confirmed absolute path):** the "material database...
+  in the system folder" question above is clarified — every CAESAR II model directory carries a
+  `caesar.cfg` global-settings file (the user shared a real example, confirmed as a
+  non-proprietary demonstration case and now committed at `fixtures/caesar.cfg`), which names
+  `SYSTEM_DIRECTORY_NAME` (typically just `SYSTEM`) and `User_Material_File_Name` (a user-defined
   `.UMD` material file), plus `DEFAULT_CODE` (the piping code *and edition*, e.g. `B31.3_2020` —
-  answering the "which standard and year" half of the question directly). v1 now parses this file
-  (`CaesarConfig`/`CaesarConfigReader`, see "CAESAR II global configuration" below) and surfaces
-  these fields. What's still deferred: actually reading the referenced material database files
+  answering the "which standard and year" half of the question directly). The user has since
+  confirmed the absolute root this resolves against: `C:\ProgramData\Intergraph CAS\CAESAR
+  II\<version>\System` — see "CAESAR II installation layout" above, implemented by
+  `CaesarInstallationLocator`. v1 now parses `caesar.cfg` (`CaesarConfig`/`CaesarConfigReader`)
+  and locates the version/System directory on disk (`CaesarInstallationLocator`), surfacing both.
+  What's still deferred: actually reading the material database *files* at that location
   (`.UMD`/system database) — there's no format documentation for them (same situation as
   `iecho.exe`), and v1 doesn't need to, since `#$ ALLOWBLS` already gives the allowable stress
   CAESAR II computed per-element from whatever that lookup would have produced. Parsing those

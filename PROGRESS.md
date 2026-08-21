@@ -107,3 +107,16 @@ running status log Claude appends to (skim this from mobile)
   CLAUDE.md instruction that every blocking-question entry in QUESTIONS.md must state its own next
   implementation step; retrofitted the one still-open item (real `.cii` sample files) with this.
   4 new tests (`CaesarConfigTests`, 26 → 30 total); `dotnet build`/`test` clean.
+- 2026-08-21: User confirmed the real CAESAR II install path — `C:\ProgramData\Intergraph
+  CAS\CAESAR II\<version>\System` — and that the build targets version 15.00 and up. Added
+  `CaesarInstallationLocator` (enumerates installed versions under an injectable root, filters to
+  the 15.00 floor, resolves each version's `System` directory) — pure `System.IO`, fully
+  unit-tested on Linux even though the default root is Windows-specific. Corrected SPEC.md's
+  "Native file adapter (iecho)" section per the user's explicit note that `iecho.exe` lives in a
+  different install branch than this `ProgramData`/`System` tree, so it needs independent
+  discovery logic — not wired up yet either way. Not yet wired into the CLI, since nothing in v1
+  reads the database files this locator points at (still no format spec for their content). 5 new
+  tests (`CaesarInstallationLocatorTests`, 30 → 35 total); `dotnet build`/`test` clean. The same
+  message said "hold off on committing the example files," which is ambiguous with the
+  already-merged `fixtures/caesar.cfg` from PR #4 — asked the user to clarify rather than guess
+  whether that should be reverted (see QUESTIONS.md); proceeded with everything else unblocked.

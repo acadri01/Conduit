@@ -190,3 +190,47 @@ Per direct user instruction (not a PR review comment this time):
   is enough to unblock work without another round-trip. Retrofitted the one still-open item above
   (the real `.cii` sample files) with this framing; everything else in this file is already either
   resolved or a non-blocking decide-and-proceed assumption, so nothing else needed retrofitting.
+
+## CAESAR II install-tree layout confirmed; iecho.exe location corrected (2026-08-21)
+Per direct user instruction:
+- **Confirmed the absolute install path**: `C:\ProgramData\Intergraph CAS\CAESAR II\<version>\System`
+  (e.g. `...\15.01\System`) is where the material/component databases actually live, resolving
+  what `caesar.cfg`'s `SYSTEM_DIRECTORY_NAME` is relative to. Added `CaesarInstallationLocator`
+  (`src/Conduit.Core/Configuration/`) to enumerate installed versions and resolve each one's
+  `System` directory — pure `System.IO`, fully unit-tested against an injectable root even though
+  the *default* root is Windows-specific.
+- **Version floor: 15.00 and up** — "we will begin the build from 15.00 and up." Encoded as
+  `CaesarInstallationLocator.MinimumSupportedVersion`; older installations aren't discovered.
+- **`iecho.exe` is in a different install branch** than the `ProgramData`/`System` tree above —
+  confirmed by the user, matching the ambiguity already flagged in SPEC.md's "Native file adapter
+  (iecho)" section. Corrected that section and added an explicit warning against reusing
+  `CaesarInstallationLocator`'s paths for `iecho.exe` discovery — it needs independent logic,
+  still deferred (no confirmed path yet, just confirmation that it's elsewhere).
+- Not wired into the CLI/allowable-stress logic yet — nothing in v1 actually reads the database
+  files this locator points at (same "no format spec yet" situation as before); this only answers
+  "where," matching the scope of what was asked.
+
+## Blocking question, per CLAUDE.md (stop-and-ask): does "hold off on committing the example files" also mean reverting the already-merged `fixtures/caesar.cfg`?
+The same message that gave the install-path info above also said "Hold off on comitting the
+example files." This is genuinely ambiguous between two materially different actions:
+1. **Forward-looking only**: keep not committing the four real `.cii` sample files (already the
+   status quo — see the entry above), and don't fabricate/commit any new install-tree example
+   files (e.g. a fake material-database file) as part of this round's work — which I wasn't
+   planning to anyway, since no database *content* format is known yet, only the *path*.
+2. **Also retroactive**: revert the already-committed, already-merged `fixtures/caesar.cfg` (PR
+   #4, merged into `main`) — i.e. the user has reconsidered whether that example was actually
+   fine to commit.
+
+I did not guess — reading (1) requires no action (already the plan); reading (2) means removing
+content from `main`'s history, which isn't cleanly undoable (it's already public/merged) and is
+exactly the kind of "irreversible-feeling" content decision CLAUDE.md says to confirm rather than
+assume. Asked the user directly via `AskUserQuestion` in the same turn this was logged.
+
+**Next step once answered:**
+- If (1) only: no code/repo change needed — already compliant. Just note the confirmation here.
+- If (2), revert wanted: `git rm fixtures/caesar.cfg`, remove its `<None Include>` entry from
+  `tests/Conduit.Tests/Conduit.Tests.csproj`, delete
+  `tests/Conduit.Tests/Configuration/CaesarConfigReaderTests.cs`'s `RealExampleFile_ParsesKnownFields`
+  test (or the whole file if nothing else in it stays meaningful — check `CaesarConfigTests.cs`
+  too, since it doesn't depend on the fixture file and can stay), update SPEC.md/QUESTIONS.md's
+  references to the committed example accordingly, commit, and push.

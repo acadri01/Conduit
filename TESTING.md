@@ -35,6 +35,11 @@ skipped tests in this project.
 - `tests/Conduit.Tests/Configuration/CaesarConfigReaderTests.cs` and `CaesarConfigTests.cs` — the
   `caesar.cfg` parser (against the real example at `fixtures/caesar.cfg`) and the
   config-vs-default piping-code fallback (`CaesarConfig.EffectiveCode`).
+- `tests/Conduit.Tests/Configuration/CaesarInstallationLocatorTests.cs` — the
+  `C:\ProgramData\Intergraph CAS\CAESAR II\<version>\System` install-tree locator: version
+  filtering (15.00 floor), newest-first ordering, `System`-subfolder resolution, and graceful
+  handling of a missing root. Runs against a temp directory (injectable root), not the real
+  Windows path — this logic is pure `System.IO`, so it's fully testable on Linux.
 - `tests/Conduit.Tests/TestHelpers/NeutralFileFixtureBuilder.cs` is not a test file itself — it's
   the shared builder both the unit tests and the committed `fixtures/*.cii` files are generated
   from. If you change what a valid minimal neutral file needs to contain (e.g. a newly-parsed
