@@ -11,13 +11,6 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 
 if ! command -v dotnet >/dev/null 2>&1; then
-  # Prefer the distro package (works behind egress proxies that block dot.net).
-  if command -v apt-get >/dev/null 2>&1; then
-    apt-get install -y -qq "dotnet-sdk-${DOTNET_VERSION}" || true
-  fi
-fi
-
-if ! command -v dotnet >/dev/null 2>&1; then
   INSTALL_DIR="${HOME}/.dotnet"
   mkdir -p "${INSTALL_DIR}"
   curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh &
