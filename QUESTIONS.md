@@ -30,23 +30,29 @@ where Claude parks non-blocking questions + logs assumptions
 
 ## Real neutral file format adopted (2026-08-21)
 The user provided the official Hexagon "CAESAR II Neutral File" documentation (CAESAR II Users
-Guide, v15 interface — public vendor docs) plus four real `.cii` files from their own projects.
-Decision, per SPEC.md's existing clean-room hard constraint (set by the user's own README "IP
-considerations" section, i.e. not a new rule Claude is inventing here):
+Guide, v15 interface — public vendor docs) plus four real `.cii` files, supplied as demonstration
+examples (not client project data — corrected 2026-08-21 per review, see below). Decision, per
+SPEC.md's existing clean-room hard constraint (set by the user's own README "IP considerations"
+section, i.e. not a new rule Claude is inventing here):
 - **Format documentation (the PDF)**: used directly and cited in SPEC.md. It's Hexagon's public
   product documentation, not the user's proprietary material — no IP concern.
 - **The four real `.cii` sample files**: reviewed locally in this session to confirm the
   published format spec matches real-world files (it does — same section structure, same
   fixed-width columnar layout, same `#$ RESTRANT` DOF-block structure). **Not copied into the
-  repo, not committed, not used as the literal content of any fixture.** They are real client
-  project files (node layouts, line numbers, geometry, tag data for a specific job), which is
-  exactly the "proprietary project files" SPEC.md's hard constraint rules out, even though their
-  title blocks (PROJECT/CLIENT/ANALYST) happened to be blank.
+  repo, not committed, not used as the literal content of any fixture** — kept out pending
+  explicit confirmation that committing them is wanted, independent of the provenance correction
+  below.
 - v1's `fixtures/` directory will instead contain freshly authored, structurally-valid `.cii`
   files with invented node numbers/geometry/tags — real CAESAR II syntax, fictitious project.
 - Flagged explicitly to the user in the Phase 1 chat response (not just buried here) given the
   IP/legal stakes — if the user did intend for the real files to be committed (e.g. they already
   have clearance to do so), they can say so and this decision is easy to reverse.
+
+**Correction (2026-08-21, PR review):** the sample files were mischaracterized above and in
+SPEC.md as "real client project files" — the user has clarified they are demonstration/example
+files, not client project data. Wording fixed in both documents. This corrects the provenance
+claim only; it doesn't by itself change the not-committed decision above, since that's a
+separate, easily-reversed call the user can override any time.
 
 ## Results/output workflow documented (2026-08-21)
 User supplied three more vendor PDFs: CAESAR II 15.1 "Output Tab", "New Analysis Reviewer Help"

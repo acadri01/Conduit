@@ -6,16 +6,22 @@ namespace Conduit.Core.Heuristics;
 public sealed record PlacedSupport(int Node, SupportType Type, RestraintType RestraintType);
 
 /// <summary>
-/// Walks each pipe run between fixed points (anchors — v1 doesn't model the <c>#$ EQUIPMNT</c>
-/// nozzle-check section, so equipment connections aren't a separate signal from anchors here),
-/// placing candidate supports at or under the max allowable span computed for each element, and
-/// classifying each with <see cref="SupportTypeClassifier"/>.
+/// Walks each pipe run between fixed points (anchors, and — when <c>#$ EQUIPMNT</c> is populated
+/// — real nozzle/equipment node locations), placing candidate supports at or under the max
+/// allowable span computed for each element, and classifying each with
+/// <see cref="SupportTypeClassifier"/>.
 ///
 /// <para><b>Simplifying assumptions (v1):</b></para>
 /// <list type="bullet">
 /// <item>Supports can only be placed at existing nodes — Conduit never splits an element to
 /// introduce a new node mid-span, so the achieved spacing is the largest node-to-node distance
-/// at or under the max allowable span, not necessarily the max allowable span itself.</item>
+/// at or under the max allowable span, not necessarily the max allowable span itself. This also
+/// means a vertical segment only gets classified as a guide when it happens to be the element
+/// that triggers a span-driven placement — a short riser fully contained within an otherwise-fine
+/// span may not get its own guide in v1. Placing supports mid-element (splitting the element,
+/// introducing a new node) is the real fix and is deliberately deferred, not papered over with a
+/// heuristic that forces a placement at every vertical segment's start regardless of span — that
+/// was tried and doesn't hold up in general (flagged in review).</item>
 /// <item>A "run" is a contiguous stretch of <see cref="NeutralFile.Elements"/> (in file order)
 /// between two nodes that already carry an anchor (<see cref="RestraintType.Anc"/>) restraint.
 /// Elements before the first anchor or after the last aren't part of any run and are skipped.</item>
@@ -33,10 +39,11 @@ public static class SupportPlacer
         var fixedNodes = GetFixedNodes(file);
         var alreadySupported = GetSupportedNodes(file);
         var placed = new List<PlacedSupport>();
+        var nozzleNodePositions = GetNozzleNodePositions(file);
 
         foreach (var run in SplitIntoRuns(file.Elements, fixedNodes))
         {
-            PlaceSupportsForRun(run, fixedNodes, file.Control.Izup, alreadySupported, placed);
+            PlaceSupportsForRun(file, run, alreadySupported, nozzleNodePositions, placed);
         }
 
         return placed;
@@ -55,6 +62,18 @@ public static class SupportPlacer
             .Where(d => d.IsUsed)
             .Select(d => d.Node)
             .ToHashSet();
+
+    /// <summary>Positions of nodes carrying a real <c>#$ EQUIPMNT</c> nozzle/load limit, if any are defined.</summary>
+    private static List<(double X, double Y, double Z)> GetNozzleNodePositions(NeutralFile file)
+    {
+        if (file.NozzleLimits.Count == 0)
+        {
+            return [];
+        }
+        var positions = file.ComputeNodePositions();
+        var nozzleNodes = file.NozzleLimits.Select(n => n.Node).ToHashSet();
+        return positions.Where(p => nozzleNodes.Contains(p.Key)).Select(p => p.Value).ToList();
+    }
 
     /// <summary>Splits the element chain into contiguous runs between two anchor nodes.</summary>
     private static List<List<Element>> SplitIntoRuns(IReadOnlyList<Element> elements, HashSet<int> fixedNodes)
@@ -79,12 +98,13 @@ public static class SupportPlacer
     }
 
     private static void PlaceSupportsForRun(
+        NeutralFile file,
         List<Element> run,
-        HashSet<int> fixedNodes,
-        int izup,
         HashSet<int> alreadySupported,
+        List<(double X, double Y, double Z)> nozzleNodePositions,
         List<PlacedSupport> placed)
     {
+        var izup = file.Control.Izup;
         var runStartNode = run[0].FromNode;
         var runEndNode = run[^1].ToNode;
         var runLength = run.Sum(e => e.Length);
@@ -92,24 +112,12 @@ public static class SupportPlacer
         var distanceFromRunStart = 0.0;
         var accumulatedSinceLastSupport = 0.0;
         var lastSupportNode = runStartNode;
+        var positions = nozzleNodePositions.Count > 0 ? file.ComputeNodePositions() : null;
 
         foreach (var element in run)
         {
             var isVertical = IsVertical(element, izup);
-
-            // A vertical run always needs its own guide at the point it starts, regardless of
-            // accumulated span — a riser can need lateral restraint well before it would trip
-            // the ordinary gravity-span check, and the span check alone might never trigger
-            // exactly at the riser if a later horizontal element is what pushes it over instead.
-            if (isVertical && element.FromNode != lastSupportNode && !alreadySupported.Contains(element.FromNode))
-            {
-                placed.Add(new PlacedSupport(element.FromNode, SupportType.Guide, RestraintType.Gui));
-                alreadySupported.Add(element.FromNode);
-                lastSupportNode = element.FromNode;
-                accumulatedSinceLastSupport = 0;
-            }
-
-            var maxSpan = SpanLimitCalculator.ComputeMaxSpan(element);
+            var maxSpan = SpanLimitCalculator.ComputeMaxSpan(file, element);
             var prospective = accumulatedSinceLastSupport + element.Length;
 
             var reachedEndOfRun = element.ToNode == runEndNode;
@@ -118,7 +126,10 @@ public static class SupportPlacer
             if (wouldExceedSpan && element.FromNode != lastSupportNode && !alreadySupported.Contains(element.FromNode))
             {
                 var distanceToEnd = runLength - distanceFromRunStart;
-                var distanceToNearestEndpoint = Math.Min(distanceFromRunStart, distanceToEnd);
+                var distanceToRunEndpoint = Math.Min(distanceFromRunStart, distanceToEnd);
+                var distanceToEquipment = DistanceToNearestNozzle(positions, element.FromNode, nozzleNodePositions);
+                var distanceToNearestEndpoint = Math.Min(distanceToRunEndpoint, distanceToEquipment);
+
                 var context = new SupportCandidateContext(
                     IsVerticalSegment: isVertical,
                     DistanceToNearestRunEndpoint: distanceToNearestEndpoint);
@@ -143,9 +154,22 @@ public static class SupportPlacer
                 break;
             }
         }
-
-        _ = fixedNodes; // run boundaries are already fixed by construction; kept for signature clarity
     }
+
+    private static double DistanceToNearestNozzle(
+        Dictionary<int, (double X, double Y, double Z)>? positions,
+        int node,
+        List<(double X, double Y, double Z)> nozzleNodePositions)
+    {
+        if (positions is null || nozzleNodePositions.Count == 0 || !positions.TryGetValue(node, out var here))
+        {
+            return double.PositiveInfinity;
+        }
+        return nozzleNodePositions.Min(p => Distance(here, p));
+    }
+
+    private static double Distance((double X, double Y, double Z) a, (double X, double Y, double Z) b) =>
+        Math.Sqrt(Math.Pow(b.X - a.X, 2) + Math.Pow(b.Y - a.Y, 2) + Math.Pow(b.Z - a.Z, 2));
 
     private static bool IsVertical(Element element, int izup)
     {

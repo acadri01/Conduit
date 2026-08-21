@@ -29,7 +29,7 @@ public static class NeutralFileFixtureBuilder
 
     /// <summary>Builds a standalone <see cref="Element"/> from a spec, for tests that need one without a whole file.</summary>
     public static Element ToElement(this PipeSegmentSpec segment) =>
-        new() { RealValues = BuildRealValues(segment) };
+        new() { RealValues = BuildRealValues(segment), AuxiliaryPointers = new int[15] };
 
     private static double[] BuildRealValues(PipeSegmentSpec segment)
     {
@@ -74,7 +74,7 @@ public static class NeutralFileFixtureBuilder
         AddBlock("REDUCERS");
         AddBlock("FLANGES");
         AddBlock("EQUIPMNT");
-        AddBlock("MISCEL_1");
+        AddBlock("MISCEL_1", FixedWidth.FormatRealLines(segments.Select(_ => 1.0).ToList()));
         AddBlock("UNITS");
         AddBlock("COORDS");
 
@@ -114,6 +114,9 @@ public static class NeutralFileFixtureBuilder
             Elements = elements,
             NodeNames = [],
             Restraints = restraints,
+            MaterialIds = segments.Select(_ => 1).ToList(),
+            AllowableStresses = [],
+            NozzleLimits = [],
         };
 
         // Regenerate CONTROL/RESTRANT raw lines from the model right away, so the returned

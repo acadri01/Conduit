@@ -128,17 +128,35 @@ problem (a Windows-only external tool this container can't exercise):
 - Neutral file model + parser/writer for the **real, official CAESAR II neutral file format**
   (see "Neutral file format" below) — round-trips the whole file byte-for-byte except for the
   sections Conduit actively edits, and fully models `#$ ELEMENTS` (node list, pipe segment
-  properties) and `#$ AUX_DATA` → `#$ RESTRANT` (supports).
+  properties, including the auxiliary-data pointer array) and `#$ AUX_DATA` → `#$ RESTRANT`
+  (supports). Also parses (read-only, exposed on `NeutralFile` for current and future use) the
+  `#$ ALLOWBLS` allowable-stress records (linked from each element via its pointer array), the
+  `#$ EQUIPMNT` nozzle/equipment load-limit records, and the `#$ MISCEL_1` material-ID (`RRMAT`)
+  array — per review direction to make neutral-file data dynamically available rather than
+  hardcoding placeholders. These three sections still round-trip byte-for-byte on write (parsed
+  into a read-only side-model, not yet part of what Conduit regenerates).
 - Span-limit heuristic: given pipe size/schedule/material, compute a maximum allowable
-  unsupported span (simplified B31.3-style table, documented in code with its source assumption).
-- Support-type selection heuristic: for each candidate location, classify as rest, guide, anchor,
-  or spring based on documented rules (e.g., vertical runs favor guides, direction changes near
-  equipment nozzles favor anchors, spans exceeding thermal-growth thresholds flag spring
-  candidates). Rules are simplified for v1 and documented as such. Maps to CAESAR II restraint
-  type codes (`ANC`, `X`/`Y`/`Z`, `GUI`, `LIM`, etc. — see "Neutral file format").
-- Support-placement algorithm: walk each pipe run between fixed points (anchors/equipment), place
-  candidate supports at/under the max allowable span, assign a type via the heuristic above, and
-  write them as new `#$ RESTRANT` records.
+  unsupported span (beam-theory formula, documented in code with its source assumption), using
+  the element's own `#$ ALLOWBLS` cold allowable stress when the file provides one (real,
+  per-material/code/temperature data CAESAR II already computed) rather than a hardcoded
+  placeholder, falling back to a documented default only when the file has no allowable-stress
+  record for that element.
+- Support-type selection heuristic: for each candidate location, classify per the corrected
+  taxonomy — rest, hold-down, guide, line stop, with anchor as their combination — based on
+  documented rules (vertical runs favor guides, locations near a run's fixed endpoints or a real
+  `#$ EQUIPMNT` nozzle node favor anchors). v1's classifier only ever produces rest, guide, or
+  anchor (no signal yet for hold-down/line-stop specifically). Rules are simplified for v1 and
+  documented as such. Maps to the real CAESAR II restraint codes: `+Y`/`+Z` for a rest alone,
+  `-Y`/`-Z` for a hold-down alone, bidirectional `Y`/`Z` for rest+hold-down together, `GUI` for
+  guide, `LIM` for line stop, `ANC` for anchor (see "Neutral file format"). Springs are
+  deliberately de-prioritized per review — v1 focuses on getting rigid supports right;
+  `SpringCandidate` is only ever an iterate-loop escalation (see below), not an initial rule, and
+  actual spring sizing stays a human/MVP-follow-up concern.
+- Support-placement algorithm: walk each pipe run between fixed points (anchors, and — when `#$
+  EQUIPMNT` is populated — real nozzle/equipment node locations), place candidate supports
+  at/under the max allowable span, assign a type via the heuristic above, and write them as new
+  `#$ RESTRANT` records. v1 only places supports at existing nodes (no element-splitting yet — see
+  "Known open decisions" for why a short vertical segment doesn't always get its own guide).
 - `IStressSolver` interface + `MockStressSolver` (functional) + `CaesarComStressSolver` (skeleton,
   see above).
 - `INeutralFileConverter` interface + `IechoConverter` (skeleton only, see "Native file adapter
@@ -160,12 +178,24 @@ problem (a Windows-only external tool this container can't exercise):
 - Any real `iecho.exe` invocation, and any direct handling of `.C2`/`._A` files (only the
   `IechoConverter` skeleton/interface — no working implementation, no subprocess/COM calls
   executed). CLI-level `.C2`/`._A` support is future work built on top of it.
-- Interpreting (parsing into a rich model) any `#$ AUX_DATA` subsection other than `NODENAME`
-  and `RESTRANT` — `BEND`, `RIGID`, `EXPJT`, `DISPLMNT`, `FORCMNT`, `UNIFORM`, `WIND`, `OFFSETS`,
-  `ALLOWBLS`, `SIF&TEES`, `REDUCERS`, `FLANGES`, `EQUIPMNT`, hanger data, and `#$ MISCEL_1` /
-  `#$ UNITS` / `#$ COORDS` are round-tripped opaquely (preserved byte-for-byte on write) but not
-  modeled or reasoned about in v1. Interpreting them is future work as later stages need them
-  (e.g. hangers for spring-support sizing, EQUIPMNT for nozzle load checks).
+- Interpreting (parsing into a rich model) any `#$ AUX_DATA` subsection other than `NODENAME`,
+  `RESTRANT`, `ALLOWBLS`, and `EQUIPMNT` (see "In scope" above) — `BEND`, `RIGID`, `EXPJT`,
+  `DISPLMNT`, `FORCMNT`, `UNIFORM`, `WIND`, `OFFSETS`, `SIF&TEES`, `REDUCERS`, `FLANGES`, hanger
+  data, and `#$ UNITS` / `#$ COORDS` are round-tripped opaquely (preserved byte-for-byte on write)
+  but not modeled or reasoned about in v1. `#$ MISCEL_1` is a partial exception — its leading
+  `RRMAT` (material ID) array is now parsed and exposed, but the rest of that section's content is
+  still opaque. Interpreting the remaining sections is future work as later stages need them (e.g.
+  hangers for spring-support sizing, `UNITS` for cross-unit-system correctness) — per review
+  direction, the goal is to have as much of the neutral file's data available now as is practical,
+  but this remains a real scope boundary, not something this pass closes out entirely.
+- Using the element's material ID (`RRMAT`, now parsed) to look up allowable stress/density from
+  an external material database keyed by piping code and edition year — this needs a concrete
+  material-database source, which is an open question (see "Known open decisions"). v1 instead
+  reads the allowable stress CAESAR II already computed and stored per-element in `#$ ALLOWBLS`,
+  which satisfies "dynamically retrieve from the input, not a hardcoded constant" without needing
+  that external database.
+- Persisting optimizer iteration history to a database — the file's explicit "Storage: none...no
+  database" hard constraint above stands until confirmed otherwise (see "Known open decisions").
 - Stage 2 (routing automation) and Stage 3 (full system generation) — no routing/pathfinding, no
   spatial-envelope logic.
 - WRC 297/537 nozzle load checks, flange leakage checks, code-compliant (real B31.3 Appendix)
@@ -180,12 +210,12 @@ problem (a Windows-only external tool this container can't exercise):
 Conduit targets the real, official CAESAR II neutral file format (`.cii`, ASCII, one CAESAR II
 "jobname" per file), as published in Hexagon's CAESAR II Users Guide ("CAESAR II Neutral File",
 v15 interface) — public vendor documentation, not proprietary material. The user also supplied
-several real `.cii` files from their own projects; those were reviewed locally to confirm the
-real-world structure matches the published spec (it does, closely) but **are not committed to
-this repo** and are not used as source data for anything committed — per the clean-room
-constraint above, v1's fixtures are freshly authored synthetic files with invented node numbers
-and geometry that are merely *structurally* valid `.cii` files, not derived from anyone's real
-project. See "Known open decisions" for the reasoning.
+several real `.cii` files, used as demonstration/example files rather than client project data;
+those were reviewed locally to confirm the real-world structure matches the published spec (it
+does, closely) but **are not committed to this repo** and are not used as source data for
+anything committed — v1's fixtures are freshly authored synthetic files with invented node
+numbers and geometry that are merely *structurally* valid `.cii` files, not derived from those
+supplied examples. See "Known open decisions" for the reasoning.
 
 Key structural facts the parser/writer must honor:
 - The file is organized into sections marked by a `#$ SECTIONNAME` header in columns 1–2 (`#$ `
@@ -212,7 +242,13 @@ Key structural facts the parser/writer must honor:
   tag line and a length-prefixed GUID line. Restraint type codes cover anchors (`ANC`), single
   and double-acting translational restraints (`X`,`Y`,`Z`,`+X`,`-X`, …), guides (`GUI`), limit
   stops (`LIM`), rod/spring-related codes (`XROD`, `+XROD`, `XSPR`, …) — the full 1–62 table is
-  in the vendor doc and will be reproduced as an enum with XML-doc comments in code.
+  in the vendor doc and is reproduced as the `RestraintType` enum with XML-doc comments in code.
+  **Corrected support taxonomy (per review):** a rest is a one-directional restraint that allows
+  lift-off (`+Y`/`+Z`); a hold-down is the opposite one-directional restraint (`-Y`/`-Z`); a rest
+  and hold-down together are what the bidirectional `Y`/`Z` code represents; a guide is `GUI`; a
+  line/limit stop is `LIM`; an anchor is the combination of all of these (equivalently, the single
+  `ANC` code, or `Y` + `GUIDE` + `LIM` together). `RestraintTypeMapper` encodes this mapping from
+  v1's semantic `SupportType` to the neutral-file `RestraintType`.
 - Every `#$` section the parser doesn't specifically model (see "OUT of scope") is still read and
   re-emitted verbatim on write, so a file round-tripped through Conduit without any support
   changes is byte-identical, and a file with only `#$ RESTRANT` changes preserves everything
@@ -221,15 +257,19 @@ Key structural facts the parser/writer must honor:
 ## Behaviour by example
 1. Given a synthetic `.cii` file with two anchors (`#$ RESTRANT` type `ANC`) 18 m apart connected
    by a straight 6" Sch 40 carbon-steel `#$ ELEMENTS` run and no intermediate supports →
-   `conduit optimize` proposes N rest supports (type `Y`, vertical-only restraint) spaced at or
-   under the computed max allowable span, writes them into the output file as new `#$ RESTRANT`
-   DOF blocks, leaves every other section byte-identical to the input, and the summary reports
-   "PASS" from `MockStressSolver`.
-2. Given the same run but with a vertical riser segment → the support at the riser is classified
-   as a guide (restraint type `GUI`), per the support-type heuristic.
-3. Given a run where the computed span would require more supports than fit before a nozzle
-   connection → the support nearest the nozzle is flagged as a spring/anchor candidate per the
-   thermal-growth heuristic, and the summary explains why.
+   `conduit optimize` proposes N rest supports (one-directional, type `+Y`/`+Z` per `IZUP`)
+   spaced at or under the computed max allowable span, writes them into the output file as new
+   `#$ RESTRANT` DOF blocks, leaves every other section byte-identical to the input, and the
+   summary reports "PASS" from `MockStressSolver`.
+2. Given the same run but with a vertical riser segment whose own length is what pushes the
+   accumulated span over the max allowable → the support at the riser is classified as a guide
+   (restraint type `GUI`), per the support-type heuristic. (A short riser that doesn't itself
+   trigger the span-driven placement check isn't guaranteed a guide in v1 — see "Known open
+   decisions".)
+3. Given a run where the computed span would require more supports than fit before a real `#$
+   EQUIPMNT` nozzle connection → the support nearest the nozzle is flagged as an anchor candidate
+   per the near-equipment heuristic, and the summary explains why. (Spring escalation is a
+   separate, lower-priority iterate-loop behavior — see "In scope".)
 4. Given a malformed/unparseable input file (bad section header, a data line that doesn't match
    its section's expected column layout) → `conduit optimize` exits non-zero with a clear
    parse-error message (section/line reference), writes no output file.
@@ -251,9 +291,10 @@ Key structural facts the parser/writer must honor:
 ## Known open decisions (pre-answer what you can)
 - Real sample `.cii` files and the official Hexagon format documentation (CAESAR II Users Guide,
   v15 neutral file interface) are now available and were used to write the "Neutral file format"
-  section above. The user's own sample files were reviewed locally but are **not committed** to
-  this repo (clean-room constraint) — v1 fixtures are freshly authored, structurally-valid
-  synthetic `.cii` files instead. See QUESTIONS.md for the full reasoning.
+  section above. The supplied sample files are demonstration/example files (not client project
+  data) and were reviewed locally but are **not committed** to this repo — v1 fixtures are
+  freshly authored, structurally-valid synthetic `.cii` files instead. See QUESTIONS.md for the
+  full reasoning.
 - Simplified span-limit table and support-type rules are Claude's best-effort encoding of common
   piping-support heuristics, explicitly not a substitute for a real B31.3 span calculation —
   documented inline as simplifying assumptions.
@@ -268,3 +309,24 @@ Key structural facts the parser/writer must honor:
   is truly silent or needs the interactive-launch-and-poll pattern) is deferred the same way —
   developed/tested later on Windows against a real licensed CAESAR II install. See "Native file
   adapter (iecho)" for what's known so far from the user's reference implementation.
+- v1 doesn't split elements to introduce a new node mid-span, so a support can only land at an
+  existing node — the largest node-to-node spacing at or under the max allowable span, not
+  necessarily the max allowable span itself. One consequence (flagged in review): a vertical
+  riser only gets classified as a guide when it happens to be the element whose own length
+  triggers the span-driven overflow check; a short riser fully contained within an otherwise-fine
+  span may not get its own guide. A previous fix that forced a guide at every vertical segment's
+  start regardless of span was tried and found unsound in review (breaks on short verticals) and
+  has been removed. The real fix — splitting elements to place a support mid-span — is deferred,
+  not papered over with that heuristic.
+- **Blocking, per CLAUDE.md (stop-and-ask):** review asked that material allowable stress/density
+  be looked up from "the material database... available in the system folder", keyed by piping
+  code and edition year. v1 instead reads the allowable stress CAESAR II already computed and
+  stored per-element in the file's own `#$ ALLOWBLS` (see "Explicitly OUT of scope"), which
+  satisfies "dynamically retrieve from the input" without an external database — but this
+  container has no CAESAR II install, so there's no "system folder" to locate, and using a
+  proprietary CAESAR II material database file would risk the clean-room constraint above. Need
+  the user to clarify what this database is/where it lives before building against it.
+- **Blocking, per CLAUDE.md (stop-and-ask):** review asked for optimizer iterations to be
+  tracked internally via a database. This directly contradicts this file's explicit "Storage:
+  none... No database" hard constraint from Phase 1. Need the user to confirm before adding one —
+  reversing an explicit prior constraint isn't a decide-and-proceed call.

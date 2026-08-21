@@ -14,9 +14,13 @@ namespace Conduit.Core.Heuristics;
 /// governed by a sag/deflection limit rather than bending stress once diameter grows past a few
 /// inches — this is a deliberately simpler, more conservative-by-construction proxy, not a
 /// substitute for either calculation.</item>
-/// <item><see cref="DefaultAllowableBendingStress"/> is a single assumed value, not looked up
-/// from any specific B31.3 edition's allowable-stress table for the element's material —
-/// replace with a real code-compliant value before this is used for anything but v1 development.</item>
+/// <item>The allowable stress used is the element's own <c>#$ ALLOWBLS</c> cold allowable stress
+/// when the file provides one (real, per-material/code/temperature data CAESAR II computed when
+/// generating the file — see <see cref="ComputeMaxSpan(NeutralFile, Element)"/>), falling back to
+/// <see cref="DefaultAllowableBendingStress"/> only when the file has no allowable-stress record
+/// for that element (e.g. a fixture that doesn't populate <c>#$ ALLOWBLS</c>). Note this still
+/// isn't a code-compliant span calculation even when a real allowable is available — the beam
+/// formula above is still a simplification, just fed a materially better input than a guess.</item>
 /// <item>Distributed weight <c>w</c> includes pipe metal, insulation, and a fully-liquid-filled
 /// bore, computed from the element's own density fields (falling back to
 /// <see cref="DefaultSteelDensity"/> when a density field is zero/unset). All neutral-file
@@ -34,6 +38,18 @@ public static class SpanLimitCalculator
 
     public static double ComputeMaxSpan(Element element) =>
         ComputeMaxSpan(element, DefaultAllowableBendingStress);
+
+    /// <summary>
+    /// Computes max span using <paramref name="file"/>'s own <c>#$ ALLOWBLS</c> cold allowable
+    /// stress for <paramref name="element"/> when one is linked, falling back to
+    /// <see cref="DefaultAllowableBendingStress"/> otherwise.
+    /// </summary>
+    public static double ComputeMaxSpan(NeutralFile file, Element element)
+    {
+        var allowable = file.TryGetAllowableStress(element)?.ColdAllowableStress;
+        var allowableBendingStress = allowable is > 0 ? allowable.Value : DefaultAllowableBendingStress;
+        return ComputeMaxSpan(element, allowableBendingStress);
+    }
 
     public static double ComputeMaxSpan(Element element, double allowableBendingStress)
     {

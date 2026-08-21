@@ -58,3 +58,26 @@ running status log Claude appends to (skim this from mobile)
   decisions/assumptions logged in QUESTIONS.md (notably: span-limit as a documented formula
   rather than a recited table; spring-candidate as a loop escalation, not an initial placement
   rule; mandatory guides on vertical risers, found via a failing test).
+- 2026-08-21: Responded to PR #3's architectural review. Parsed `#$ ALLOWBLS` (allowable stress,
+  linked via each element's pointer array) and wired the real cold allowable stress into
+  `SpanLimitCalculator` in place of the placeholder constant; parsed `#$ MISCEL_1`'s `RRMAT`
+  material-ID array onto `NeutralFile.MaterialIds`; parsed `#$ EQUIPMNT` nozzle/load-limit
+  records and used real nozzle node positions (when present) as `SupportPlacer`'s near-equipment
+  signal instead of the run-endpoint-fraction proxy. Removed the "mandatory guide at every
+  vertical segment's start" rule the reviewer flagged as unsound (breaks on short verticals);
+  reverted to classifying only the element that actually triggers the span-overflow check, with
+  the resulting gap (a short riser not always getting its own guide) documented as a known
+  limitation pending element-splitting. Corrected the restraint taxonomy per review: rest is
+  one-directional `+Y`/`+Z` (not bidirectional `Y`), hold-down is the opposite one-directional
+  restraint, guide/line-stop/anchor per `GUI`/`LIM`/`ANC`, via a new `RestraintTypeMapper`.
+  Corrected SPEC.md/QUESTIONS.md wording that had mischaracterized the supplied sample `.cii`
+  files as real client project files — they're demonstration/example files per the user's
+  clarification; the not-committed decision itself is unchanged pending explicit confirmation.
+  Updated SPEC.md's in/out-of-scope and "Known open decisions" sections to match. Fixed fallout in
+  `NeutralFileFixtureBuilder` (needs real `#$ MISCEL_1` content now) and `SupportPlacerTests`
+  (restraint-code assertions, reworked the riser test to match the corrected, honest trigger
+  condition); all 22 tests green, `dotnet build`/`test`/CLI verified end-to-end. Two items from
+  the review are logged as blocking questions in SPEC.md's "Known open decisions" rather than
+  resolved here (material database source for allowable/density lookups; database-backed
+  iteration tracking, which contradicts the existing "no database" hard constraint) — everything
+  else unblocked was completed first, per CLAUDE.md.

@@ -11,6 +11,15 @@ public sealed class Element
     /// <summary>All 53 real values from the element's basic-data block, in vendor-doc order (0-based).</summary>
     public required IReadOnlyList<double> RealValues { get; init; }
 
+    /// <summary>
+    /// The 15-item IEL auxiliary-data pointer array (1-based pointers into each auxiliary
+    /// section's records; 0 = no data of that type for this element), in vendor-doc order:
+    /// bend, rigid, expansion joint, restraint, displacement, force/moment, uniform load, wind
+    /// load, element offset, allowable stress, intersection, node name, reducer, flange,
+    /// nozzle/equipment check.
+    /// </summary>
+    public required IReadOnlyList<int> AuxiliaryPointers { get; init; }
+
     public int FromNode => (int)RealValues[0];
     public int ToNode => (int)RealValues[1];
     public double DeltaX => RealValues[2];
@@ -29,6 +38,12 @@ public sealed class Element
     public string Name { get; init; } = string.Empty;
     public string LineNumber { get; init; } = string.Empty;
 
+    /// <summary>1-based pointer into <c>#$ ALLOWBLS</c> (0 = none).</summary>
+    public int AllowableStressPointer => AuxiliaryPointers[9];
+
+    /// <summary>1-based pointer into <c>#$ EQUIPMNT</c> (0 = none).</summary>
+    public int EquipmentCheckPointer => AuxiliaryPointers[14];
+
     /// <summary>
     /// Parses <paramref name="count"/> elements starting at <paramref name="lineIndex"/>, each a
     /// fixed 15-line record: 53 reals (9 lines), name, line number, 2-value color/visibility line,
@@ -44,9 +59,9 @@ public sealed class Element
             var name = FixedWidth.ParseLengthPrefixedString(RequireLine(lines, lineIndex++));
             var lineNumber = FixedWidth.ParseLengthPrefixedString(RequireLine(lines, lineIndex++));
             _ = FixedWidth.ParseReals(lines, ref lineIndex, 2); // color, visibility — not needed by v1 heuristics
-            _ = FixedWidth.ParseInts(lines, ref lineIndex, 15); // auxiliary-data pointer array — see IEL in the vendor doc
+            var pointers = FixedWidth.ParseInts(lines, ref lineIndex, 15).Select(v => (int)v).ToList();
 
-            elements.Add(new Element { RealValues = real, Name = name, LineNumber = lineNumber });
+            elements.Add(new Element { RealValues = real, Name = name, LineNumber = lineNumber, AuxiliaryPointers = pointers });
         }
         return elements;
     }
