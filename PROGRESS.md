@@ -41,3 +41,20 @@ running status log Claude appends to (skim this from mobile)
   still only accepts `.cii` directly. No application code written yet. PR #1 already merged, so
   restarted this branch from the current `main` (same content, no reset needed) before this
   commit.
+- 2026-08-21: Phase 2 complete. Built the full C# solution per SPEC.md: `Conduit.Core` (real
+  `.cii` fixed-width parser/writer with byte-identical round-trip for untouched sections;
+  `RestraintType` enum; `SpanLimitCalculator` beam-theory span formula; `SupportTypeClassifier` +
+  `SupportPlacer` walking runs between anchors; `MockStressSolver`/`CaesarComStressSolver`
+  skeleton behind `IStressSolver`; `IechoConverter` skeleton behind `INeutralFileConverter`;
+  `OptimizationLoop` iterate-and-adjust), `Conduit.Cli` (`conduit optimize <in> <out>`), and
+  `Conduit.Tests` (22 xUnit tests: round-trip, span heuristic, classifier, placer, loop). Authored
+  two synthetic `.cii` fixtures (`straight-run.cii`, `run-with-riser.cii`) plus `malformed.cii`
+  for the parse-error path, all via a shared `NeutralFileFixtureBuilder` test helper (built once,
+  used to generate the committed fixtures and directly in unit tests). Fixed `setup.sh` to install
+  the .NET SDK via `apt` (the `dot.net` install script is blocked by this sandbox's egress proxy).
+  Verified end-to-end: `setup.sh` → `dotnet build`/`test` clean, `conduit optimize` runs on both
+  fixtures and produces a diff confined to the `#$ CONTROL` restraint count and appended
+  `#$ RESTRANT` records, and the malformed fixture fails fast with no output file written. Design
+  decisions/assumptions logged in QUESTIONS.md (notably: span-limit as a documented formula
+  rather than a recited table; spring-candidate as a loop escalation, not an initial placement
+  rule; mandatory guides on vertical risers, found via a failing test).
