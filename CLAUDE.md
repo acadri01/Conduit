@@ -12,6 +12,13 @@ Optimize for finishing correctly with the fewest interruptions to me.
 - Keep TESTING.md current — instructions for how to test the program (automated and manual).
   Update it whenever what/how to test changes (a new project, a new fixture convention, a new
   manual check that matters), and consult it whenever testing is relevant to the task at hand.
+  It must lead with a step-by-step tutorial a non-developer can follow end to end on their own
+  machine — everything from GitHub (cloning, checking out the right branch) through installing
+  prerequisites, building, and running the program locally, with concrete commands and the actual
+  expected output shown and explained, not just referenced. Verify every command in it against
+  the real build before committing it — don't write example output from memory. Developer-only
+  reference material (what each automated test covers, how to add a fixture, etc.) belongs after
+  the tutorial, not instead of it.
 
 ## Decide-and-proceed (do NOT interrupt me) when the choice is:
 - Reversible and low-stakes, OR internal-only (naming, file layout, helper structure)
