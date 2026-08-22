@@ -68,6 +68,10 @@ static void PrintSummary(string inputPath, string outputPath, NeutralFile file, 
     Console.WriteLine($"Conduit optimize: {inputPath} -> {outputPath}");
     Console.WriteLine();
 
+    var effectiveCode = CaesarConfig.EffectiveCode(config);
+    Console.WriteLine($"  Piping code assumed: {effectiveCode}" +
+        (config?.DefaultCode is not null ? " (from caesar.cfg)" : " (default — no caesar.cfg DEFAULT_CODE found)"));
+
     if (config is not null)
     {
         if (config.ZAxisUp is { } zAxisUp && zAxisUp != (file.Control.Izup == 1))
@@ -77,20 +81,15 @@ static void PrintSummary(string inputPath, string outputPath, NeutralFile file, 
                 $"file's own IZUP ({file.Control.Izup}) — using the neutral file's IZUP as authoritative.");
         }
 
-        if (config.DefaultCode is not null)
-        {
-            Console.WriteLine($"  Directory default piping code (caesar.cfg): {config.DefaultCode}");
-        }
-
         if (config.SystemDirectoryName is not null || config.UserMaterialFileName is not null)
         {
             Console.WriteLine(
                 $"  Material database (caesar.cfg): system directory '{config.SystemDirectoryName}'" +
                 (config.UserMaterialFileName is not null ? $", user material file '{config.UserMaterialFileName}'" : string.Empty));
         }
-
-        Console.WriteLine();
     }
+
+    Console.WriteLine();
 
     foreach (var note in result.Notes)
     {

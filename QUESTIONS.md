@@ -42,6 +42,12 @@ section, i.e. not a new rule Claude is inventing here):
   repo, not committed, not used as the literal content of any fixture** — kept out pending
   explicit confirmation that committing them is wanted, independent of the provenance correction
   below.
+  **Next step if you confirm they may be committed:** add them under `fixtures/` alongside (not
+  replacing) the synthetic ones, add a `NeutralFileRoundTripTests` case per file (byte-identical
+  round-trip + expected element/restraint counts, same pattern as the existing fixtures), and
+  register each under the test project's `<None Include="..\..\fixtures\*.cii">` glob — no code
+  changes needed, since the reader/writer already handle real files (that's how they were
+  validated originally).
 - v1's `fixtures/` directory will instead contain freshly authored, structurally-valid `.cii`
   files with invented node numbers/geometry/tags — real CAESAR II syntax, fictitious project.
 - Flagged explicitly to the user in the Phase 1 chat response (not just buried here) given the
@@ -165,3 +171,61 @@ demonstration case, safe to commit directly (now at `fixtures/caesar.cfg`).
   first-principles heuristics with empirical knowledge from stored outcomes (the user's stated
   design philosophy, citing leap71/noyron-style computational engineering). Logged as a roadmap
   note in SPEC.md's "Known open decisions", not built now.
+
+## Default piping code, TESTING.md, and process conventions (2026-08-21)
+Per direct user instruction (not a PR review comment this time):
+- **Default piping code is now `CaesarConfig.DefaultAssumedCode = "B31.3_2024"`** (was previously
+  no hardcoded default at all — the CLI only ever printed a code when `caesar.cfg` had one).
+  `CaesarConfig.EffectiveCode(config)` always prefers `config.DefaultCode` when present, falling
+  back to `DefaultAssumedCode` only when there's no `caesar.cfg`/no `DEFAULT_CODE` in it. The CLI
+  now always prints the effective code (previously conditional on `caesar.cfg` existing). No
+  calculation actually varies by code edition yet in v1 (`#$ ALLOWBLS` already carries the real
+  allowable regardless) — this is reporting/context, matching the user's "always take from the
+  config" instruction.
+- **Added TESTING.md** — instructions for testing Conduit (automated + manual), kept up to date
+  per a new CLAUDE.md instruction; consult/update it whenever testing is relevant, not just when
+  writing new tests.
+- **Process convention, now in CLAUDE.md**: every blocking-question entry logged here must also
+  state the concrete next implementation step to take once the user decides, so an answer alone
+  is enough to unblock work without another round-trip. Retrofitted the one still-open item above
+  (the real `.cii` sample files) with this framing; everything else in this file is already either
+  resolved or a non-blocking decide-and-proceed assumption, so nothing else needed retrofitting.
+
+## CAESAR II install-tree layout confirmed; iecho.exe location corrected (2026-08-21)
+Per direct user instruction:
+- **Confirmed the absolute install path**: `C:\ProgramData\Intergraph CAS\CAESAR II\<version>\System`
+  (e.g. `...\15.01\System`) is where the material/component databases actually live, resolving
+  what `caesar.cfg`'s `SYSTEM_DIRECTORY_NAME` is relative to. Added `CaesarInstallationLocator`
+  (`src/Conduit.Core/Configuration/`) to enumerate installed versions and resolve each one's
+  `System` directory — pure `System.IO`, fully unit-tested against an injectable root even though
+  the *default* root is Windows-specific.
+- **Version floor: 15.00 and up** — "we will begin the build from 15.00 and up." Encoded as
+  `CaesarInstallationLocator.MinimumSupportedVersion`; older installations aren't discovered.
+- **`iecho.exe` is in a different install branch** than the `ProgramData`/`System` tree above —
+  confirmed by the user, matching the ambiguity already flagged in SPEC.md's "Native file adapter
+  (iecho)" section. Corrected that section and added an explicit warning against reusing
+  `CaesarInstallationLocator`'s paths for `iecho.exe` discovery — it needs independent logic,
+  still deferred (no confirmed path yet, just confirmation that it's elsewhere).
+- Not wired into the CLI/allowable-stress logic yet — nothing in v1 actually reads the database
+  files this locator points at (same "no format spec yet" situation as before); this only answers
+  "where," matching the scope of what was asked.
+
+## Resolved: "hold off on committing the example files" does NOT mean reverting `fixtures/caesar.cfg`
+The same message that gave the install-path info above also said "Hold off on comitting the
+example files." This is genuinely ambiguous between two materially different actions:
+1. **Forward-looking only**: keep not committing the four real `.cii` sample files (already the
+   status quo — see the entry above), and don't fabricate/commit any new install-tree example
+   files (e.g. a fake material-database file) as part of this round's work — which I wasn't
+   planning to anyway, since no database *content* format is known yet, only the *path*.
+2. **Also retroactive**: revert the already-committed, already-merged `fixtures/caesar.cfg` (PR
+   #4, merged into `main`) — i.e. the user has reconsidered whether that example was actually
+   fine to commit.
+
+I did not guess — reading (1) requires no action (already the plan); reading (2) means removing
+content from `main`'s history, which isn't cleanly undoable (it's already public/merged) and is
+exactly the kind of "irreversible-feeling" content decision CLAUDE.md says to confirm rather than
+assume. Asked the user directly via `AskUserQuestion`.
+
+**Answered (2026-08-21): reading (1) — keep `fixtures/caesar.cfg` as-is.** The instruction was
+forward-looking only: don't commit the real `.cii` sample files or fabricate new install-tree
+example files going forward (already the plan either way). No repo change needed.

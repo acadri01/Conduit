@@ -11,6 +11,17 @@ namespace Conduit.Core.Configuration;
 /// </summary>
 public sealed class CaesarConfig
 {
+    /// <summary>
+    /// Piping code and edition Conduit assumes when no <c>caesar.cfg</c> is found (or it doesn't
+    /// set <c>DEFAULT_CODE</c>) — the latest ASME B31.3 edition CAESAR II 15.1 supports, per
+    /// SPEC.md's "Caesar II abstraction". Always superseded by an actual <c>DEFAULT_CODE</c> when
+    /// one is available — see <see cref="EffectiveCode"/>.
+    /// </summary>
+    public const string DefaultAssumedCode = "B31.3_2024";
+
+    /// <summary>The code Conduit should assume for a run: <paramref name="config"/>'s own <see cref="DefaultCode"/> when present, <see cref="DefaultAssumedCode"/> otherwise (including when <paramref name="config"/> itself is null, i.e. no <c>caesar.cfg</c> was found).</summary>
+    public static string EffectiveCode(CaesarConfig? config) => config?.DefaultCode ?? DefaultAssumedCode;
+
     public required IReadOnlyDictionary<string, string> Values { get; init; }
 
     /// <summary>Whether Z (not Y) is the model's vertical axis, from <c>Z_AXIS_UP</c>. Null if the file didn't set it.</summary>
