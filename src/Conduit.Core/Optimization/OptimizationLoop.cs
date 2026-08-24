@@ -25,8 +25,11 @@ public static class OptimizationLoop
         {
             file.AddRestraint(Restraint.CreateSingleDof(support.Node, support.RestraintType));
         }
-        notes.Add($"Placed {placements.Count} initial support(s): " +
-                  string.Join(", ", placements.Select(p => $"node {p.Node} ({p.Type})")));
+        notes.Add($"Placed {placements.Count} initial support(s):");
+        foreach (var support in placements)
+        {
+            notes.Add($"node {support.Node} ({support.Type}, {support.RestraintType}): {support.Reason}");
+        }
 
         var result = solver.Evaluate(file);
         var iteration = 1;

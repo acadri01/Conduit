@@ -67,7 +67,7 @@ nothing past this point will work.
 ```powershell
 dotnet test
 ```
-Expect `Passed!` with every test passing (30 tests as of this writing — the exact count will grow
+Expect `Passed!` with every test passing (37 tests as of this writing — the exact count will grow
 over time, that's fine). This confirms your machine's setup is fine and the code itself is
 healthy, independent of anything you do manually next.
 
@@ -86,7 +86,10 @@ Conduit optimize: fixtures\straight-run.cii -> out.cii
   Piping code assumed: B31.3_2020 (from caesar.cfg)
   Material database (caesar.cfg): system directory 'SYSTEM', user material file 'UMAT1.UMD'
 
-  - Placed 3 initial support(s): node 60 (Rest), node 110 (Rest), node 160 (Rest)
+  - Placed 3 initial support(s):
+  - node 60 (Rest, PlusY): span 300.00 would exceed the max allowable span of 253.79 at node 60 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
+  - node 110 (Rest, PlusY): span 300.00 would exceed the max allowable span of 253.79 at node 110 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
+  - node 160 (Rest, PlusY): span 300.00 would exceed the max allowable span of 253.79 at node 160 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
 
 Iterations: 1
 
@@ -99,7 +102,9 @@ What this means:
   file that happens to already sit right next to that fixture in this repo, which is why you see
   the "Piping code assumed" and "Material database" lines (more on this file in step 6).
 - It proposed 3 new pipe supports and wrote the modified file to `out.cii` (check your folder —
-  it's there now).
+  it's there now). Each line explains *why* that node got a support and *why that support type* —
+  useful when you want to sanity-check Conduit's reasoning against your own engineering judgment,
+  not just its final answer.
 - `PASS` means the placement satisfies Conduit's span checks. (See "What PASS/FAIL/exit codes
   mean" below for the other outcomes.)
 

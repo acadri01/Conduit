@@ -2,8 +2,8 @@ using Conduit.Core.NeutralFiles;
 
 namespace Conduit.Core.Heuristics;
 
-/// <summary>A support location and type proposed by <see cref="SupportPlacer"/>.</summary>
-public sealed record PlacedSupport(int Node, SupportType Type, RestraintType RestraintType);
+/// <summary>A support location and type proposed by <see cref="SupportPlacer"/>, with the reason it was placed there.</summary>
+public sealed record PlacedSupport(int Node, SupportType Type, RestraintType RestraintType, string Reason);
 
 /// <summary>
 /// Walks each pipe run between fixed points (anchors, and — when <c>#$ EQUIPMNT</c> is populated
@@ -134,9 +134,11 @@ public static class SupportPlacer
                     IsVerticalSegment: isVertical,
                     DistanceToNearestRunEndpoint: distanceToNearestEndpoint);
 
-                var type = SupportTypeClassifier.Classify(context, maxSpan);
-                var restraintType = RestraintTypeMapper.Map(type, izup);
-                placed.Add(new PlacedSupport(element.FromNode, type, restraintType));
+                var classification = SupportTypeClassifier.Classify(context, maxSpan);
+                var restraintType = RestraintTypeMapper.Map(classification.Type, izup);
+                var reason = $"span {prospective:F2} would exceed the max allowable span of {maxSpan:F2} at node " +
+                             $"{element.FromNode} — {classification.Reason}";
+                placed.Add(new PlacedSupport(element.FromNode, classification.Type, restraintType, reason));
 
                 alreadySupported.Add(element.FromNode);
                 lastSupportNode = element.FromNode;

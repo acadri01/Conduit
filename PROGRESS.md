@@ -144,3 +144,14 @@ running status log Claude appends to (skim this from mobile)
   against) the user's observation that `SupportPlacer` may be over-placing supports. 35 → 36
   tests (one new CRLF regression test; the spring-test rewrites were a net-neutral count change);
   `dotnet build`/`test` clean.
+- 2026-08-24: Per direct instruction ("I want the logger to make each choice clear. Show the
+  reason for the restraint decisions being made"), added per-decision reasoning to the optimize
+  log. `SupportTypeClassifier.Classify` now returns a `SupportClassification(Type, Reason)`
+  record instead of a bare `SupportType`, with a plain-language reason for each of its three
+  branches (vertical → guide; near a run endpoint/equipment → anchor; otherwise → rest).
+  `PlacedSupport` gained a `Reason` field combining the span-trigger fact (which span, which max
+  allowable, which node) with the classifier's own reason. `OptimizationLoop.Run` now emits one
+  note per placed support (each showing its full reason) instead of one combined summary line;
+  verified the CLI's actual printed output against both fixtures. Updated TESTING.md's sample
+  output block and stale test count (30 → 37) to match. 36 → 37 tests (one new classifier-reason
+  coverage test); `dotnet build`/`test` clean.

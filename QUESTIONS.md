@@ -299,6 +299,26 @@ same file-format issues that caused the CRLF bug (e.g. if a real file's data is 
 because of a formatting mismatch, span calculations downstream would be wrong in ways that could
 look like "everywhere").
 
+## Diagnosis: "Error processing CONTROL section, line # 62" (2026-08-24)
+User shared a CAESAR II "Neutral File Generator" error screenshot: "Error processing CONTROL
+section, line # 62" during a "Convert Neutral File to CAESAR II Input File" run. Two things about
+this are worth recording:
+- The error names the `CONTROL` section, but a byte-level comparison of `ControlSection.cs`'s
+  output structure against a real sample file's actual `CONTROL` bytes (line count, line lengths,
+  field widths, right-justification) found an exact match — so the *content and formatting* of
+  that section itself isn't the likely fault. `iecho.exe` is a Fortran-heritage fixed-record
+  reader; my working hypothesis is that this is a symptom, not the cause: an LF-only file (the
+  bug fixed earlier this same session, before this screenshot arrived) causes a cumulative
+  byte-offset drift as the reader consumes fixed-width records, which can surface as a parse
+  failure partway into the file (e.g. "line # 62") rather than immediately at line 1, depending on
+  exactly where the drift crosses a record boundary the reader chokes on.
+- **Not yet confirmed**: whether this screenshot was taken against a build from *before* the CRLF
+  fix (in which case it's very likely already resolved) or *after* it (in which case there's a
+  second bug still to find). **Next step**: ask the user to retest against the current build (this
+  branch, past the CRLF fix) and report whether "line # 62" still reproduces; if it does, get the
+  actual `.cii` file that triggers it (or as much of it as can be shared) for a byte-level look,
+  the same way the CRLF bug itself was diagnosed.
+
 ## Future Python neutral-file-generator programs: reference-only, not committed (2026-08-24)
 The user said they have Python programs that correctly create neutral files, may share them for
 context, and confirmed upfront they should not be included in the repo — same treatment already

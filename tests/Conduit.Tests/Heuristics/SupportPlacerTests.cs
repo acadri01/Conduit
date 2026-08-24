@@ -91,6 +91,6 @@ public class SupportPlacerTests
         var maxSpan = SpanLimitCalculator.ComputeMaxSpan(file.Elements[0]);
         var context = new SupportCandidateContext(IsVerticalSegment: false, DistanceToNearestRunEndpoint: maxSpan * 0.01);
 
-        Assert.Equal(SupportType.Anchor, SupportTypeClassifier.Classify(context, maxSpan));
+        Assert.Equal(SupportType.Anchor, SupportTypeClassifier.Classify(context, maxSpan).Type);
     }
 }
