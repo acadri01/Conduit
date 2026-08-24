@@ -106,6 +106,13 @@ internal static class FixedWidth
     public static string FormatLengthPrefixedString(string value) =>
         "       " + value.Length.ToString(CultureInfo.InvariantCulture).PadLeft(5) + " " + value;
 
+    /// <summary>
+    /// Formats a fixed-width, left-justified, space-padded text field, FORTRAN <c>(2X, A&lt;n&gt;)</c> —
+    /// used by <c>#$ VERSION</c>'s title-page lines and <c>#$ UNITS</c>'s unit-label lines.
+    /// </summary>
+    public static string FormatFixedWidthText(string value, int width) =>
+        "  " + value.PadRight(width);
+
     /// <summary>Parses a line written by <see cref="FormatLengthPrefixedString"/>.</summary>
     public static string ParseLengthPrefixedString(string line)
     {

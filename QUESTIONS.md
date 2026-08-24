@@ -319,6 +319,99 @@ this are worth recording:
   actual `.cii` file that triggers it (or as much of it as can be shared) for a byte-level look,
   the same way the CRLF bug itself was diagnosed.
 
+## Investigation: generating our own valid test neutral files (2026-08-24)
+Per direct instruction: "I think perhaps our next focus should be to make sure you are able to
+create functioning neutral files for us to use for testing... If we are able to do this, I am not
+required to create the test cases." Investigated using the real `.cii` samples and the user's
+Python tooling (still local from earlier in the session, not committed) as reference, plus
+`reference/NeutralFile-v15.pdf`. Findings, batched into a blocking decision put to the user (see
+chat) rather than acted on unilaterally, since the branches are materially different amounts of
+work with different risk profiles:
+
+- **Conduit's existing fixture builder already gets the section skeleton right.** All 4 real
+  sample files have the identical set of 20 `#$` sections in the identical order, every time —
+  and `NeutralFileFixtureBuilder` (used for the committed `fixtures/*.cii`) already produces that
+  same 20-section skeleton. Several sections (`AUX_DATA`, `EXPJT`, `DISPLMNT`, `FORCMNT`,
+  `UNIFORM`, `OFFSETS`, `FLANGES`) are confirmed legitimately empty (zero body lines) when there's
+  no data of that kind, matching what the builder already does.
+- **Three sections the builder gets wrong, found by comparing byte-for-byte against the real
+  samples:**
+  - `#$ WIND` is never truly empty — even with no wind load, real files carry exactly one
+    6-value real-number line. The builder currently emits zero lines for it.
+  - `#$ UNITS` is never empty either — it's a fixed 28-line block (4 lines of conversion
+    constants + 24 lines of unit labels, per `NeutralFile-v15.pdf`'s exact `#$ UNITS` field spec).
+    Byte-identical across all 4 real samples (same "AIBEL (mm)" custom unit-system name and
+    label set in every one — plausibly this user's/company's own CAESAR II unit-system
+    configuration, not universal). The builder currently emits it completely empty.
+  - `#$ VERSION` is a fixed-format title-block (PROJECT/CLIENT/etc. labeled text fields) that's
+    ~61 lines in every real sample, not the single line the builder currently emits. **This may
+    itself explain part or all of the "line # 62" error** if the file that triggered it was a
+    Conduit-generated/synthetic file rather than a round-tripped real one — a wrong VERSION
+    length would shift every following section's absolute line position. Not yet confirmed which
+    case applies; needs the user to say which file triggered the error.
+  - `#$ COORDS` structure/population rule isn't pinned down yet (present in real files, but which
+    nodes get listed and why needs more primary-source digging before it can be generated).
+- **The user's own Python tooling doesn't synthesize files from scratch either.** Read
+  `iecho.py`/`lift_case_builder.py` for context (not copied, not committed, per the standing
+  clean-room rule). Its actual strategy: launch real CAESAR II's `iecho.exe` interactively to
+  export an existing, real `.C2` model to `.CII` (so CAESAR II itself produces a guaranteed-valid
+  VERSION/UNITS/WIND/COORDS/etc.), then make narrow, targeted edits to *just* the restraint data
+  on top of that already-valid file, then convert back with `iecho.exe` again. It never
+  hand-constructs a neutral file from nothing.
+
+**Decision (2026-08-24, via AskUserQuestion)**: blend — patch a real seed file now, keep pushing
+from-scratch synthesis in parallel; unit-system default for anything synthesized is CAESAR II's
+own standard metric preset (user: "I think Caesar has a metric default, not sure what it's called
+atm" — name not yet confirmed, see the follow-up entry below), not the company-specific
+"AIBEL (mm)" name found in the real samples; generated test files with no real project data are
+committed like the existing fixtures.
+
+**Acted on immediately** (the "synthesize from scratch" half, since it turned out to be far more
+tractable than expected once checked against the primary source — see the new entry below for
+what was fixed). **Still open** (the "patch a real seed" half): need the user to export one or
+more small, throwaway, non-proprietary test models directly from their own CAESAR II as `.cii`
+seeds. **Next step once supplied**: build a thin "patch" helper on top of the existing
+read/write round-trip that only ever varies `#$ ELEMENTS`/`#$ RESTRANT` on top of a seed, proven
+by `OtherSections_StayByteIdentical_WhenOnlyRestraintsChange` to leave every other section
+untouched.
+
+## Fixed: NeutralFileFixtureBuilder's VERSION/WIND/UNITS/COORDS sections were structurally wrong (2026-08-24)
+Direct follow-up to the investigation above — checking `NeutralFileFixtureBuilder` (used for both
+in-memory tests and the committed `fixtures/*.cii` files) against `reference/NeutralFile-v15.pdf`
+and 4 real samples' actual bytes found it was generating structurally invalid files in three
+places, now fixed and verified against both the primary source and the real samples (see
+SPEC.md's new "Generating test neutral files" section for the full detail):
+- `#$ VERSION` was 1 line instead of the required 61 (1 info line + 60 title-page lines) — **very
+  likely explains the "Error processing CONTROL section, line # 62" `iecho.exe` error** if the
+  file that triggered it was a Conduit-synthesized fixture (line 62 in a real file is exactly
+  where `#$ CONTROL` starts, right after a correctly-sized `VERSION` block). Not yet confirmed
+  whether that was the case — **next step**: ask the user which file triggered that error (a
+  Conduit output, or a round-tripped real file) and have them retest against this fix.
+  Regenerated the committed `fixtures/straight-run.cii`/`run-with-riser.cii` with the fix (same
+  geometry/restraints as before, only the previously-broken sections changed) and reran the full
+  suite (37/37 pass) plus a manual CLI run to confirm nothing else broke.
+- `#$ WIND` was header-only (0 lines) instead of always carrying its 1-line default row.
+- `#$ UNITS` was empty instead of its fixed 28-line conversion-constants-and-labels block.
+- `#$ COORDS` was already effectively correct in outcome (empty, since the builder never
+  introduces discontinuous segments) but its 1-line "count = 0" wasn't being written; now it is,
+  matching the vendor doc's requirement that the count line always be present.
+Assumption made (decide-and-proceed, reversible/cosmetic): reused the real samples' exact
+numeric `#$ UNITS` conversion constants and unit labels (confirmed to be ordinary universal
+physical conversion factors — 25.4 mm/in, 4.448 N/lbf, etc. — and standard engineering unit
+abbreviations, not company-specific), but replaced the company-specific `CCVNAME` value
+"AIBEL (mm)" with the generic "Metric (mm)". **Next step**: if the user can confirm CAESAR II's
+exact standard metric preset name (see the open question below), swap that in instead.
+
+## Open: what is CAESAR II's exact "standard metric" unit-system preset name? (2026-08-24)
+User's answer to the unit-system question: "I think Caesar has a metric default, not sure what
+it's called atm." `NeutralFileFixtureBuilder`'s `#$ UNITS` block currently uses the generic label
+"Metric (mm)" as a placeholder (see the entry above) — the numeric conversion constants underneath
+it are already correct/universal regardless of the preset name. **Next step**: if/when the user
+can check their own CAESAR II installation's unit-system configuration (or a fresh, non-project
+CAESAR II model) and confirm the exact preset name CAESAR II itself uses for a standard mm-based
+metric system, update `BuildUnitsLines()`'s `CCVNAME` value to match. Low priority — cosmetic,
+doesn't affect whether a generated file parses correctly.
+
 ## Future Python neutral-file-generator programs: reference-only, not committed (2026-08-24)
 The user said they have Python programs that correctly create neutral files, may share them for
 context, and confirmed upfront they should not be included in the repo — same treatment already

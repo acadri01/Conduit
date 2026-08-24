@@ -155,3 +155,27 @@ running status log Claude appends to (skim this from mobile)
   verified the CLI's actual printed output against both fixtures. Updated TESTING.md's sample
   output block and stale test count (30 → 37) to match. 36 → 37 tests (one new classifier-reason
   coverage test); `dotnet build`/`test` clean.
+- 2026-08-24: Per direct instruction ("make sure you are able to create functioning neutral files
+  for us to use for testing"), investigated using the real `.cii` samples/PDFs as reference (still
+  local, not committed). Found `NeutralFileFixtureBuilder` already matched real files' 20-section
+  skeleton, but three sections were structurally wrong: `#$ VERSION` was 1 line instead of the
+  vendor doc's required 61 (1 info line + 60 title-page lines) — likely the actual cause of the
+  `iecho.exe` "line # 62" error if that was against a Conduit-synthesized file, since line 62 in a
+  real file is exactly where `#$ CONTROL` starts; `#$ WIND` was header-only instead of always
+  carrying a 1-line default row; `#$ UNITS` was empty instead of its fixed 28-line
+  conversion-constants-and-labels block. All three fixed and verified byte-for-byte against 4 real
+  samples and `NeutralFile-v15.pdf`; `#$ COORDS` now also always writes its required count line.
+  Asked the user (via AskUserQuestion) how Conduit should produce valid test files going forward:
+  decided on a blend — patch a real CAESAR II seed file (mirrors the user's own Python tooling,
+  read for context, not committed) now, keep pushing from-scratch synthesis in parallel; generated
+  files with no real project data get committed like the existing fixtures; unit-system default
+  is CAESAR II's own standard metric preset (exact name TBD, logged as an open question) rather
+  than the company-specific "AIBEL (mm)" name found in the real samples. Regenerated the committed
+  `fixtures/straight-run.cii`/`run-with-riser.cii` with the section fixes (same geometry/
+  restraints, only the previously-broken sections changed); updated SPEC.md's neutral-file-format
+  section with the newly-confirmed structural facts and a new "Generating test neutral files"
+  section documenting the decision. Still blocked on the "patch a real seed" half of the plan —
+  needs the user to export a throwaway, non-proprietary test model from their own CAESAR II.
+  37/37 tests still passing (same count — this was a section-content fix, not new tests);
+  `dotnet build`/`test` clean; manually re-ran the CLI against the regenerated fixture to confirm
+  behavior is unchanged.

@@ -196,13 +196,18 @@ problem (a Windows-only external tool this container can't exercise):
 - Interpreting (parsing into a rich model) any `#$ AUX_DATA` subsection other than `NODENAME`,
   `RESTRANT`, `ALLOWBLS`, and `EQUIPMNT` (see "In scope" above) — `BEND`, `RIGID`, `EXPJT`,
   `DISPLMNT`, `FORCMNT`, `UNIFORM`, `WIND`, `OFFSETS`, `SIF&TEES`, `REDUCERS`, `FLANGES`, hanger
-  data, and `#$ UNITS` / `#$ COORDS` are round-tripped opaquely (preserved byte-for-byte on write)
-  but not modeled or reasoned about in v1. `#$ MISCEL_1` is a partial exception — its leading
-  `RRMAT` (material ID) array is now parsed and exposed, but the rest of that section's content is
-  still opaque. Interpreting the remaining sections is future work as later stages need them (e.g.
-  `UNITS` for cross-unit-system correctness) — per review direction, the goal is to have as much
-  of the neutral file's data available now as is practical, but this remains a real scope
-  boundary, not something this pass closes out entirely.
+  data, and `#$ UNITS` / `#$ COORDS` are round-tripped opaquely in *production* Conduit.Core
+  (preserved byte-for-byte on write when read from a real file) but not modeled or reasoned about
+  in v1. `#$ MISCEL_1` is a partial exception — its leading `RRMAT` (material ID) array is now
+  parsed and exposed, but the rest of that section's content is still opaque. Interpreting the
+  remaining sections is future work as later stages need them (e.g. `UNITS` for cross-unit-system
+  correctness) — per review direction, the goal is to have as much of the neutral file's data
+  available now as is practical, but this remains a real scope boundary, not something this pass
+  closes out entirely. **Separately**, `tests/.../NeutralFileFixtureBuilder` (test-only, not part
+  of Conduit.Core) *does* now synthesize structurally-correct `VERSION`/`WIND`/`UNITS`/`COORDS`
+  content from scratch, for generating valid test neutral files — see "Generating test neutral
+  files" below. That's a from-nothing generation concern, not a from-a-real-file parsing concern,
+  so it doesn't change what production Conduit.Core parses or models.
 - Using the element's material ID (`RRMAT`, now parsed) to look up allowable stress/density from
   an external material database keyed by piping code and edition year — this needs a concrete
   material-database source, which is an open question (see "Known open decisions"). v1 instead
@@ -255,8 +260,15 @@ Key structural facts the parser/writer must honor:
   (container for the subsections below), `#$ MISCEL_1`, `#$ UNITS`, `#$ COORDS`.
 - Within `#$ AUX_DATA`, the subsections appear in a fixed order (`NODENAME`, `BEND`, `RIGID`,
   `EXPJT`, `RESTRANT`, `DISPLMNT`, `FORCMNT`, `UNIFORM`, `WIND`, `OFFSETS`, `ALLOWBLS`,
-  `SIF&TEES`, `REDUCERS`, `FLANGES`, `EQUIPMNT`); a subsection header is always written even when
-  its count in `#$ CONTROL` is zero (header only, no data lines).
+  `SIF&TEES`, `REDUCERS`, `FLANGES`, `EQUIPMNT`); a subsection header is always written. Most of
+  these are genuinely header-only (no data lines) when their `#$ CONTROL` count is zero (`BEND`,
+  `RIGID`, `EXPJT`, `DISPLMNT`, `FORCMNT`, `UNIFORM`, `OFFSETS`, `SIF&TEES`, `REDUCERS`,
+  `FLANGES`, `EQUIPMNT`) — confirmed against 4 real samples. **`#$ WIND` is the one exception**:
+  even with no wind load applied, real files always carry exactly one 6-value data line (a
+  default row, byte-identical across all 4 samples) — never header-only. (`#$ UNITS` and
+  `#$ COORDS`, covered separately below, aren't `AUX_DATA` subsections but follow the same
+  "always-has-content" pattern for a different reason — a fixed conversion-constants block and an
+  always-present, possibly-zero count line, respectively.)
 - `#$ RESTRANT` (the support data v1 reads and writes): one block per restraint, one *degree of
   freedom* sub-block per DOF (up to 6), each DOF as 4 lines — 2 data lines (node, restraint-type
   code 1–62, stiffness, gap, friction, connecting node, direction cosines) then a length-prefixed
@@ -274,6 +286,48 @@ Key structural facts the parser/writer must honor:
   re-emitted verbatim on write, so a file round-tripped through Conduit without any support
   changes is byte-identical, and a file with only `#$ RESTRANT` changes preserves everything
   else CAESAR II needs to re-import it.
+
+## Generating test neutral files
+Per direct instruction (2026-08-24): Conduit should be able to produce its own valid test neutral
+files, so the user isn't required to hand-build them. Two strategies were on the table — patching
+a real CAESAR-II-exported seed file (mirrors the user's own Python tooling, which always launches
+real `iecho.exe` to export a valid file first and only ever makes narrow edits on top of it,
+never hand-constructing one from nothing) vs. synthesizing every section from scratch (fully
+self-contained, no seed file needed, but more work and more risk of getting an obscure section
+wrong). **Decision: blend — patch a real seed now, keep pushing from-scratch synthesis in
+parallel.** Unit-system default for anything synthesized from scratch: CAESAR II's own standard
+metric preset (name TBD — the exact preset name wasn't confirmed; see `QUESTIONS.md`), not the
+company-specific "AIBEL (mm)" unit-system name found in the real samples used for reference.
+Generated test files with no real project data are committed like the existing fixtures.
+
+`tests/.../NeutralFileFixtureBuilder` (test-only) now synthesizes every section correctly,
+confirmed byte-for-byte against 4 real samples and `NeutralFile-v15.pdf`:
+- **`#$ VERSION`**: 1 info line + exactly 60 fixed 75-char title-page lines (FORTRAN `(2X, A75)`),
+  61 lines total — previously just the 1 info line, a real bug: everything after `#$ VERSION`
+  would land 60 lines earlier than a real file expects. **This may be the actual root cause of an
+  `iecho.exe` "Error processing CONTROL section, line # 62" the user hit** — line 62 is exactly
+  where a real file's `#$ CONTROL` header sits, one past its 61-line `VERSION` block — if the file
+  that triggered it was a Conduit-synthesized fixture rather than a round-tripped real file. Not
+  yet confirmed which case applies.
+- **`#$ WIND`**: always exactly 1 six-value data line, even with no wind load (see "Key structural
+  facts" above) — previously emitted as header-only.
+- **`#$ COORDS`**: lists the start coordinate of every *discontinuous* piping segment (a segment
+  whose `FromNode` isn't the previous element's `ToNode`) — format `(2X, I13)` for the `NXYZ`
+  count, then `(2X, I13, 3F13.4)` per entry. Optional per the vendor doc ("may not exist") but
+  real samples always carry at least the count line. The fixture builder's elements always form
+  one contiguous chain per run, so this is always just the zero-count line.
+- **`#$ UNITS`**: never empty — 4 lines of 22 packed conversion constants (`(2X, 6G13.6)`, order
+  `CNVLEN..CNVTHK` per the vendor doc) + 24 unit-label lines (`(2X, A<n>)`, widths per label per
+  the vendor doc, order `CCVNAME..CCVTHK`). The constants/labels are confirmed byte-identical
+  across all 4 real samples — ordinary physical conversion factors (25.4 mm/in, 4.448 N/lbf, ...)
+  and standard engineering unit abbreviations (mm, N, kg, MPa, ...), not project-specific — except
+  `CCVNAME` itself, which the real samples set to the company-specific "AIBEL (mm)"; the builder
+  uses the generic "Metric (mm)" instead.
+
+**Next step**: get one or more small, throwaway, non-proprietary test models exported directly
+from the user's own CAESAR II as `.cii` seeds, so the patch half of the blend can start; Conduit's
+read/patch/write round-trip only ever needs to vary geometry/restraints on top of a seed, never
+touching the sections above.
 
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —
