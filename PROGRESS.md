@@ -179,3 +179,9 @@ running status log Claude appends to (skim this from mobile)
   37/37 tests still passing (same count — this was a section-content fix, not new tests);
   `dotnet build`/`test` clean; manually re-ran the CLI against the regenerated fixture to confirm
   behavior is unchanged.
+- 2026-08-24: Searched for publicly downloadable CAESAR II `.c2`/`.cii` sample files (per direct
+  suggestion, to unblock the seed-file need without waiting on the user to build one). No direct
+  downloadable sample-file archive found. Better lead surfaced instead: CAESAR II's own installer
+  (including the free trial/demo) ships Hexagon's own official tutorial jobs, which the user
+  likely already has locally — logged as the next thing to try before a from-scratch throwaway
+  model. No code changes this step.

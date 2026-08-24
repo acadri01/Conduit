@@ -412,6 +412,19 @@ CAESAR II model) and confirm the exact preset name CAESAR II itself uses for a s
 metric system, update `BuildUnitsLines()`'s `CCVNAME` value to match. Low priority — cosmetic,
 doesn't affect whether a generated file parses correctly.
 
+## Checked for public CAESAR II sample files online: none found downloadable (2026-08-24)
+Per direct suggestion ("check if there are available c2 files online that may be used... public so
+shouldn't be an issue") — searched for downloadable public `.c2`/`.cii` sample/tutorial files
+before asking the user to export one themselves. No direct downloadable sample-file repository or
+archive turned up (checked vendor/training sites, forums, GitHub). **Better lead found instead**:
+CAESAR II's own installer — including the free trial/demo — ships with Hexagon's own official
+tutorial/example jobs (referenced across their training materials), which the user likely already
+has locally without downloading anything new. Exporting one of those through `iecho.exe` would
+give a genuinely official, Hexagon-authored, explicitly-for-training seed file — a cleaner
+provenance than an unverified forum attachment would have been anyway. **Next step**: ask the
+user to check their own CAESAR II install for its bundled tutorial job(s) as the seed source,
+rather than building one from scratch, before falling back to a from-scratch throwaway model.
+
 ## Future Python neutral-file-generator programs: reference-only, not committed (2026-08-24)
 The user said they have Python programs that correctly create neutral files, may share them for
 context, and confirmed upfront they should not be included in the repo — same treatment already
