@@ -6,12 +6,11 @@ namespace Conduit.Core.Optimization;
 
 /// <summary>
 /// Runs the initial support placement, then iterates against an <see cref="IStressSolver"/>:
-/// on a failing span, it first tries to add an intermediate rest support (if the failing span
-/// has a node to place one at), and only escalates the nearer support to a spring candidate
-/// when there's no room left to add one — matching SPEC.md's "tighten span / add support /
-/// change type" adjustment order. Bounded by <see cref="MaxIterations"/> so an irreducible
-/// failure (e.g. a single element longer than its own max allowable span) is reported rather
-/// than looped on forever.
+/// on a failing span, it tries to add an intermediate rest support if the failing span has a
+/// node to place one at, and otherwise reports the failure — no spring logic in the MVP (per
+/// direct instruction; not implemented, not stubbed). Bounded by <see cref="MaxIterations"/> so
+/// an irreducible failure (e.g. a single element longer than its own max allowable span) is
+/// reported rather than looped on forever.
 /// </summary>
 public static class OptimizationLoop
 {
@@ -64,14 +63,8 @@ public static class OptimizationLoop
                    $"added an intermediate rest support at node {node}.";
         }
 
-        if (TryEscalateToSpring(file, finding.FromNode))
-        {
-            return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} > {finding.AllowableSpan:F2}) has no " +
-                   $"room for an intermediate support — changed the support at node {finding.FromNode} to a spring candidate.";
-        }
-
         return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} > {finding.AllowableSpan:F2}) has no room " +
-               "for an intermediate support and no adjustable support to escalate — left as a reported failure.";
+               "for an intermediate support — left as a reported failure.";
     }
 
     private static List<Element> GetSegmentElements(IReadOnlyList<Element> elements, int fromNode, int toNode)
@@ -126,16 +119,5 @@ public static class OptimizationLoop
         }
 
         return bestNode;
-    }
-
-    private static bool TryEscalateToSpring(NeutralFile file, int node)
-    {
-        var restraint = file.Restraints.FirstOrDefault(r => r.Node == node && r.Dofs[0].Type != RestraintType.Anc);
-        if (restraint is null)
-        {
-            return false;
-        }
-        restraint.Dofs[0].RawTypeCode = (int)RestraintType.Xspr;
-        return true;
     }
 }

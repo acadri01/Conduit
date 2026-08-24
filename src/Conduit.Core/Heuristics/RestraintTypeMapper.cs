@@ -18,7 +18,6 @@ public static class RestraintTypeMapper
         SupportType.Guide => RestraintType.Gui,
         SupportType.LineStop => RestraintType.Lim,
         SupportType.Anchor => RestraintType.Anc,
-        SupportType.SpringCandidate => RestraintType.Xspr,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown support type."),
     };
 }

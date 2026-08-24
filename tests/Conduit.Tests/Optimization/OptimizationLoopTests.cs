@@ -32,9 +32,10 @@ public class OptimizationLoopTests
     public void SingleOverlongElement_CannotBeAdjusted_StopsAtIterationCap()
     {
         // One element, far too long for its own max allowable span, directly between two
-        // anchors with no intermediate node to add a support at, and no non-anchor support to
-        // escalate either — the loop should recognise it can't do anything further and stop at
-        // the bounded iteration count rather than loop forever or silently "pass".
+        // anchors with no intermediate node to add a support at — the loop should recognise it
+        // can't do anything further and stop at the bounded iteration count rather than loop
+        // forever or silently "pass". No spring escalation in the MVP — an irreducible failure
+        // is just reported.
         var maxSpan = Schedule40MaxSpan();
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
         {
@@ -47,16 +48,16 @@ public class OptimizationLoopTests
         Assert.False(result.Passed);
         Assert.Equal(OptimizationLoop.MaxIterations, result.Iterations);
         Assert.Contains(result.FinalStressResult.Findings, f => !f.Passed);
-        Assert.Contains(result.Notes, n => n.Contains("no adjustable support to escalate", StringComparison.Ordinal));
+        Assert.Contains(result.Notes, n => n.Contains("left as a reported failure", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void OverlongSegmentPastAnAddedRestSupport_EscalatesThatSupportToSpring()
+    public void OverlongSegmentPastAnAddedRestSupport_IsReportedRatherThanEscalated()
     {
         // A short first leg (fits under the max span) followed by a long second leg with no
         // further intermediate node — SupportPlacer's initial pass places a rest support at the
-        // node between them, but that alone can't satisfy the second leg's span, so the loop
-        // should escalate that rest support (not the anchors) to a spring candidate.
+        // node between them, but that alone can't satisfy the second leg's span. No spring logic
+        // in the MVP: the rest support stays a rest support, and the failure is just reported.
         var maxSpan = Schedule40MaxSpan();
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
         {
@@ -67,10 +68,10 @@ public class OptimizationLoopTests
 
         var result = OptimizationLoop.Run(file, new MockStressSolver());
 
-        Assert.False(result.Passed); // the mock only checks span length, which a type change doesn't reduce
+        Assert.False(result.Passed);
         Assert.Equal(OptimizationLoop.MaxIterations, result.Iterations);
-        Assert.Contains(result.Notes, n => n.Contains("spring candidate", StringComparison.Ordinal));
-        Assert.Contains(file.Restraints, r => r.Node == 15 && r.Dofs[0].Type == RestraintType.Xspr);
+        Assert.Contains(result.Notes, n => n.Contains("left as a reported failure", StringComparison.Ordinal));
+        Assert.Contains(file.Restraints, r => r.Node == 15 && r.Dofs[0].Type == RestraintType.PlusY);
     }
 
     [Fact]

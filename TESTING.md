@@ -164,6 +164,29 @@ A few things to know before pointing Conduit at a real model:
 If you're running this from a script and want to check the outcome automatically, check
 `$LASTEXITCODE` in PowerShell (or `$?` in Bash) right after the `dotnet run` command.
 
+## 8. When something looks wrong: run the log script and send it back
+
+Rather than describing what happened, run everything (build, tests, and the CLI against a file or
+folder of files) and capture the full console output to a file you commit back to the repo — so
+Claude sees exactly what your machine saw.
+
+**Windows PowerShell:**
+```powershell
+.\scripts\run-and-log.ps1                              # against fixtures\
+.\scripts\run-and-log.ps1 -InputPath C:\path\to\files   # against your own .cii file(s)/folder
+```
+**macOS/Linux (or WSL):**
+```bash
+./scripts/run-and-log.sh                    # against fixtures/
+./scripts/run-and-log.sh /path/to/files      # against your own .cii file(s)/folder
+```
+Both write a timestamped log under `test-logs\` (Windows) / `test-logs/` (macOS/Linux) — e.g.
+`test-logs/2026-08-24_112417-run.log` — plus a copy of Conduit's output file for each input it
+ran against. When it finishes it prints the exact log path and the `git add`/commit/push you need;
+follow that, then tell Claude which run to look at. `test-logs/` isn't gitignored on purpose —
+these are meant to be committed when you want a review, not silently discarded — but it's your
+call which runs are worth keeping; delete the ones that aren't before committing.
+
 ---
 
 # Reference (for making changes to Conduit itself)
@@ -198,8 +221,9 @@ skipped tests in this project.
   the riser-guide trigger condition (a guide is placed when the riser element itself causes the
   span overflow — not "every vertical segment always gets one", see SPEC.md's "Known open
   decisions" for why).
-- `tests/Conduit.Tests/Optimization/OptimizationLoopTests.cs` — the iterate-and-adjust loop against
-  `MockStressSolver`, including the spring-candidate escalation path.
+- `tests/Conduit.Tests/Optimization/OptimizationLoopTests.cs` — the iterate-and-adjust loop
+  against `MockStressSolver`: adding intermediate rest supports, and reporting (not escalating —
+  no spring logic in the MVP) a span that has no room left to add one.
 - `tests/Conduit.Tests/Configuration/CaesarConfigReaderTests.cs` and `CaesarConfigTests.cs` — the
   `caesar.cfg` parser (against the real example at `fixtures/caesar.cfg`) and the
   config-vs-default piping-code fallback (`CaesarConfig.EffectiveCode`).

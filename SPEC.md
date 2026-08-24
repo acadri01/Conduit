@@ -157,10 +157,8 @@ problem (a Windows-only external tool this container can't exercise):
   anchor (no signal yet for hold-down/line-stop specifically). Rules are simplified for v1 and
   documented as such. Maps to the real CAESAR II restraint codes: `+Y`/`+Z` for a rest alone,
   `-Y`/`-Z` for a hold-down alone, bidirectional `Y`/`Z` for rest+hold-down together, `GUI` for
-  guide, `LIM` for line stop, `ANC` for anchor (see "Neutral file format"). Springs are
-  deliberately de-prioritized per review — v1 focuses on getting rigid supports right;
-  `SpringCandidate` is only ever an iterate-loop escalation (see below), not an initial rule, and
-  actual spring sizing stays a human/MVP-follow-up concern.
+  guide, `LIM` for line stop, `ANC` for anchor (see "Neutral file format"). v1 focuses on rigid
+  supports only.
 - Support-placement algorithm: walk each pipe run between fixed points (anchors, and — when `#$
   EQUIPMNT` is populated — real nozzle/equipment node locations), place candidate supports
   at/under the max allowable span, assign a type via the heuristic above, and write them as new
@@ -202,9 +200,9 @@ problem (a Windows-only external tool this container can't exercise):
   but not modeled or reasoned about in v1. `#$ MISCEL_1` is a partial exception — its leading
   `RRMAT` (material ID) array is now parsed and exposed, but the rest of that section's content is
   still opaque. Interpreting the remaining sections is future work as later stages need them (e.g.
-  hangers for spring-support sizing, `UNITS` for cross-unit-system correctness) — per review
-  direction, the goal is to have as much of the neutral file's data available now as is practical,
-  but this remains a real scope boundary, not something this pass closes out entirely.
+  `UNITS` for cross-unit-system correctness) — per review direction, the goal is to have as much
+  of the neutral file's data available now as is practical, but this remains a real scope
+  boundary, not something this pass closes out entirely.
 - Using the element's material ID (`RRMAT`, now parsed) to look up allowable stress/density from
   an external material database keyed by piping code and edition year — this needs a concrete
   material-database source, which is an open question (see "Known open decisions"). v1 instead
@@ -235,6 +233,12 @@ numbers and geometry that are merely *structurally* valid `.cii` files, not deri
 supplied examples. See "Known open decisions" for the reasoning.
 
 Key structural facts the parser/writer must honor:
+- **Line endings are CRLF, always** — confirmed against real CAESAR II-exported `.cii` files.
+  `iecho.exe` and CAESAR II itself are Windows/Fortran-heritage tools that reject LF-only input;
+  this was an actual bug (`NeutralFileWriter` wrote LF-only, silently downgrading real CRLF input
+  on every round-trip) found and fixed after real-world testing showed `iecho.exe` rejecting
+  Conduit's output. `NeutralFileReader.Read` tolerates either convention on input; `NeutralFileWriter.Write`
+  always emits CRLF on output regardless of platform. See `NeutralFileRoundTripTests.Write_UsesCrlfLineEndings`.
 - The file is organized into sections marked by a `#$ SECTIONNAME` header in columns 1–2 (`#$ `
   literally, then the section name).
 - Each data line is **fixed-width columnar** (FORTRAN `G13.6`/`I13` formats), not
@@ -331,8 +335,7 @@ decisions"). This locator only answers "where," not "how to read what's there."
    decisions".)
 3. Given a run where the computed span would require more supports than fit before a real `#$
    EQUIPMNT` nozzle connection → the support nearest the nozzle is flagged as an anchor candidate
-   per the near-equipment heuristic, and the summary explains why. (Spring escalation is a
-   separate, lower-priority iterate-loop behavior — see "In scope".)
+   per the near-equipment heuristic, and the summary explains why.
 4. Given a malformed/unparseable input file (bad section header, a data line that doesn't match
    its section's expected column layout) → `conduit optimize` exits non-zero with a clear
    parse-error message (section/line reference), writes no output file.

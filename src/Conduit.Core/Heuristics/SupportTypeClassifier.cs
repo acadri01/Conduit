@@ -22,12 +22,6 @@ public readonly record struct SupportCandidateContext(
 /// equipment nozzle connection", since nozzle/equipment data isn't modeled in v1.</item>
 /// <item>Everything else is a plain <see cref="SupportType.Rest"/>.</item>
 /// </list>
-/// <see cref="SupportType.SpringCandidate"/> is deliberately not assigned here — it's an
-/// escalation the iterate-and-adjust loop applies to an already-placed support when the span
-/// heuristic alone can't satisfy <c>IStressSolver</c> (see <c>OptimizationLoop</c>), not an
-/// initial classification. A rule like "flag as spring whenever the span approaches the max
-/// allowable span" would fire on almost every rest support by construction, since placement
-/// spaces supports at/under that same limit — that would make the rule meaningless, not useful.
 /// </summary>
 public static class SupportTypeClassifier
 {

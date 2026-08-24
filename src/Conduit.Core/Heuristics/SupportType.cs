@@ -30,13 +30,4 @@ public enum SupportType
 
     /// <summary>An anchor — the combination of rest, hold-down, guide, and line stop; used near equipment/nozzle connections and major direction changes.</summary>
     Anchor,
-
-    /// <summary>
-    /// Flags the location as a candidate for a spring (variable-support) hanger, because the
-    /// span-to-limit ratio suggests thermal growth may lift the pipe off a rigid rest support.
-    /// v1 only flags this — actual spring sizing (load, travel, catalog selection) is out of
-    /// scope, and per review, springs generally aren't a v1 priority (may be a human addition
-    /// to the MVP's output) — the rigid support types above are what v1 focuses on getting right.
-    /// </summary>
-    SpringCandidate,
 }

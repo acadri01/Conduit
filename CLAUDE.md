@@ -9,6 +9,20 @@ Optimize for finishing correctly with the fewest interruptions to me.
 - Append a one-line status to PROGRESS.md after each meaningful step (what changed + why).
 - Never halt on the first blocker. Keep working every unblocked path; accumulate open
   questions in QUESTIONS.md and continue elsewhere.
+- **Always consult `reference/` before touching anything about the neutral file format or
+  CAESAR II input/output behavior.** Correct formatting is imperative — a real, working bug
+  (LF vs. CRLF line endings, causing `iecho.exe` to reject Conduit's output) came from relying on
+  a paraphrase instead of checking the primary source. Re-verify against `reference/`'s vendor
+  PDFs (and, when the user provides them, real files) rather than trusting an earlier summary in
+  SPEC.md or in this session's own memory — SPEC.md's prose can drift from the source; the PDFs
+  can't.
+- Support-placement logic (what makes a location a rest, hold-down, guide, line stop, or anchor,
+  and where) is defined **one support type at a time, with me consulted on the logic before it's
+  implemented** — not decided unilaterally, even under the decide-and-proceed rule below. This
+  overrides the general decide-and-proceed bucket for this specific class of decision.
+- No spring logic of any kind for the MVP — not implemented, not stubbed, not mentioned in docs
+  or output. If a task seems to call for it, skip that part and note why in QUESTIONS.md instead
+  of adding a placeholder.
 - Keep TESTING.md current — instructions for how to test the program (automated and manual).
   Update it whenever what/how to test changes (a new project, a new fixture convention, a new
   manual check that matters), and consult it whenever testing is relevant to the task at hand.

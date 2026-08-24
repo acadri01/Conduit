@@ -120,3 +120,27 @@ running status log Claude appends to (skim this from mobile)
   message said "hold off on committing the example files," which is ambiguous with the
   already-merged `fixtures/caesar.cfg` from PR #4 — asked the user to clarify rather than guess
   whether that should be reverted (see QUESTIONS.md); proceeded with everything else unblocked.
+- 2026-08-24: User reported the real neutral file converter rejects Conduit's output
+  ("the iecho does not accept it"). Root-caused and fixed a real bug: `NeutralFileWriter` wrote
+  LF-only line endings on every platform, while `NeutralFileReader` reads either; every real
+  `.cii` sample checked uses CRLF (confirmed directly against the files, still local, not
+  committed), matching `iecho.exe`/CAESAR II's Windows/Fortran heritage. Fixed the writer to
+  always emit CRLF, added `.gitattributes` pinning `*.cii` to `eol=crlf`, converted the committed
+  fixtures to match, and added a byte-level regression test (the existing round-trip tests
+  compare EOL-agnostic string content and couldn't have caught this). Added `reference/` — the 5
+  public Hexagon vendor PDFs, committed with an index — and a CLAUDE.md instruction to always
+  consult them for anything touching neutral-file format/I-O correctness, since this bug traces
+  back to relying on a paraphrase instead of the primary source. Removed all spring logic per
+  direct instruction (`SupportType.SpringCandidate`, its restraint mapping, and
+  `OptimizationLoop`'s escalation path — an unresolvable span is now just reported), with
+  historical QUESTIONS.md/PROGRESS.md entries left intact as record but SPEC.md/TESTING.md/tests
+  updated to match current behavior; kept `RestraintType.Xspr` itself since it's real CAESAR II
+  vocabulary needed for round-tripping. Added a CLAUDE.md instruction that support-placement
+  logic is defined one support type at a time with the user consulted first. Added
+  `scripts/run-and-log.ps1`/`.sh` (verified the bash twin actually runs; the PowerShell version
+  is carefully written but not executable-verified here — no `pwsh` available in this container)
+  so the user can capture a full console transcript to `test-logs/` and commit it back for
+  review, documented in TESTING.md. Logged (not yet actioned — no real fixture files to test
+  against) the user's observation that `SupportPlacer` may be over-placing supports. 35 → 36
+  tests (one new CRLF regression test; the spring-test rewrites were a net-neutral count change);
+  `dotnet build`/`test` clean.

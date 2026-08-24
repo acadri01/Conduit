@@ -229,3 +229,79 @@ assume. Asked the user directly via `AskUserQuestion`.
 **Answered (2026-08-21): reading (1) — keep `fixtures/caesar.cfg` as-is.** The instruction was
 forward-looking only: don't commit the real `.cii` sample files or fabricate new install-tree
 example files going forward (already the plan either way). No repo change needed.
+
+## Real-world iecho rejection found and fixed: CRLF line endings (2026-08-24)
+The user reported the neutral file converter "does not work as it should... the iecho does not
+accept it" — a real, concrete formatting bug, not a hypothetical. Root-caused it directly:
+- `NeutralFileWriter.Write` hardcoded `\n` (LF-only) line joins, on every platform.
+- `NeutralFileReader.Read` uses `File.ReadAllLines`, which is EOL-agnostic on input (accepts
+  CRLF, LF, or CR transparently).
+- Checked the real `.cii` sample files shared earlier in this session (still present locally,
+  not committed, permitted to *read* for analysis per the clean-room constraint): every one uses
+  CRLF. `iecho.exe`/CAESAR II are Windows/Fortran-heritage tools; LF-only is the classic failure
+  mode for that kind of legacy sequential-file reader.
+- **Fixed**: `NeutralFileWriter.Write` now joins with `\r\n`. Added `.gitattributes` pinning
+  `*.cii` to `eol=crlf` so no local `core.autocrlf` setting or editor silently reverts this.
+  Converted the committed fixtures to CRLF to match the real convention. Added
+  `NeutralFileRoundTripTests.Write_UsesCrlfLineEndings` asserting the actual on-disk bytes (the
+  existing round-trip tests compare in-memory string-list content, which is EOL-agnostic and
+  couldn't have caught this — that's *why* it shipped unnoticed).
+- **Not yet fully confirmed as the complete fix** — this container has no `iecho.exe` to test
+  against, so I can't independently verify CRLF alone resolves the rejection versus being one of
+  possibly several issues. Asked the user (in this round's summary) whether they still have the
+  exact iecho error/rejection message, to either confirm this closes it out or point at what
+  else is wrong.
+- Added `reference/` (see below) specifically so future format-correctness work is checked
+  against the primary vendor documentation directly, not a paraphrase — this bug is exactly the
+  kind of drift-from-source error that invites.
+
+## reference/ folder added; CLAUDE.md now requires consulting it (2026-08-24)
+Per direct instruction: committed the 5 public vendor PDFs (already established as
+non-proprietary Hexagon documentation, safe to commit — see the "Real neutral file format
+adopted" entry above) to a new `reference/` folder, with a README indexing what each covers and
+when to read it. CLAUDE.md now instructs always consulting these before touching neutral-file
+format or CAESAR II I/O behavior. The real `.cii` sample files and any Python
+neutral-file-generator programs the user shares stay out of the repo, per the existing
+clean-room constraint — `reference/`'s README says so explicitly to avoid future confusion.
+
+## Spring logic fully removed from the MVP (2026-08-24)
+Per direct, explicit instruction: "I do not want to see a mention of it now for the mvp." This
+supersedes every earlier entry in this file that described `SupportType.SpringCandidate` as an
+iterate-loop escalation (those entries are left as historical record, not deleted, since they're
+an accurate account of what was actually built at the time — but they no longer describe current
+behavior). Removed from code: `SupportType.SpringCandidate`, its `RestraintTypeMapper` mapping,
+and `OptimizationLoop`'s escalate-to-spring path (an unresolvable span now just gets reported).
+Kept `RestraintType.Xspr` in the enum — that's the real CAESAR II restraint code, needed so a
+real file that already has a spring restraint round-trips correctly; only *Conduit's own logic*
+producing/assigning it is what's gone. Updated SPEC.md, TESTING.md, and the `OptimizationLoop`
+tests to match; left README.md (the user's own original product-vision document, spanning all
+stages, not just this MVP) untouched.
+
+## Process change: support-type logic defined one type at a time, with consultation (2026-08-24)
+Per direct instruction: "There is a lot of logic to implement, so I think we will have to take it
+one step at a time for each support type. I want to be consulted on this logic definition." Added
+to CLAUDE.md as a standing instruction — it overrides the general decide-and-proceed bucket for
+this specific class of decision. **Next step**: before extending or changing rest/hold-down/
+guide/line-stop/anchor placement logic further, bring the proposed logic to the user first, one
+support type at a time, rather than implementing and presenting the result.
+
+## Open observation, not yet actioned: SupportPlacer may be over-placing supports (2026-08-24)
+The user flagged, as an initial/unconfirmed observation: "The span calculator implements support
+everywhere it seems." Logged here rather than acted on, because there isn't enough to diagnose
+yet — no specific input file, output, or expected-vs-actual comparison to work from, and the
+user has said they'll supply correctly-formatted real neutral files for analysis (the current
+committed fixtures are synthetic and, per the user, not correctly formatted — see the CRLF entry
+above for one confirmed instance of that). **Next step once real fixture files are provided**:
+run Conduit against them, compare the placed-support output against what the user expects for
+that layout, and determine whether this is a real over-placement bug in `SupportPlacer`/
+`SpanLimitCalculator`, a misreading of intentionally-conservative spacing, or a symptom of the
+same file-format issues that caused the CRLF bug (e.g. if a real file's data is being misparsed
+because of a formatting mismatch, span calculations downstream would be wrong in ways that could
+look like "everywhere").
+
+## Future Python neutral-file-generator programs: reference-only, not committed (2026-08-24)
+The user said they have Python programs that correctly create neutral files, may share them for
+context, and confirmed upfront they should not be included in the repo — same treatment already
+established for `iecho.py`/`lift_case_builder.py`. Logged here so the pattern is applied
+automatically whenever those are shared: read/understand for context, do not copy logic
+verbatim, do not commit the files themselves.

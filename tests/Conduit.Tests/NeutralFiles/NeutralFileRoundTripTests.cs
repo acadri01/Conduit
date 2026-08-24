@@ -68,4 +68,31 @@ public class NeutralFileRoundTripTests
         var ex = Assert.Throws<NeutralFileParseException>(() => NeutralFileReader.Read(FixturePath("malformed.cii")));
         Assert.Contains("CONTROL", ex.Message);
     }
+
+    /// <summary>
+    /// Real CAESAR II-exported <c>.cii</c> files use CRLF line endings (confirmed against real
+    /// samples) — <c>iecho.exe</c> and CAESAR II itself reject LF-only output. This asserts the
+    /// actual bytes written to disk, not <see cref="NeutralFileWriter.ToLines"/>'s in-memory
+    /// string list (which strips line endings entirely and so can't catch this).
+    /// </summary>
+    [Fact]
+    public void Write_UsesCrlfLineEndings()
+    {
+        var file = NeutralFileReader.Read(FixturePath("straight-run.cii"));
+        var outputPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+
+        try
+        {
+            NeutralFileWriter.Write(file, outputPath);
+            var raw = File.ReadAllText(outputPath);
+
+            Assert.Contains("\r\n", raw);
+            Assert.DoesNotContain("\r\n\r\n", raw); // no doubled CR from re-writing an already-CRLF-read file
+            Assert.DoesNotMatch(@"(?<!\r)\n", raw); // every \n must be preceded by \r — no bare LF anywhere
+        }
+        finally
+        {
+            File.Delete(outputPath);
+        }
+    }
 }
