@@ -116,10 +116,21 @@ default" entry). Never empty in a real file, even when all values are the generi
 
 ## `#$ WIND`, `#$ COORDS`
 
-`#$ WIND` is never truly empty even with no wind load applied — confirmed byte-identical
-(`0.0 0.7 0.0 0.0 0.0 0.0`) across all real samples and Conduit's own default. `#$ COORDS` lists the
-start coordinate of each *discontinuous* piping segment; a file whose elements form one contiguous
-chain per run has nothing to list beyond the zero count line — confirmed against real samples.
+**`#$ WIND`'s presence is gated by `#$ CONTROL`'s `NumWindLoads` count, like any other
+`AUX_DATA`-style section — it is empty (header only) when `NumWindLoads = 0`.** This corrects an
+earlier, wrong assumption in this project (see QUESTIONS.md's "Fixed: WIND section unconditionally
+populated" entry) made from checking real samples that all happened to have a wind load applied;
+`fixtures/real-samples/TESTv15.cii` and `TESTv15_slugged.cii` (no wind load) both have a
+header-only `#$ WIND` with `NumWindLoads = 0`, while `44002.cii` (wind load applied) has the
+1-line data row (`0.0 0.7 0.0 0.0 0.0 0.0`) with `NumWindLoads = 1`. **A section whose line count
+doesn't match its own count field is a confirmed cause of a downstream `iecho.exe` parse error at
+a *later* section** — the fixed-record reader skips the number of lines the count says to skip, so
+an extra unexpected line here shifts every subsequent read by one, surfacing as an error at
+whatever section the reader happens to land mid-line at, not at `#$ WIND` itself. `SectionCountConsistencyTests`
+guards this. `#$ COORDS` lists the start coordinate of each *discontinuous* piping segment; a file
+whose elements form one contiguous chain per run has nothing to list beyond the zero count line —
+confirmed against real samples. `#$ COORDS` is self-describing (its own count line is always
+present) rather than `#$ CONTROL`-gated, so it doesn't have this failure mode.
 
 ## Sections not yet used by Conduit's logic
 

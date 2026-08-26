@@ -223,3 +223,18 @@ running status log Claude appends to (skim this from mobile)
   `ElementSectionFormatTests`/`UnitsSection`-related tests (46/46 passing, up from 37) guarding
   the fixes against silent regression. Updated SPEC.md/QUESTIONS.md/TESTING.md accordingly; asked
   the user to retest `loop-50m-3d.cii` against `iecho.exe`.
+- 2026-08-26: user retested — the ELEMENTS fix confirmed correct (no more "ELEMENT section"
+  error), but a new one appeared further along: "Error processing OFFSETS section." Byte-diffed
+  the WIND→OFFSETS transition against the real samples and found: `TESTv15.cii`/
+  `TESTv15_slugged.cii` both have a completely empty `#$ WIND` (`NumWindLoads = 0`), directly
+  contradicting this project's own earlier claim that `#$ WIND` "is never truly empty" — that
+  claim came from checking real samples that all happened to have a wind load applied. Conduit's
+  fixture builder unconditionally wrote a 1-line WIND default row while `NumWindLoads` stayed 0 —
+  a count/content mismatch that desyncs `iecho.exe`'s reader and surfaces as an error several
+  sections later (at OFFSETS), not at WIND itself. Fixed: WIND is now empty by default, matching
+  `NumWindLoads = 0`. Regenerated all three built fixtures again. Added
+  `SectionCountConsistencyTests` checking every count-gated section against its own `#$ CONTROL`
+  field, for real samples and Conduit's own output alike — guards this whole class of bug, not
+  just this one field. Corrected the now-wrong "WIND always populated" claims in SPEC.md and
+  docs/neutral-file/WALKTHROUGH.md. 50/50 tests passing (4 new), `dotnet build`/`test` clean.
+  Asked the user to retest again.

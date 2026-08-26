@@ -558,3 +558,31 @@ the output to include units." Implemented:
   pipe, not a ~13 mm one. This is the exact symptom the user reported.
 37/37 pre-existing tests updated and passing, 9 new tests added (46/46 total), `dotnet build`
 clean.
+
+## Fixed: WIND section unconditionally populated — corrects an earlier wrong assumption (2026-08-26)
+Direct follow-up to the user's `iecho.exe` retest: the ELEMENTS fix above was confirmed correct
+(no more "ELEMENT section" error), but a *new* error appeared further along — "Error processing
+OFFSETS section" (line # 287 for the `optimize`d `out.cii`, line # 215 for the raw
+`loop-50m-3d.cii` — different absolute line, same section, on both). Byte-diffed the WIND→OFFSETS
+transition against `fixtures/real-samples/*.cii` and found: **`TESTv15.cii` and
+`TESTv15_slugged.cii` both have a completely empty `#$ WIND` (header only, `NumWindLoads = 0`)** —
+directly contradicting this project's own earlier claim (2026-08-24 entry, "Fixed:
+NeutralFileFixtureBuilder's VERSION/WIND/UNITS/COORDS sections were structurally wrong") that
+`#$ WIND` "is never truly empty" and "always carries a default row." That claim was made from
+checking real samples that all happened to have a wind load applied (`44002.cii` does: 1 data
+line, `NumWindLoads = 1`) — a sampling error, not a doc/real-file disagreement this time.
+`NeutralFileFixtureBuilder.BuildWindLines()` unconditionally wrote that 1-line default row while
+`Control.NumWindLoads` stayed hardcoded at `0` — a section-content-vs-count-field mismatch that
+desyncs `iecho.exe`'s fixed-record reader: told to skip 0 WIND lines, it instead lands mid-way
+through Conduit's phantom data line, and every subsequent read is off by one field until it
+surfaces as a parse error at whatever section it happens to land on (here, `#$ OFFSETS`, several
+sections later) — not at `#$ WIND` itself, which is exactly why this wasn't obvious from the error
+message alone. Fixed: `#$ WIND` is now empty by default (matching `NumWindLoads = 0`, since none
+of Conduit's synthetic fixtures model wind loads); removed `BuildWindLines()`. Regenerated
+`fixtures/loop-50m-3d.cii`/`straight-run.cii`/`run-with-riser.cii` again. Added
+`SectionCountConsistencyTests`, checking every count-gated section's line count against its own
+`#$ CONTROL` field for both the real samples and Conduit's own fixture output, so this exact class
+of bug (not just this one field) can't regress silently. Corrected the now-wrong "WIND is always
+populated" claims in SPEC.md and `docs/neutral-file/WALKTHROUGH.md`. 50/50 tests passing (4 new).
+**Next step**: get the user's `iecho.exe` retest result against the regenerated
+`fixtures/loop-50m-3d.cii`.

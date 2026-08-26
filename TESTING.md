@@ -211,7 +211,7 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 46 tests, all
+`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 50 tests, all
 expected to pass on every commit. A failing test blocks the change; there are no known-flaky or
 skipped tests in this project.
 
@@ -231,6 +231,12 @@ skipped tests in this project.
   detection. Guards specifically against the class of bug that made `iecho.exe` reject a
   Conduit-generated file (a real-format field written where the real samples use plain integers)
   — see `docs/neutral-file/WALKTHROUGH.md` for the full field-by-field layout this checks against.
+- `tests/Conduit.Tests/NeutralFiles/SectionCountConsistencyTests.cs` — checks that a count-gated
+  section's line count actually matches its own `#$ CONTROL` field (e.g. `#$ WIND` vs.
+  `NumWindLoads`), for both the real samples and Conduit's own fixture output. Guards against a
+  second confirmed class of `iecho.exe`-rejection bug: a count/content mismatch here doesn't error
+  at the mismatched section itself, it desyncs the reader and surfaces as an error several
+  sections later.
 - `tests/Conduit.Tests/Heuristics/SupportTypeClassifierTests.cs` — rest/guide/anchor
   classification rules in isolation.
 - `tests/Conduit.Tests/Heuristics/SupportPlacerTests.cs` — the run-walking placement algorithm:
@@ -298,9 +304,9 @@ to point `run-and-log.sh` or a manual `iecho.exe` test at directly.
 geometry matching the real samples' unit convention. It exists specifically to test whether
 `iecho.exe` accepts a Conduit-generated file — run it through iecho on your own CAESAR II machine
 and report back what happens; see `QUESTIONS.md` for the current status of that check (as of
-2026-08-26: a first real-world test found and fixed one structural bug — the `#$ ELEMENTS`
-color/visibility line — and this file has been regenerated with the fix, but not yet retested
-against `iecho.exe`).
+2026-08-26: two real-world test rounds found and fixed two structural bugs — the `#$ ELEMENTS`
+color/visibility line, then a `#$ WIND`/`#$ CONTROL` count mismatch — and this file has been
+regenerated with both fixes, but not yet retested against `iecho.exe`).
 
 **`docs/neutral-file/WALKTHROUGH.md`** is the step-by-step, field-by-field guide to the neutral
 file format itself — what every section and field means, confirmed against both

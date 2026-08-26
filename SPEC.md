@@ -264,15 +264,18 @@ Key structural facts the parser/writer must honor:
   (container for the subsections below), `#$ MISCEL_1`, `#$ UNITS`, `#$ COORDS`.
 - Within `#$ AUX_DATA`, the subsections appear in a fixed order (`NODENAME`, `BEND`, `RIGID`,
   `EXPJT`, `RESTRANT`, `DISPLMNT`, `FORCMNT`, `UNIFORM`, `WIND`, `OFFSETS`, `ALLOWBLS`,
-  `SIF&TEES`, `REDUCERS`, `FLANGES`, `EQUIPMNT`); a subsection header is always written. Most of
-  these are genuinely header-only (no data lines) when their `#$ CONTROL` count is zero (`BEND`,
-  `RIGID`, `EXPJT`, `DISPLMNT`, `FORCMNT`, `UNIFORM`, `OFFSETS`, `SIF&TEES`, `REDUCERS`,
-  `FLANGES`, `EQUIPMNT`) — confirmed against 4 real samples. **`#$ WIND` is the one exception**:
-  even with no wind load applied, real files always carry exactly one 6-value data line (a
-  default row, byte-identical across all 4 samples) — never header-only. (`#$ UNITS` and
-  `#$ COORDS`, covered separately below, aren't `AUX_DATA` subsections but follow the same
-  "always-has-content" pattern for a different reason — a fixed conversion-constants block and an
-  always-present, possibly-zero count line, respectively.)
+  `SIF&TEES`, `REDUCERS`, `FLANGES`, `EQUIPMNT`); a subsection header is always written. **All of
+  these, including `#$ WIND`, are header-only (no data lines) when their `#$ CONTROL` count is
+  zero** — confirmed against `fixtures/real-samples/*.cii`: `TESTv15.cii`/`TESTv15_slugged.cii`
+  (no wind load, `NumWindLoads = 0`) have an empty `#$ WIND`, while `44002.cii` (wind load
+  applied, `NumWindLoads = 1`) has one 6-value data row. An earlier version of this doc claimed
+  `#$ WIND` was a structural exception that's *always* populated — wrong, from checking real
+  samples that all happened to have wind loads; see QUESTIONS.md's "Fixed: WIND section
+  unconditionally populated" entry, and `docs/neutral-file/WALKTHROUGH.md` for why a
+  count/content mismatch here breaks `iecho.exe`'s parse several sections later, not at `#$ WIND`
+  itself. (`#$ UNITS` and `#$ COORDS`, covered separately below, aren't `AUX_DATA` subsections and
+  aren't count-gated the same way — a fixed conversion-constants block and a self-describing,
+  always-present count line, respectively.)
 - `#$ RESTRANT` (the support data v1 reads and writes): one block per restraint, one *degree of
   freedom* sub-block per DOF (up to 6), each DOF as 4 lines — 2 data lines (node, restraint-type
   code 1–62, stiffness, gap, friction, connecting node, direction cosines) then a length-prefixed
@@ -313,8 +316,9 @@ confirmed byte-for-byte against 4 real samples and `NeutralFile-v15.pdf`:
   where a real file's `#$ CONTROL` header sits, one past its 61-line `VERSION` block — if the file
   that triggered it was a Conduit-synthesized fixture rather than a round-tripped real file. Not
   yet confirmed which case applies.
-- **`#$ WIND`**: always exactly 1 six-value data line, even with no wind load (see "Key structural
-  facts" above) — previously emitted as header-only.
+- **`#$ WIND`**: header-only when `NumWindLoads = 0` (no wind load), one 6-value data line when
+  `NumWindLoads = 1` — see "Key structural facts" above; corrected 2026-08-26 after an earlier fix
+  here wrongly made it *always* carry a data row regardless of the count (see QUESTIONS.md).
 - **`#$ COORDS`**: lists the start coordinate of every *discontinuous* piping segment (a segment
   whose `FromNode` isn't the previous element's `ToNode`) — format `(2X, I13)` for the `NXYZ`
   count, then `(2X, I13, 3F13.4)` per entry. Optional per the vendor doc ("may not exist") but
@@ -330,8 +334,8 @@ confirmed byte-for-byte against 4 real samples and `NeutralFile-v15.pdf`:
 
 **Update (2026-08-26)**: the user supplied three real, explicitly-safe-to-commit `.cii` files —
 `fixtures/real-samples/TESTv15.cii`, `TESTv15_slugged.cii`, `44002.cii` — unblocking the patch half
-of the blend. These reconfirmed every fix above byte-for-byte (same 61-line `VERSION`, 1-line
-`WIND`, 28-line "AIBEL (mm)" `UNITS` block) and surfaced a new fact: their `#$ ELEMENTS` geometry
+of the blend. These reconfirmed most of the fixes above byte-for-byte (same 61-line `VERSION`,
+28-line "AIBEL (mm)" `UNITS` block) and surfaced a new fact: their `#$ ELEMENTS` geometry
 (`DeltaX/Y/Z`, OD, wall thickness) is in **millimetres**, confirmed via a 355.6 mm OD element being
 exactly a 14" pipe OD in mm. Every `NeutralFileFixtureBuilder`-produced fixture up to this point
 used inch-scale numbers instead (e.g. `OutsideDiameter: 6.625`) — harmless for the fixtures'
@@ -355,8 +359,20 @@ regression test (`ElementSectionFormatTests`) asserting the byte format against 
 it can't regress silently. Also resolved the `SpanLimitCalculator` unit-blindness question from the
 previous update: per direct instruction, Conduit's calculations now default to metric (mm/N/MPa/kg)
 and convert non-metric file data to match, with every span message printing its unit — see
-`QUESTIONS.md`'s "Resolved: SpanLimitCalculator's unit-blindness" entry. **Next step**: get the
-user's `iecho.exe` retest result against the regenerated `fixtures/loop-50m-3d.cii`.
+`QUESTIONS.md`'s "Resolved: SpanLimitCalculator's unit-blindness" entry.
+
+**Update (2026-08-26, retest)**: the ELEMENTS fix confirmed correct — `iecho.exe` no longer errors
+on the `#$ ELEMENTS` section. It now errors further along, at `#$ OFFSETS`, on *both* the raw
+`loop-50m-3d.cii` and the `optimize`d `out.cii`. Same diagnostic approach: byte-diffed the
+transition into that section against the real samples and found `#$ WIND` was the actual problem —
+see the corrected "Key structural facts" bullet above and QUESTIONS.md's "Fixed: WIND section
+unconditionally populated" entry. Fixed and regenerated all three built fixtures again, with a new
+regression test (`SectionCountConsistencyTests`) checking every count-gated section's line count
+against its `#$ CONTROL` field, for both the real samples and Conduit's own output — this class of
+bug (a section's content not matching its own count) is confirmed to surface as an error several
+sections later, not at the section that's actually wrong, so a byte-count check is worth more here
+than trusting where `iecho.exe` says the error is. **Next step**: get the user's `iecho.exe`
+retest result against the regenerated `fixtures/loop-50m-3d.cii`.
 
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —
