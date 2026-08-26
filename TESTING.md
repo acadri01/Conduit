@@ -83,7 +83,7 @@ You should see output like:
 ```
 Conduit optimize: fixtures\straight-run.cii -> out.cii
 
-  Piping code assumed: B31.3_2020 (from caesar.cfg)
+  Piping code assumed: B31.3_2024 (from caesar.cfg)
   Material database (caesar.cfg): system directory 'SYSTEM', user material file 'UMAT1.UMD'
 
   - Placed 3 initial support(s):
@@ -286,7 +286,7 @@ files together):
 ```bash
 mkdir -p /tmp/conduit-check && cp fixtures/straight-run.cii fixtures/caesar.cfg /tmp/conduit-check/
 dotnet run --project src/Conduit.Cli -- optimize /tmp/conduit-check/straight-run.cii /tmp/conduit-check/out.cii
-# expect: "Piping code assumed: B31.3_2020 (from caesar.cfg)" and the material-database line
+# expect: "Piping code assumed: B31.3_2024 (from caesar.cfg)" and the material-database line
 
 dotnet run --project src/Conduit.Cli -- optimize fixtures/straight-run.cii /tmp/out-noconfig.cii
 # expect: "Piping code assumed: B31.3_2024 (default — no caesar.cfg DEFAULT_CODE found)"
