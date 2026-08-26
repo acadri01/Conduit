@@ -24,6 +24,9 @@ public sealed class NeutralFile
     /// <summary>Nozzle/equipment load limits from <c>#$ EQUIPMNT</c>.</summary>
     public required IReadOnlyList<NozzleLimit> NozzleLimits { get; init; }
 
+    /// <summary>This file's length-unit conversion, from <c>#$ UNITS</c> (defaults to <see cref="UnitsSection.Metric"/>).</summary>
+    public required UnitsSection Units { get; init; }
+
     /// <summary>
     /// Appends a new support and keeps <see cref="Control"/>'s restraint count in sync so the
     /// regenerated <c>#$ CONTROL</c> section matches the regenerated <c>#$ RESTRANT</c> section.

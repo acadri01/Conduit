@@ -45,6 +45,9 @@ public static class NeutralFileReader
             ? new List<int>()
             : ParseMaterialIds(miscel1Block.RawLines, control.NumElements);
 
+        var unitsBlock = FindBlock(blocks, "UNITS");
+        var units = UnitsSection.Parse(unitsBlock);
+
         return new NeutralFile
         {
             Blocks = blocks,
@@ -55,6 +58,7 @@ public static class NeutralFileReader
             MaterialIds = materialIds,
             AllowableStresses = allowableStresses,
             NozzleLimits = nozzleLimits,
+            Units = units,
         };
     }
 

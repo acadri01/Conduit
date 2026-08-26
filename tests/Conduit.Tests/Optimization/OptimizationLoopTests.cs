@@ -17,7 +17,7 @@ public class OptimizationLoopTests
     public void StraightRun_PassesAfterInitialPlacement()
     {
         var segments = Enumerable.Range(0, 18)
-            .Select(i => NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 50))
+            .Select(i => NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 1270))
             .ToList();
         var file = NeutralFileFixtureBuilder.Build(segments, [10, 190]);
 

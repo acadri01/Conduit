@@ -34,15 +34,15 @@ public sealed class MockStressSolver : IStressSolver
                 return;
             }
 
-            var actualSpan = segment.Sum(e => e.Length);
+            var actualSpan = segment.Sum(e => e.Length) * file.Units.LengthToMillimetres;
             var allowableSpan = segment.Min(e => SpanLimitCalculator.ComputeMaxSpan(file, e));
             var fromNode = segment[0].FromNode;
             var toNode = segment[^1].ToNode;
 
             var passed = allowableSpan <= 0 || actualSpan <= allowableSpan;
             var message = passed
-                ? $"Span {fromNode}->{toNode} ({actualSpan:F2}) is within the allowable span ({allowableSpan:F2})."
-                : $"Span {fromNode}->{toNode} ({actualSpan:F2}) exceeds the allowable span ({allowableSpan:F2}).";
+                ? $"Span {fromNode}->{toNode} ({actualSpan:F2} mm) is within the allowable span ({allowableSpan:F2} mm)."
+                : $"Span {fromNode}->{toNode} ({actualSpan:F2} mm) exceeds the allowable span ({allowableSpan:F2} mm).";
 
             findings.Add(new StressFinding(fromNode, toNode, actualSpan, allowableSpan, message));
             segment.Clear();

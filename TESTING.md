@@ -87,14 +87,18 @@ Conduit optimize: fixtures\straight-run.cii -> out.cii
   Material database (caesar.cfg): system directory 'SYSTEM', user material file 'UMAT1.UMD'
 
   - Placed 3 initial support(s):
-  - node 60 (Rest, PlusY): span 300.00 would exceed the max allowable span of 253.79 at node 60 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
-  - node 110 (Rest, PlusY): span 300.00 would exceed the max allowable span of 253.79 at node 110 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
-  - node 160 (Rest, PlusY): span 300.00 would exceed the max allowable span of 253.79 at node 160 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
+  - node 60 (Rest, PlusY): span 7620.00 mm would exceed the max allowable span of 6446.76 mm at node 60 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
+  - node 110 (Rest, PlusY): span 7620.00 mm would exceed the max allowable span of 6446.76 mm at node 110 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
+  - node 160 (Rest, PlusY): span 7620.00 mm would exceed the max allowable span of 6446.76 mm at node 160 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
 
 Iterations: 1
 
 PASS
 ```
+All spans and distances Conduit prints are in millimetres, labeled — Conduit always computes in
+metric (mm/N/MPa/kg), converting a non-metric file's own data to match first, regardless of what
+unit system the input file itself uses (see `docs/neutral-file/WALKTHROUGH.md`'s `#$ UNITS`
+section).
 What this means:
 - It read `fixtures\straight-run.cii` (a small, synthetic — not real-project — example file
   committed in this repo for exactly this purpose).
@@ -207,7 +211,7 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 30 tests, all
+`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 46 tests, all
 expected to pass on every commit. A failing test blocks the change; there are no known-flaky or
 skipped tests in this project.
 
@@ -218,7 +222,15 @@ skipped tests in this project.
   restraint is added, and the malformed-file parse-error path. Uses the committed fixtures under
   `fixtures/*.cii`.
 - `tests/Conduit.Tests/Heuristics/SpanLimitCalculatorTests.cs` — the beam-theory max-span formula,
-  including the real-`#$ ALLOWBLS`-vs-default-constant fallback behavior.
+  including the real-`#$ ALLOWBLS`-vs-default-constant fallback behavior. All geometry here is
+  millimetre-scale — Conduit's default unit system (see `docs/neutral-file/WALKTHROUGH.md`'s
+  `#$ UNITS` section).
+- `tests/Conduit.Tests/NeutralFiles/ElementSectionFormatTests.cs` — the `#$ ELEMENTS` record's
+  exact byte layout, checked against both `NeutralFileFixtureBuilder`'s output and all 3 real
+  samples in `fixtures/real-samples/`, plus `UnitsSection.Parse`'s CNVLEN-based metric/English
+  detection. Guards specifically against the class of bug that made `iecho.exe` reject a
+  Conduit-generated file (a real-format field written where the real samples use plain integers)
+  — see `docs/neutral-file/WALKTHROUGH.md` for the full field-by-field layout this checks against.
 - `tests/Conduit.Tests/Heuristics/SupportTypeClassifierTests.cs` — rest/guide/anchor
   classification rules in isolation.
 - `tests/Conduit.Tests/Heuristics/SupportPlacerTests.cs` — the run-walking placement algorithm:
@@ -285,7 +297,16 @@ to point `run-and-log.sh` or a manual `iecho.exe` test at directly.
 3D expansion loop (up in Y, out in Z, back down, back in Z) at the midpoint, in millimetre-scale
 geometry matching the real samples' unit convention. It exists specifically to test whether
 `iecho.exe` accepts a Conduit-generated file — run it through iecho on your own CAESAR II machine
-and report back what happens; see `QUESTIONS.md` for the current status of that check.
+and report back what happens; see `QUESTIONS.md` for the current status of that check (as of
+2026-08-26: a first real-world test found and fixed one structural bug — the `#$ ELEMENTS`
+color/visibility line — and this file has been regenerated with the fix, but not yet retested
+against `iecho.exe`).
+
+**`docs/neutral-file/WALKTHROUGH.md`** is the step-by-step, field-by-field guide to the neutral
+file format itself — what every section and field means, confirmed against both
+`reference/NeutralFile-v15.pdf` and these real samples' actual bytes, including every format
+gotcha found so far. Read it before changing anything about how Conduit reads or writes a `.cii`
+file.
 
 ## Adding or changing a fixture
 

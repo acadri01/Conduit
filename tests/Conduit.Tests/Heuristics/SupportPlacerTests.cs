@@ -11,7 +11,7 @@ public class SupportPlacerTests
     public void StraightRun_PlacesOnlyRestSupports_SpacedUnderMaxSpan()
     {
         var segments = Enumerable.Range(0, 18)
-            .Select(i => NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 50))
+            .Select(i => NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 1270))
             .ToList();
         var file = NeutralFileFixtureBuilder.Build(segments, [10, 190]);
 
@@ -26,7 +26,7 @@ public class SupportPlacerTests
     public void PlacedSupports_KeepEachSegmentUnderItsMaxAllowableSpan()
     {
         var segments = Enumerable.Range(0, 18)
-            .Select(i => NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 50))
+            .Select(i => NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 1270))
             .ToList();
         var file = NeutralFileFixtureBuilder.Build(segments, [10, 190]);
 
@@ -65,9 +65,9 @@ public class SupportPlacerTests
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>();
         for (var i = 0; i < 4; i++)
         {
-            segments.Add(NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 50));
+            segments.Add(NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 1270));
         }
-        segments.Add(NeutralFileFixtureBuilder.Schedule40Riser(50, 60, 80));
+        segments.Add(NeutralFileFixtureBuilder.Schedule40Riser(50, 60, 2032));
         for (var i = 0; i < 4; i++)
         {
             segments.Add(NeutralFileFixtureBuilder.Schedule40Run(60 + (i * 10), 70 + (i * 10), 50));
@@ -83,7 +83,7 @@ public class SupportPlacerTests
     public void CandidateNearRunEndpoint_IsClassifiedAsAnchor()
     {
         // A short run where the very first candidate falls inside the near-endpoint zone.
-        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec> { NeutralFileFixtureBuilder.Schedule40Run(10, 20, 5) };
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec> { NeutralFileFixtureBuilder.Schedule40Run(10, 20, 127) };
         var file = NeutralFileFixtureBuilder.Build(segments, [10, 20]);
 
         // No intermediate node exists here, so instead assert the classifier itself (used by the

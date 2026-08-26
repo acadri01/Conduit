@@ -23,6 +23,10 @@ paraphrase instead of verifying against real files and these documents together.
   Restraints, Displacements, Stresses, …) and the Report Template Editor for defining a stable,
   parseable custom report layout.
 
-Not here, and never committed: the real sample `.cii` files and the Python neutral-file-generator
-programs the user has shared for context — those stay off-repo per the clean-room constraint (see
-QUESTIONS.md). This folder is for the *public* documentation only.
+Not here, and never committed: the Python neutral-file-generator programs (`iecho.py`,
+`lift_case_builder.py`) the user has shared for context — those stay off-repo per the clean-room
+constraint (see QUESTIONS.md). This folder is for the *public* documentation only. Three real
+`.cii` samples the user explicitly authorized committing (a narrow exception to the clean-room
+rule, for these three files only) live at `fixtures/real-samples/` instead — see
+`docs/neutral-file/WALKTHROUGH.md` for how they're used to confirm this documentation's claims
+against actual CAESAR II output.

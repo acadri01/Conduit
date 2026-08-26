@@ -7,8 +7,8 @@ namespace Conduit.Core.Stress;
 /// </summary>
 /// <param name="FromNode">The node bounding the start of the checked span.</param>
 /// <param name="ToNode">The node bounding the end of the checked span.</param>
-/// <param name="ActualSpan">The actual unsupported length between the two nodes.</param>
-/// <param name="AllowableSpan">The max allowable span computed for that stretch of pipe.</param>
+/// <param name="ActualSpan">The actual unsupported length between the two nodes, in millimetres.</param>
+/// <param name="AllowableSpan">The max allowable span computed for that stretch of pipe, in millimetres.</param>
 /// <param name="Message">A human-readable explanation, surfaced in the CLI summary.</param>
 public sealed record StressFinding(int FromNode, int ToNode, double ActualSpan, double AllowableSpan, string Message)
 {

@@ -105,9 +105,10 @@ public static class SupportPlacer
         List<PlacedSupport> placed)
     {
         var izup = file.Control.Izup;
+        var toMillimetres = file.Units.LengthToMillimetres;
         var runStartNode = run[0].FromNode;
         var runEndNode = run[^1].ToNode;
-        var runLength = run.Sum(e => e.Length);
+        var runLength = run.Sum(e => e.Length) * toMillimetres;
 
         var distanceFromRunStart = 0.0;
         var accumulatedSinceLastSupport = 0.0;
@@ -117,8 +118,9 @@ public static class SupportPlacer
         foreach (var element in run)
         {
             var isVertical = IsVertical(element, izup);
-            var maxSpan = SpanLimitCalculator.ComputeMaxSpan(file, element);
-            var prospective = accumulatedSinceLastSupport + element.Length;
+            var maxSpan = SpanLimitCalculator.ComputeMaxSpan(file, element); // millimetres
+            var elementLength = element.Length * toMillimetres;
+            var prospective = accumulatedSinceLastSupport + elementLength;
 
             var reachedEndOfRun = element.ToNode == runEndNode;
             var wouldExceedSpan = maxSpan > 0 && prospective > maxSpan;
@@ -127,7 +129,7 @@ public static class SupportPlacer
             {
                 var distanceToEnd = runLength - distanceFromRunStart;
                 var distanceToRunEndpoint = Math.Min(distanceFromRunStart, distanceToEnd);
-                var distanceToEquipment = DistanceToNearestNozzle(positions, element.FromNode, nozzleNodePositions);
+                var distanceToEquipment = DistanceToNearestNozzle(positions, element.FromNode, nozzleNodePositions, toMillimetres);
                 var distanceToNearestEndpoint = Math.Min(distanceToRunEndpoint, distanceToEquipment);
 
                 var context = new SupportCandidateContext(
@@ -136,20 +138,20 @@ public static class SupportPlacer
 
                 var classification = SupportTypeClassifier.Classify(context, maxSpan);
                 var restraintType = RestraintTypeMapper.Map(classification.Type, izup);
-                var reason = $"span {prospective:F2} would exceed the max allowable span of {maxSpan:F2} at node " +
+                var reason = $"span {prospective:F2} mm would exceed the max allowable span of {maxSpan:F2} mm at node " +
                              $"{element.FromNode} — {classification.Reason}";
                 placed.Add(new PlacedSupport(element.FromNode, classification.Type, restraintType, reason));
 
                 alreadySupported.Add(element.FromNode);
                 lastSupportNode = element.FromNode;
-                accumulatedSinceLastSupport = element.Length;
+                accumulatedSinceLastSupport = elementLength;
             }
             else
             {
                 accumulatedSinceLastSupport = prospective;
             }
 
-            distanceFromRunStart += element.Length;
+            distanceFromRunStart += elementLength;
 
             if (reachedEndOfRun)
             {
@@ -161,13 +163,14 @@ public static class SupportPlacer
     private static double DistanceToNearestNozzle(
         Dictionary<int, (double X, double Y, double Z)>? positions,
         int node,
-        List<(double X, double Y, double Z)> nozzleNodePositions)
+        List<(double X, double Y, double Z)> nozzleNodePositions,
+        double toMillimetres)
     {
         if (positions is null || nozzleNodePositions.Count == 0 || !positions.TryGetValue(node, out var here))
         {
             return double.PositiveInfinity;
         }
-        return nozzleNodePositions.Min(p => Distance(here, p));
+        return nozzleNodePositions.Min(p => Distance(here, p)) * toMillimetres;
     }
 
     private static double Distance((double X, double Y, double Z) a, (double X, double Y, double Z) b) =>

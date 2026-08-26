@@ -342,10 +342,21 @@ user's direction since it's cross-cutting support-placement math, not a single s
 
 Built `fixtures/loop-50m-3d.cii` per direct instruction: a straight 50 m leg in X with a 3D
 expansion loop (up in Y, out in Z, back down, back in Z) at the midpoint, using millimetre-scale
-geometry and metric OD/WT (168.3/7.11 mm) to match the real samples' unit convention. **Next
-step**: get the user's `iecho.exe` test result against this file (structural acceptance, decoupled
-from the `SpanLimitCalculator` issue above); if it fails, diagnose from the reported error the same
-way the `VERSION`/`WIND`/`UNITS` bugs were found.
+geometry and metric OD/WT (168.3/7.11 mm) to match the real samples' unit convention.
+
+**Update (2026-08-26, continued)**: `iecho.exe` still rejected the loop file — "Error processing
+ELEMENT section, line # 79". Byte-diffed against the real samples at that exact line and found a
+second structural bug: the element record's "line color, line visibility" field was written in
+real/scientific-notation format, while every element in all 3 real samples writes it as plain
+integers (`             -1           -1`) instead — see `docs/neutral-file/WALKTHROUGH.md`'s
+`#$ ELEMENTS` section for the full field-by-field layout this was checked against, and
+`QUESTIONS.md`'s "Fixed: ELEMENTS color/visibility line format" entry for detail. Fixed, with a
+regression test (`ElementSectionFormatTests`) asserting the byte format against the real samples so
+it can't regress silently. Also resolved the `SpanLimitCalculator` unit-blindness question from the
+previous update: per direct instruction, Conduit's calculations now default to metric (mm/N/MPa/kg)
+and convert non-metric file data to match, with every span message printing its unit — see
+`QUESTIONS.md`'s "Resolved: SpanLimitCalculator's unit-blindness" entry. **Next step**: get the
+user's `iecho.exe` retest result against the regenerated `fixtures/loop-50m-3d.cii`.
 
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —

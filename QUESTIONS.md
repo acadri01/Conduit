@@ -497,3 +497,64 @@ context, and confirmed upfront they should not be included in the repo — same 
 established for `iecho.py`/`lift_case_builder.py`. Logged here so the pattern is applied
 automatically whenever those are shared: read/understand for context, do not copy logic
 verbatim, do not commit the files themselves.
+
+## Fixed: ELEMENTS color/visibility line format — confirmed root cause of iecho.exe's "line # 79" rejection (2026-08-26)
+Direct follow-up to the "line # 79" error on `fixtures/loop-50m-3d.cii`'s ELEMENTS section
+(screenshot attached to the PR). Byte-diffed the file against `fixtures/real-samples/*.cii` at the
+exact failing line and found `NeutralFileFixtureBuilder`'s element record writer wrote the "line
+color, line visibility" field (item 3 in `NeutralFile-v15.pdf`'s element-name-block list) as
+real/scientific-notation values (`0.000000E+00-1.000000E+00`) via `FixedWidth.FormatRealLines`,
+while **every element in all 3 real samples** (49 elements checked) writes this field as plain
+13-char-wide integers instead: `             -1           -1`, byte-identical every time. This
+contradicts `NeutralFile-v15.pdf`'s own stated format for that field ("(2X, 6G13.6)" — real-value
+format) — a case of the vendor doc and the real files actively disagreeing, not just the doc being
+silent. Per CLAUDE.md's "the PDFs can't [drift], but a paraphrase can" — extended here to also mean
+the real files, being CAESAR II's own actual output, are the higher-trust source when the two
+disagree. Fixed `NeutralFileFixtureBuilder.BuildElementLines` to use
+`FixedWidth.FormatIntLines([-1, -1])`; regenerated `fixtures/loop-50m-3d.cii`,
+`fixtures/straight-run.cii`, `fixtures/run-with-riser.cii` with the fix. Added
+`ElementSectionFormatTests` (byte-for-byte assertions against both Conduit's own output and all 3
+real samples) so this can't silently regress. Documented in the new
+`docs/neutral-file/WALKTHROUGH.md` (the "own folder of instructions" the user asked for) as a
+named gotcha. **Not yet confirmed against a fresh `iecho.exe` run** — this was the only structural
+difference found between the rejected file and the real samples at every level checked (VERSION
+line count, WIND/UNITS/COORDS presence, ELEMENTS record byte layout field-by-field), so confidence
+is high, but only an actual `iecho.exe` retest closes this out. **Next step**: ask the user to
+retest `fixtures/loop-50m-3d.cii` against `iecho.exe` and report the result.
+
+## Resolved: SpanLimitCalculator's unit-blindness — mm/metric is now Conduit's default, per direct instruction (2026-08-26)
+Direct answer to the blocking question logged above ("SpanLimitCalculator's unit-blindness"): "I
+would also like you to use mm as the default... the conduit calculations should consider metric
+formulations and convert to this for all computations if there are different inputs. I would like
+the output to include units." Implemented:
+- New `UnitsSection` (`src/Conduit.Core/NeutralFiles/UnitsSection.cs`), parsed from `#$ UNITS`'s
+  first conversion constant (CNVLEN — confirmed `25.4` in all 3 real samples, meaning "native
+  length units per inch"). `LengthToMillimetres = 25.4 / CNVLEN`; a missing/unparseable `#$ UNITS`
+  block defaults to metric (`UnitsSection.Metric`), per direct instruction — mm is the default,
+  not a fallback-of-last-resort. Wired into `NeutralFile.Units`, populated by both
+  `NeutralFileReader` and `NeutralFileFixtureBuilder`.
+- `SpanLimitCalculator` now always computes and returns span in millimetres. For a metric file, it
+  computes directly in mm/N/MPa/kg. For a (still-supported, in case a real English-unit file shows
+  up later) English file, it converts geometry/stress/density to metric first, then computes —
+  matching "convert to this for all computations if there are different inputs" literally. Density
+  handling required care: a metric file's pipe/insulation/fluid density fields are *mass* density
+  (kg/m³, confirmed against `#$ UNITS`'s CNVPDN=27680 constant, which numerically round-trips
+  exactly through g=9.80665 m/s² to the equivalent English weight-density constant), so they need
+  an explicit gravity conversion to weight-density that an English file's lbf/in³ fields don't.
+  New default constants: `DefaultAllowableBendingStressMpa`/`DefaultSteelDensityKgPerM3` (derived
+  from the existing psi/lb-in³ defaults via the same conversion factors, not independently chosen).
+- `SupportPlacer`, `MockStressSolver`, and `OptimizationLoop`'s span-report messages now all work
+  in millimetres and print " mm" after every span/distance value — directly addressing "I do not
+  know what span ... would exceed ... at the node... I am fairly sure the system should manage
+  more than 300 mm".
+- Switched `NeutralFileFixtureBuilder.Schedule40Run`/`Schedule40Riser` (and every test/fixture that
+  calls them) from inch-scale geometry (OD 6.625 in) to the real metric equivalent (OD 168.3 mm) —
+  Conduit's own test fixtures should reflect its own new default, not the old assumption.
+  Regenerated `fixtures/straight-run.cii`/`run-with-riser.cii` accordingly (physically identical
+  pipe, just expressed in mm and with metric UNITS labels, which they already had).
+- Verified against `fixtures/real-samples/TESTv15.cii`: before this fix, `conduit optimize`
+  reported nonsense ("10834.11 > 12.60", failing after 5 iterations); after, it reports
+  "10834.11 mm > 7035.44 mm" and passes in 2 — a physically sane ~7 m allowable span for that
+  pipe, not a ~13 mm one. This is the exact symptom the user reported.
+37/37 pre-existing tests updated and passing, 9 new tests added (46/46 total), `dotnet build`
+clean.

@@ -62,11 +62,11 @@ public static class OptimizationLoop
         {
             var restraintType = RestraintTypeMapper.Map(SupportType.Rest, file.Control.Izup);
             file.AddRestraint(Restraint.CreateSingleDof(node, restraintType));
-            return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} > {finding.AllowableSpan:F2}) — " +
+            return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) — " +
                    $"added an intermediate rest support at node {node}.";
         }
 
-        return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} > {finding.AllowableSpan:F2}) has no room " +
+        return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) has no room " +
                "for an intermediate support — left as a reported failure.";
     }
 

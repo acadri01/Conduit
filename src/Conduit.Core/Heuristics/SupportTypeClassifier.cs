@@ -42,7 +42,7 @@ public static class SupportTypeClassifier
         if (maxAllowableSpan > 0 && context.DistanceToNearestRunEndpoint <= maxAllowableSpan * NozzleProximityFraction)
         {
             return new SupportClassification(SupportType.Anchor,
-                $"within {NozzleProximityFraction:P0} of the max allowable span ({context.DistanceToNearestRunEndpoint:F2} of {maxAllowableSpan:F2}) " +
+                $"within {NozzleProximityFraction:P0} of the max allowable span ({context.DistanceToNearestRunEndpoint:F2} mm of {maxAllowableSpan:F2} mm) " +
                 "from a run endpoint — treated as near an equipment nozzle connection, so an anchor is used");
         }
 

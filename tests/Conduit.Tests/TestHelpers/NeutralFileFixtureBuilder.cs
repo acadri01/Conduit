@@ -1,3 +1,4 @@
+using Conduit.Core.Heuristics;
 using Conduit.Core.NeutralFiles;
 
 namespace Conduit.Tests.TestHelpers;
@@ -19,13 +20,13 @@ public static class NeutralFileFixtureBuilder
         double WallThickness,
         double PipeDensity);
 
-    /// <summary>A 6" Sch 40 carbon-steel segment of the given length along the X axis.</summary>
+    /// <summary>A 6" Sch 40 carbon-steel segment of the given length (mm) along the X axis.</summary>
     public static PipeSegmentSpec Schedule40Run(int fromNode, int toNode, double length) =>
-        new(fromNode, toNode, DeltaX: length, DeltaY: 0, DeltaZ: 0, OutsideDiameter: 6.625, WallThickness: 0.280, PipeDensity: 0.2836);
+        new(fromNode, toNode, DeltaX: length, DeltaY: 0, DeltaZ: 0, OutsideDiameter: 168.3, WallThickness: 7.11, PipeDensity: SpanLimitCalculator.DefaultSteelDensityKgPerM3);
 
-    /// <summary>A 6" Sch 40 carbon-steel vertical riser segment of the given length (Y-up).</summary>
+    /// <summary>A 6" Sch 40 carbon-steel vertical riser segment of the given length (mm, Y-up).</summary>
     public static PipeSegmentSpec Schedule40Riser(int fromNode, int toNode, double length) =>
-        new(fromNode, toNode, DeltaX: 0, DeltaY: length, DeltaZ: 0, OutsideDiameter: 6.625, WallThickness: 0.280, PipeDensity: 0.2836);
+        new(fromNode, toNode, DeltaX: 0, DeltaY: length, DeltaZ: 0, OutsideDiameter: 168.3, WallThickness: 7.11, PipeDensity: SpanLimitCalculator.DefaultSteelDensityKgPerM3);
 
     /// <summary>Builds a standalone <see cref="Element"/> from a spec, for tests that need one without a whole file.</summary>
     public static Element ToElement(this PipeSegmentSpec segment) =>
@@ -75,7 +76,7 @@ public static class NeutralFileFixtureBuilder
         AddBlock("FLANGES");
         AddBlock("EQUIPMNT");
         AddBlock("MISCEL_1", FixedWidth.FormatRealLines(segments.Select(_ => 1.0).ToList()));
-        AddBlock("UNITS", BuildUnitsLines());
+        var unitsBlock = AddBlock("UNITS", BuildUnitsLines());
         AddBlock("COORDS", BuildCoordsLines());
 
         var control = new ControlSection
@@ -117,6 +118,7 @@ public static class NeutralFileFixtureBuilder
             MaterialIds = segments.Select(_ => 1).ToList(),
             AllowableStresses = [],
             NozzleLimits = [],
+            Units = UnitsSection.Parse(unitsBlock),
         };
 
         // Regenerate CONTROL/RESTRANT raw lines from the model right away, so the returned
@@ -204,7 +206,12 @@ public static class NeutralFileFixtureBuilder
             lines.AddRange(FixedWidth.FormatRealLines(real));
             lines.Add(FixedWidth.FormatLengthPrefixedString(string.Empty));
             lines.Add(FixedWidth.FormatLengthPrefixedString(string.Empty));
-            lines.AddRange(FixedWidth.FormatRealLines([0, -1]));
+            // Line color/line visibility: NeutralFile-v15.pdf labels this (2X, 6G13.6) — real-value
+            // format — but all 3 real samples (fixtures/real-samples/*.cii) write it as plain
+            // integers ("-1 -1", no decimal/E-notation) instead. Writing it as a real (the bug this
+            // replaced) is a confirmed cause of iecho.exe's "Error processing ELEMENT section, line
+            // # NN" — see QUESTIONS.md's "ELEMENTS color/visibility line" entry.
+            lines.AddRange(FixedWidth.FormatIntLines([-1, -1]));
             lines.AddRange(FixedWidth.FormatIntLines(new long[15]));
         }
         return lines;

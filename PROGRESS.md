@@ -203,3 +203,23 @@ running status log Claude appends to (skim this from mobile)
   note, both future support-placement inputs. 37/37 tests still passing; `dotnet build`/`test`
   clean. Asked the user to test `fixtures/loop-50m-3d.cii` directly against `iecho.exe` and report
   back.
+- 2026-08-26: `iecho.exe` still rejected `loop-50m-3d.cii` ("Error processing ELEMENT section,
+  line # 79"). Byte-diffed against the real samples at that line and found + fixed the actual
+  cause: `NeutralFileFixtureBuilder` wrote the element's "line color, line visibility" field in
+  real/E-notation format, while all 3 real samples (49 elements checked) write it as plain
+  integers (`-1 -1`) instead — contradicts `NeutralFile-v15.pdf`'s own stated format for that
+  field, so the real files won per CLAUDE.md's "trust the primary source" rule extended to mean
+  "trust real output over a doc's prose when they disagree." Regenerated
+  `loop-50m-3d.cii`/`straight-run.cii`/`run-with-riser.cii` with the fix. Also resolved the
+  `SpanLimitCalculator` unit-blindness question from the previous round, per direct instruction:
+  added `UnitsSection` (parses `#$ UNITS`'s CNVLEN constant), made mm/metric Conduit's default
+  computation unit system with automatic conversion for non-metric files, and added " mm" labels
+  to every span/distance message across `SupportPlacer`/`MockStressSolver`/`OptimizationLoop`.
+  Verified against `fixtures/real-samples/TESTv15.cii`: `conduit optimize` now reports
+  "10834.11 mm > 7035.44 mm" (physically sane) instead of the previous "10834.11 > 12.60"
+  (nonsensical psi/lb-calibrated garbage), and passes instead of failing after 5 iterations —
+  exactly the symptom the user reported. Also built `docs/neutral-file/WALKTHROUGH.md` (the
+  dedicated field-by-field build guide the user asked for) and
+  `ElementSectionFormatTests`/`UnitsSection`-related tests (46/46 passing, up from 37) guarding
+  the fixes against silent regression. Updated SPEC.md/QUESTIONS.md/TESTING.md accordingly; asked
+  the user to retest `loop-50m-3d.cii` against `iecho.exe`.
