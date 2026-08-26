@@ -211,7 +211,7 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 51 tests, all
+`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 55 tests, all
 expected to pass on every commit. A failing test blocks the change; there are no known-flaky or
 skipped tests in this project.
 
@@ -241,6 +241,9 @@ skipped tests in this project.
   hanger-table-defaults/execution-options block (present unconditionally, unlike everything else
   in the section) against the byte layout confirmed from the real samples — a third confirmed
   class of the same "content missing where the reader expects it unconditionally" bug.
+- `tests/Conduit.Tests/NeutralFiles/BendFormatTests.cs` — `#$ BEND` record byte layout, the
+  corner-element pointer wiring (1-based, matching `bendNodes`' order), `#$ CONTROL`'s `NumBends`
+  count, and the no-bends case (empty section, all-zero pointers).
 - `tests/Conduit.Tests/Heuristics/SupportTypeClassifierTests.cs` — rest/guide/anchor
   classification rules in isolation.
 - `tests/Conduit.Tests/Heuristics/SupportPlacerTests.cs` — the run-walking placement algorithm:
@@ -307,11 +310,14 @@ to point `run-and-log.sh` or a manual `iecho.exe` test at directly.
 3D expansion loop (up in Y, out in Z, back down, back in Z) at the midpoint, in millimetre-scale
 geometry matching the real samples' unit convention. It exists specifically to test whether
 `iecho.exe` accepts a Conduit-generated file — run it through iecho on your own CAESAR II machine
-and report back what happens; see `QUESTIONS.md` for the current status of that check (as of
-2026-08-26: three real-world test rounds found and fixed three structural bugs — the
-`#$ ELEMENTS` color/visibility line, a `#$ WIND`/`#$ CONTROL` count mismatch, and a missing
-`#$ MISCEL_1` trailing block — and this file has been regenerated with all three fixes, but not
-yet retested against `iecho.exe`).
+and report back what happens. **Confirmed working as of 2026-08-26**: after three real-world test
+rounds found and fixed three structural bugs (the `#$ ELEMENTS` color/visibility line, a
+`#$ WIND`/`#$ CONTROL` count mismatch, and a missing `#$ MISCEL_1` trailing block — see
+`docs/neutral-file/WALKTHROUGH.md`), a `NeutralFileFixtureBuilder`-generated file converts
+successfully through `iecho.exe` on a real CAESAR II install. The file's geometry was also
+corrected afterward (a proper expansion loop with bends, not the original open zigzag) — if you
+change the fixture builder in a way that touches file structure again, re-verify against
+`iecho.exe` the same way.
 
 **`docs/neutral-file/WALKTHROUGH.md`** is the step-by-step, field-by-field guide to the neutral
 file format itself — what every section and field means, confirmed against both

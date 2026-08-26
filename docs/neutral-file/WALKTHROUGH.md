@@ -18,6 +18,15 @@ PDF's prose and the real samples' actual bytes disagree in at least one confirme
 ELEMENTS color/visibility line, below) — when they disagree, the real sample wins, because it's
 proof of what CAESAR II's own writer/reader actually do, not just what the docs say they do.
 
+**Status (2026-08-26): a `NeutralFileFixtureBuilder`-generated file now converts successfully
+through `iecho.exe`** (`fixtures/loop-50m-3d.cii`, confirmed by the user against a real CAESAR II
+install), after fixing three confirmed structural bugs in sequence — `#$ ELEMENTS`'s
+color/visibility line, `#$ WIND` being unconditionally populated, and `#$ MISCEL_1`'s missing
+trailing block (each documented in its own section below). This walkthrough and the regression
+tests it references (`ElementSectionFormatTests`, `SectionCountConsistencyTests`,
+`Miscel1FormatTests`, `BendFormatTests`) are the current source of truth for what a Conduit-built
+`.cii` file needs — keep both in sync with any future structural fix the same way.
+
 ## File-level rules
 
 - **CRLF line endings, always.** `NeutralFileWriter` writes CRLF on every platform regardless of
@@ -154,6 +163,34 @@ slightly different values for a few fields in that block — apparently an insta
 default rather than a universal constant, similar to `#$ UNITS`'s per-install `CCVNAME` — logged
 as a low-priority open question in QUESTIONS.md rather than guessed at. `Miscel1FormatTests`
 guards the trailing block's exact byte layout.
+
+## `#$ BEND`
+
+Each bend is a fixed **3-line, 14-value record** (13 documented items plus an always-zero 14th,
+"Overlay Thickness" — confirmed against `44002.cii`'s 13 real bends): bend radius, type
+(0=welded), then three angle/node-number pairs ("angle to node position #1/#2/#3", each paired
+with a node number, position #3 unused/zero in every real bend checked), number of miter cuts,
+fitting thickness, seam-weld flag, bend flexibility (K) factor, weld strength reduction factor.
+
+The corner **element** that has the bend (the element whose `ToNode` is the bend's corner node)
+carries a 1-based pointer to its `#$ BEND` record in `AuxiliaryPointers[0]` — the same pointer
+mechanism as every other auxiliary section. **The bend record's "node position #1/#2" values are
+*not* the corner node itself** — they're CAESAR II's own auto-generated near/far tangent-point
+node numbers, confirmed (in `44002.cii`) to never appear as a real `FromNode`/`ToNode` anywhere
+else in `#$ ELEMENTS`, and to consistently equal (corner − 1, corner − 2) for that file's
+numbering scheme. `NeutralFileFixtureBuilder.BuildBendLines` reuses that same tangent-node
+convention.
+
+**Radius (381 mm), "angle to node position #1" (-2.0202), and fitting thickness (4.191 mm) are
+confirmed *constant* across all 13 bends in `44002.cii`, despite the bends themselves having
+different orientations** (some turn from X into Y, others from X into Z) — since every one of
+those bends is also the same 90° turn at the same radius, this is consistent with "angle to node
+position" being some function of (radius, turn angle) rather than compass orientation, but the
+exact formula isn't confirmed. Conduit's fixture builder reuses these values verbatim rather than
+deriving them — the same treatment already given to `#$ UNITS`'s conversion constants and
+`#$ MISCEL_1`'s trailing block, for the same reason (a proven-working real value beats an
+unconfirmed formula). See QUESTIONS.md for the open question if this ever needs to vary (e.g. a
+non-90° bend, or a different radius).
 
 ## Sections not yet used by Conduit's logic
 

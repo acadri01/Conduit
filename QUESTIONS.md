@@ -617,3 +617,48 @@ Added `Miscel1FormatTests` guarding the trailing block's exact byte layout. Rege
 `fixtures/loop-50m-3d.cii`/`straight-run.cii`/`run-with-riser.cii` again. 51/51 tests passing (1
 new). **Next step**: get the user's retest result against the regenerated
 `fixtures/loop-50m-3d.cii`.
+
+## Milestone: iecho.exe conversion confirmed working; loop geometry corrected to a real expansion loop, with bends (2026-08-26)
+User's third retest: the `.C2` conversion **now works** — `fixtures/loop-50m-3d.cii` is the first
+Conduit-generated neutral file confirmed to convert successfully on a real CAESAR II install. All
+three structural bugs found across this back-and-forth (ELEMENTS color/visibility, WIND, MISCEL_1)
+are confirmed fixed together. Per direct instruction, brought `docs/neutral-file/WALKTHROUGH.md`
+fully up to date as the confirmed-correct reference (added a status note plus the new `#$ BEND`
+section below).
+
+Also per direct instruction, a substantive correction to the loop's geometry: the original shape
+(two straight 25 m legs joined by an open up-out-down-in zigzag with no return path) wasn't
+actually a piping "expansion loop" — a real one is a closed U/camelback shape that returns to (near)
+the main line, adding flexibility via bends, not an open detour. Two reference sketches were
+provided (a 2D "goal-post" loop with 4 bends between two anchors, and an isometric 3D version).
+Rebuilt `fixtures/loop-50m-3d.cii` to match that topology: horizontal approach (24 m) → bend → riser
+up (2 m, Y) → bend → top segment (2 m X, 2 m Z — the 3D component, "elements rising in the plane of
+view" per the isometric sketch) → bend → riser down (2 m, Y) → bend → horizontal departure (24 m).
+Total X span across all 5 legs is exactly 50 m, per "the total length should be 50 metres, the loop
+must fit within."
+
+**Added `#$ BEND` support to `NeutralFileFixtureBuilder`** (new — Conduit had never written this
+section before). Researched via `NeutralFile-v15.pdf` plus `44002.cii`'s 13 real bends (the only
+real sample with any):
+- Format: 3 lines / 14 values per bend (13 documented items + an always-zero 14th, "Overlay
+  Thickness"). The corner element (whose `ToNode` is the bend) gets a 1-based pointer to its
+  `#$ BEND` record in `AuxiliaryPointers[0]`.
+- **The bend record's "node position #1/#2" are *not* the corner node** — they're CAESAR II's own
+  auto-generated near/far tangent-point node numbers. Confirmed: in `44002.cii`, these never appear
+  as a real `FromNode`/`ToNode` anywhere in `#$ ELEMENTS`, and are consistently (corner − 1,
+  corner − 2) for that file's numbering. Reused that exact convention.
+- **Radius (381 mm), "angle to node position #1" (-2.0202), and fitting thickness (4.191 mm) are
+  confirmed constant across all 13 of that file's bends**, despite differing bend orientations (some
+  turn X→Y, others X→Z) — since radius and turn angle (all 90°) are also constant across them, this
+  is consistent with "angle to node position" being a function of (radius, turn angle) rather than
+  compass direction, but the exact formula isn't confirmed. Reused the real values verbatim (same
+  treatment as `#$ UNITS`'s constants and `#$ MISCEL_1`'s trailing block) rather than deriving a
+  formula from one data point. **Next step if it ever matters**: if a future test file needs a
+  non-90° bend or a different radius, this "angle to node position" value would need to actually be
+  derived (or a second real sample with varying bend geometry would need to be found) rather than
+  reused as a constant — flag this if it comes up rather than guessing further.
+
+Added `BendFormatTests` (pointer wiring, record byte layout, `NumBends` consistency, and the
+no-bends case). 55/55 tests passing (4 new), `dotnet build`/`test` clean. Ran the CLI against the
+new geometry — `optimize` correctly reports the two 24 m straight legs as failures (no intermediate
+node to place a support at, same known v1 limitation as before — not a new bug).

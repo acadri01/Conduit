@@ -246,3 +246,15 @@ running status log Claude appends to (skim this from mobile)
   (the third differs slightly in a few fields — logged as a low-priority open question, not
   structural). Added `Miscel1FormatTests`. Regenerated all three built fixtures again. 51/51 tests
   passing (1 new), `dotnet build`/`test` clean. Asked the user to retest again.
+- 2026-08-26: milestone — `.C2` conversion now works; `fixtures/loop-50m-3d.cii` is the first
+  Conduit-generated file confirmed to convert successfully on a real CAESAR II install. Brought
+  docs/neutral-file/WALKTHROUGH.md fully up to date as the confirmed-correct reference. Per direct
+  instruction, corrected the loop's geometry: the original open zigzag wasn't a real expansion
+  loop — rebuilt as a proper closed U/camelback shape (horizontal approach, riser up, top segment
+  with the 3D component, riser down, horizontal departure) with 4 bends, matching the user's
+  reference sketches, total X span exactly 50 m. Added `#$ BEND` support to
+  `NeutralFileFixtureBuilder` (new — researched via the vendor doc plus `44002.cii`'s 13 real
+  bends; corner elements get a bend pointer, tangent-point node numbers follow the real sample's
+  (corner-1, corner-2) convention, radius/angle/fitting values reused from the real sample rather
+  than derived). Added `BendFormatTests`. 55/55 tests passing (4 new), `dotnet build`/`test`
+  clean.

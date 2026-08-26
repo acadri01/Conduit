@@ -382,8 +382,21 @@ trailing block (hanger-table defaults, execution options — see
 count at all; `NeutralFileFixtureBuilder` only ever wrote the RRMAT part. Fixed by reusing the
 exact trailing block confirmed byte-identical between two of the three real samples (the third
 differs slightly in a few fields — logged as a low-priority open question, not a structural
-concern). **Next step**: get the user's retest result against the regenerated
-`fixtures/loop-50m-3d.cii`.
+concern).
+
+**Update (2026-08-26, third retest — success)**: `.C2` conversion now works.
+`fixtures/loop-50m-3d.cii` is the first Conduit-generated neutral file confirmed to convert
+successfully through `iecho.exe` on a real CAESAR II install. The structural-bug-hunting phase of
+this effort is done; `docs/neutral-file/WALKTHROUGH.md` is the confirmed-correct reference going
+forward. The user also corrected the loop's geometry: the original shape (two straight legs with
+an open zigzag between them) wasn't a real expansion loop — a loop needs to actually return to
+(near) its starting line, via a closed U/camelback shape with bends at each corner, per the
+attached sketches. Rebuilt with the correct topology (horizontal approach, up, across-and-out in
+the 3D direction, down, horizontal departure — 4 bends) and added `#$ BEND` support to
+`NeutralFileFixtureBuilder` (see `docs/neutral-file/WALKTHROUGH.md`'s new `#$ BEND` section for
+the field layout and the confirmed real-sample conventions it follows — bend radius/angle/fitting
+values reused from `44002.cii`'s 13 real bends, tangent-point node numbering following that same
+file's convention). Total X span across the loop is exactly 50 m, per direct instruction.
 
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —

@@ -46,8 +46,13 @@ public static class NeutralFileFixtureBuilder
         return real;
     }
 
-    public static NeutralFile Build(IReadOnlyList<PipeSegmentSpec> segments, IReadOnlyList<int> anchorNodes, int izup = 0)
+    public static NeutralFile Build(
+        IReadOnlyList<PipeSegmentSpec> segments,
+        IReadOnlyList<int> anchorNodes,
+        int izup = 0,
+        IReadOnlyList<int>? bendNodes = null)
     {
+        bendNodes ??= [];
         var blocks = new List<NeutralFileBlock>();
 
         NeutralFileBlock AddBlock(string name, IEnumerable<string>? lines = null)
@@ -59,9 +64,9 @@ public static class NeutralFileFixtureBuilder
 
         AddBlock("VERSION", BuildVersionLines());
         AddBlock("CONTROL");
-        var elementsBlock = AddBlock("ELEMENTS", BuildElementLines(segments));
+        var elementsBlock = AddBlock("ELEMENTS", BuildElementLines(segments, bendNodes));
         AddBlock("AUX_DATA");
-        AddBlock("BEND");
+        AddBlock("BEND", BuildBendLines(bendNodes));
         AddBlock("RIGID");
         AddBlock("EXPJT");
         AddBlock("RESTRANT");
@@ -87,7 +92,7 @@ public static class NeutralFileFixtureBuilder
             NumNodeNames = 0,
             NumReducers = 0,
             NumFlanges = 0,
-            NumBends = 0,
+            NumBends = bendNodes.Count,
             NumRigids = 0,
             NumExpansionJoints = 0,
             NumRestraints = anchorNodes.Count,
@@ -217,8 +222,9 @@ public static class NeutralFileFixtureBuilder
         return lines;
     }
 
-    private static List<string> BuildElementLines(IReadOnlyList<PipeSegmentSpec> segments)
+    private static List<string> BuildElementLines(IReadOnlyList<PipeSegmentSpec> segments, IReadOnlyList<int> bendNodes)
     {
+        var bendNodeList = bendNodes.ToList();
         var lines = new List<string>();
         foreach (var segment in segments)
         {
@@ -233,8 +239,38 @@ public static class NeutralFileFixtureBuilder
             // replaced) is a confirmed cause of iecho.exe's "Error processing ELEMENT section, line
             // # NN" — see QUESTIONS.md's "ELEMENTS color/visibility line" entry.
             lines.AddRange(FixedWidth.FormatIntLines([-1, -1]));
-            lines.AddRange(FixedWidth.FormatIntLines(new long[15]));
+
+            var pointers = new long[15];
+            var bendIndex = bendNodeList.IndexOf(segment.ToNode);
+            if (bendIndex >= 0)
+            {
+                pointers[0] = bendIndex + 1; // 1-based pointer into #$ BEND
+            }
+            lines.AddRange(FixedWidth.FormatIntLines(pointers));
         }
         return lines;
     }
+
+    /// <summary>
+    /// <c>#$ BEND</c>: 14 values per bend (13 documented items plus an always-zero 14th, "Overlay
+    /// Thickness" — confirmed against <c>44002.cii</c>'s 13 real bends, 3 lines each), referenced
+    /// by the 1-based <see cref="Element.AuxiliaryPointers"/>[0] of the element whose <c>ToNode</c>
+    /// is the bend's corner node. "Node position #1/#2" reference CAESAR II's own
+    /// auto-generated near/far tangent-point node numbers, which never appear as real
+    /// <c>FromNode</c>/<c>ToNode</c> values anywhere else in the file — confirmed against
+    /// <c>44002.cii</c>, where every bend's tangent nodes are exactly (corner - 1, corner - 2)
+    /// and don't appear anywhere in <c>#$ ELEMENTS</c>; reused here for the same convention.
+    /// Radius (381 mm), "angle to node position #1" (-2.0202), and fitting thickness (4.191 mm)
+    /// are confirmed *constant* across all 13 of that file's bends despite differing bend
+    /// orientations — since radius and turn angle (all 90°) are also constant across them, these
+    /// are reused verbatim rather than derived from first principles (the exact formula relating
+    /// "angle to node position" to radius/turn-angle isn't confirmed — see QUESTIONS.md).
+    /// </summary>
+    private static List<string> BuildBendLines(IReadOnlyList<int> bendNodes) =>
+        bendNodes
+            .SelectMany(node => FixedWidth.FormatRealLines(
+            [
+                381.0, 0, -2.0202, node - 1, 0, node - 2, 0, 0, 0, 4.191, 0, 0, 0, 0,
+            ]))
+            .ToList();
 }
