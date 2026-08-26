@@ -17,9 +17,11 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: nothing outstanding right now.** The most recent structural round (ELEMENTS, `#$ WIND`,
-`#$ MISCEL_1`, then the corrected loop geometry with bends) is confirmed working end to end via
-`iecho.exe`. If you want to re-verify anything from scratch:
+**Status: one thing to re-verify.** The structural round (ELEMENTS, `#$ WIND`, `#$ MISCEL_1`, the
+corrected loop geometry with bends) is confirmed working end to end via `iecho.exe`. Since then,
+`fixtures/loop-50m-3d.cii` changed again — bend radius now defaults to "Long" (252.45 mm instead
+of the flat 381 mm reused before) — so it's worth one more pass to make sure that didn't reopen
+anything:
 
 ```powershell
 dotnet run --project src\Conduit.Cli -- optimize fixtures\loop-50m-3d.cii out.cii
@@ -233,7 +235,7 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 62 tests, all
+`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 64 tests, all
 expected to pass on every commit. A failing test blocks the change; there are no known-flaky or
 skipped tests in this project.
 
@@ -270,7 +272,9 @@ skipped tests in this project.
   user's own worked example: a 25550 mm span against a 6446.76 mm max allowable span splits into
   four 6000 mm elements plus a 1550 mm remainder, four new interior nodes), the exact-multiple and
   already-fits no-op cases, and — a real bug this caught — that a bend pointer on the original
-  element's `ToNode` only survives on the final chunk, not every interior one.
+  element's `ToNode` only survives on the final chunk, not every interior one. Also covers the
+  minimum-chunk-near-a-bend constraint (a too-short remainder next to a bend gets merged into the
+  previous chunk; the same remainder next to a non-bend node is left alone).
 - `tests/Conduit.Tests/Heuristics/SupportTypeClassifierTests.cs` — rest/guide/anchor
   classification rules in isolation.
 - `tests/Conduit.Tests/Heuristics/SupportPlacerTests.cs` — the run-walking placement algorithm:

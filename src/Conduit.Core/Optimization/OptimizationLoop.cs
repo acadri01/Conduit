@@ -95,8 +95,9 @@ public static class OptimizationLoop
         var elementLengthMillimetres = element.Length * toMillimetres;
         var maxAllowableSpanMillimetres = SpanLimitCalculator.ComputeMaxSpan(file, element);
 
+        var outsideDiameterMillimetres = element.OutsideDiameter * toMillimetres;
         var nextNode = file.Elements.SelectMany(e => new[] { e.FromNode, e.ToNode }).DefaultIfEmpty(0).Max() + 10;
-        var plan = ElementSplitter.Split(element, elementLengthMillimetres, maxAllowableSpanMillimetres, () =>
+        var plan = ElementSplitter.Split(element, elementLengthMillimetres, maxAllowableSpanMillimetres, outsideDiameterMillimetres, () =>
         {
             var allocated = nextNode;
             nextNode += 10;

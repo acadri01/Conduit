@@ -718,3 +718,49 @@ new bullet on keeping it dynamic, and TESTING.md's new top section.
 case for the genuinely-irreducible failure), `dotnet build`/`test` clean. **Next step**: get the
 user's `iecho.exe` retest result against the regenerated `fixtures/loop-50m-3d.cii` (see
 TESTING.md's "Test this now").
+
+## Bend radius defaults to "Long"; minimum chunk length near a bend, per direct instruction (2026-08-26)
+A proactive follow-up (not a bug report — the user flagged this ahead of hitting it in practice):
+"bends have required minimum lengths depending on the pipe size... an element break should never
+cause an element with a bend to be shorter than this length. There should also be a buffer of
+500 mm between the bend weld at that length and the restraint placement to accommodate shoe
+lengths," plus a screenshot of CAESAR II's bend-radius dropdown (Short/Long/3D/5D), confirming
+"Long" should be Conduit's default.
+
+- **Confirmed via `NeutralFile-v15.pdf`**: `#$ BEND`'s "Bend radius" item is a single numeric
+  field — there's no separate "type" field for Short/Long/3D/5D anywhere in the neutral file, so
+  that dropdown is purely a CAESAR II input-UI convenience that resolves to a plain radius number
+  on write. Nothing else to look for; just compute the right number.
+- **"Long radius" is 1.5x the pipe's diameter** (ASME B16.9's standard long-radius elbow
+  definition, using nominal pipe size). Conduit has no NPS lookup table, so this is approximated
+  from the element's actual outside diameter instead (off by only a percent or two for standard
+  schedules) — `NeutralFileFixtureBuilder.BuildBendLines` now computes radius per-bend from its
+  own element's OD, replacing the flat 381 mm reused from `44002.cii` in the previous round.
+  `44002.cii`'s other two constant values ("angle to node position #1" = -2.0202, fitting
+  thickness = 4.191 mm) are still reused verbatim — they were confirmed constant across that
+  file's 13 bends, but all 13 shared one radius (381 mm); whether they still hold at a different
+  radius is unconfirmed. **Next step if it ever matters**: no action needed unless an `iecho.exe`
+  test surfaces a problem specifically tied to these two fields — nothing to proactively fix
+  without more real data at a different radius.
+- **Minimum chunk length near a bend, implemented in `ElementSplitter`**: when the element being
+  split has a bend at its own `ToNode`, the final chunk (the one that still ends there) is never
+  left shorter than the bend's tangent length (radius x tan(45°) = radius, for the 90° bends
+  Conduit only ever produces) plus a 500 mm shoe-clearance buffer — a remainder chunk that would
+  be too short gets merged into the previous chunk instead of standing alone. Unit tested directly
+  (a 500 mm remainder next to a 168.3 mm-OD pipe's bend — minimum 752.45 mm — gets absorbed into
+  the previous 6000 mm chunk; the same 500 mm remainder next to a *non*-bend node is left alone,
+  confirming the merge is specifically bend-gated).
+- **Known gap, logged rather than guessed at**: this only covers a bend at the split element's own
+  `ToNode`. A bend at the element's `FromNode` (i.e. the *preceding* element's own corner) isn't
+  visible from a single `Element` and isn't handled — `OptimizationLoop.Adjust` only ever passes
+  `ElementSplitter` the one element being split, not its neighbors. Our own loop fixture's two
+  splits happen to be safe either way (both start comfortably far from their nearest bend — legs
+  are 24 m, minimum clearance is well under 1 m), so this hasn't been exercised in practice yet.
+  **Next step if it ever matters**: thread the preceding element's bend status into
+  `OptimizationLoop.TrySplit`'s call to `ElementSplitter.Split` (it already has `file.Elements` in
+  scope to look the neighbor up) and apply the same minimum to the *first* chunk too.
+
+64/64 tests passing (2 new), `dotnet build`/`test` clean. Regenerated `fixtures/loop-50m-3d.cii`
+with the new Long-radius bends (252.45 mm for the 168.3 mm-OD pipe, was 381 mm) — structurally
+unaffected otherwise, verified `conduit optimize` still passes in 2 iterations. **Next step**: get
+the user's `iecho.exe` retest result (see TESTING.md's "Test this now").

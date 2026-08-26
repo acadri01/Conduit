@@ -274,3 +274,17 @@ running status log Claude appends to (skim this from mobile)
   this now" section to TESTING.md (rewritten every round with the current ask, per direct
   instruction) and a CLAUDE.md bullet codifying it. 62/62 tests passing (7 new), `dotnet
   build`/`test` clean. Asked the user to retest again.
+- 2026-08-26: proactive follow-up (not a bug report) — bends need a minimum straight length
+  depending on pipe size, plus a 500 mm shoe-clearance buffer, and the default bend radius should
+  be "Long" (confirmed via a CAESAR II screenshot: the radius dropdown offers Short/Long/3D/5D).
+  Confirmed via the vendor doc that the neutral file only stores a plain radius number, no
+  separate "type" field, so this only needed computing the right value: "Long" = 1.5x OD (ASME
+  B16.9, approximated from actual OD since Conduit has no NPS table).
+  `NeutralFileFixtureBuilder.BuildBendLines` now computes radius per-bend instead of reusing a
+  flat 381 mm. Implemented the minimum-chunk-near-a-bend constraint in `ElementSplitter`: a
+  too-short remainder next to a bend gets merged into the previous chunk instead of standing
+  alone. Logged one known gap rather than guessing: this only covers a bend at the split
+  element's own `ToNode`, not a bend at its `FromNode` (needs neighbor-element context
+  `OptimizationLoop` doesn't thread through yet) — not exercised by our own fixture either way.
+  64/64 tests passing (2 new), `dotnet build`/`test` clean. Regenerated `loop-50m-3d.cii` with the
+  new radius; `conduit optimize` still passes in 2 iterations. Asked the user to retest.

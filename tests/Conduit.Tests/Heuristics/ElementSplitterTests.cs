@@ -6,15 +6,19 @@ namespace Conduit.Tests.Heuristics;
 
 public class ElementSplitterTests
 {
-    private static Element MakeElement(int fromNode, int toNode, double deltaX)
+    private const double OutsideDiameterMillimetres = 168.3;
+
+    private static Element MakeElement(int fromNode, int toNode, double deltaX, int bendPointer = 0)
     {
         var real = new double[53];
         real[0] = fromNode;
         real[1] = toNode;
         real[2] = deltaX;
-        real[5] = 168.3;
+        real[5] = OutsideDiameterMillimetres;
         real[6] = 7.11;
-        return new Element { RealValues = real, AuxiliaryPointers = new int[15] };
+        var pointers = new int[15];
+        pointers[0] = bendPointer;
+        return new Element { RealValues = real, AuxiliaryPointers = pointers };
     }
 
     /// <summary>The exact worked example from direct instruction: 25550 mm against a 6446.76 mm max allowable span.</summary>
@@ -24,7 +28,7 @@ public class ElementSplitterTests
         var element = MakeElement(10, 20, 25550);
         var nextNode = 100;
 
-        var plan = ElementSplitter.Split(element, 25550, 6446.76, () => nextNode++);
+        var plan = ElementSplitter.Split(element, 25550, 6446.76, OutsideDiameterMillimetres, () => nextNode++);
 
         Assert.Equal(5, plan.Elements.Count);
         Assert.Equal([6000, 6000, 6000, 6000, 1550], plan.Elements.Select(e => e.DeltaX));
@@ -41,7 +45,7 @@ public class ElementSplitterTests
     {
         var element = MakeElement(10, 20, 24000);
 
-        var plan = ElementSplitter.Split(element, 24000, 6446.76, () => 999);
+        var plan = ElementSplitter.Split(element, 24000, 6446.76, OutsideDiameterMillimetres, () => 999);
 
         Assert.Equal(4, plan.Elements.Count);
         Assert.All(plan.Elements, e => Assert.Equal(6000, e.DeltaX));
@@ -53,7 +57,7 @@ public class ElementSplitterTests
     {
         var element = MakeElement(10, 20, 5000);
 
-        var plan = ElementSplitter.Split(element, 5000, 6446.76, () => throw new InvalidOperationException("shouldn't need a new node"));
+        var plan = ElementSplitter.Split(element, 5000, 6446.76, OutsideDiameterMillimetres, () => throw new InvalidOperationException("shouldn't need a new node"));
 
         Assert.Single(plan.Elements);
         Assert.Same(element, plan.Elements[0]);
@@ -66,7 +70,7 @@ public class ElementSplitterTests
         // A max allowable span under 1 m rounds down to a 0 mm chunk size — nothing meaningful to split into.
         var element = MakeElement(10, 20, 50000);
 
-        var plan = ElementSplitter.Split(element, 50000, 900, () => throw new InvalidOperationException("shouldn't need a new node"));
+        var plan = ElementSplitter.Split(element, 50000, 900, OutsideDiameterMillimetres, () => throw new InvalidOperationException("shouldn't need a new node"));
 
         Assert.Single(plan.Elements);
         Assert.Empty(plan.NewInteriorNodes);
@@ -78,21 +82,45 @@ public class ElementSplitterTests
         // The original element's ToNode is a bend corner (AuxiliaryPointers[0] != 0) — only the
         // chunk that still ends at that corner may keep the bend pointer; every interior chunk
         // must not falsely claim to be the same bend.
-        var real = new double[53];
-        real[0] = 10;
-        real[1] = 20;
-        real[2] = 24000;
-        real[5] = 168.3;
-        real[6] = 7.11;
-        var pointers = new int[15];
-        pointers[0] = 3; // bend record #3
-        var element = new Element { RealValues = real, AuxiliaryPointers = pointers };
+        var element = MakeElement(10, 20, 24000, bendPointer: 3);
 
-        var plan = ElementSplitter.Split(element, 24000, 6446.76, () => 999);
+        var plan = ElementSplitter.Split(element, 24000, 6446.76, OutsideDiameterMillimetres, () => 999);
 
         Assert.Equal(4, plan.Elements.Count);
         Assert.All(plan.Elements.Take(3), e => Assert.Equal(0, e.AuxiliaryPointers[0]));
         Assert.Equal(3, plan.Elements[^1].AuxiliaryPointers[0]);
+    }
+
+    /// <summary>
+    /// Per direct instruction: "an element break should never cause an element with a bend to be
+    /// shorter than [the bend's minimum straight length]." A 500 mm remainder next to a bend
+    /// (minimum: 1.5x168.3mm radius + 500mm shoe buffer = 752.45 mm) is too short, so it's merged
+    /// into the previous chunk instead of left standing alone.
+    /// </summary>
+    [Fact]
+    public void TooShortRemainderNearABend_IsMergedIntoThePreviousChunk_NotLeftStandingAlone()
+    {
+        var element = MakeElement(10, 20, 24500, bendPointer: 3); // 4x6000 + a 500 mm remainder
+
+        var plan = ElementSplitter.Split(element, 24500, 6446.76, OutsideDiameterMillimetres, () => 900);
+
+        Assert.Equal(4, plan.Elements.Count); // not 5 - the short remainder was absorbed
+        Assert.Equal([6000, 6000, 6000, 6500], plan.Elements.Select(e => e.DeltaX));
+        Assert.Equal(3, plan.NewInteriorNodes.Count);
+        Assert.Equal(3, plan.Elements[^1].AuxiliaryPointers[0]); // the bend pointer still lands on the true final chunk
+    }
+
+    [Fact]
+    public void NoBendAtTheToNode_RemainderIsNeverMerged_EvenIfShort()
+    {
+        // Same short remainder as above, but the ToNode isn't a bend — nothing to protect, so the
+        // ordinary even chunking applies.
+        var element = MakeElement(10, 20, 24500);
+
+        var plan = ElementSplitter.Split(element, 24500, 6446.76, OutsideDiameterMillimetres, () => 900);
+
+        Assert.Equal(5, plan.Elements.Count);
+        Assert.Equal([6000, 6000, 6000, 6000, 500], plan.Elements.Select(e => Math.Round(e.DeltaX, 6)));
     }
 
     [Fact]
@@ -100,7 +128,7 @@ public class ElementSplitterTests
     {
         var element = MakeElement(10, 20, 24000);
 
-        var plan = ElementSplitter.Split(element, 24000, 6446.76, () => 999);
+        var plan = ElementSplitter.Split(element, 24000, 6446.76, OutsideDiameterMillimetres, () => 999);
 
         Assert.All(plan.Elements, e =>
         {

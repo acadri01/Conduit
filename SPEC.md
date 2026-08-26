@@ -175,7 +175,12 @@ problem (a Windows-only external tool this container can't exercise):
   `NeutralFile.ReplaceElement` surgically splices the new element records into both `#$ ELEMENTS`
   and `#$ MISCEL_1`'s positional `RRMAT` array (which would otherwise desync from the new element
   count the same way `#$ WIND`/`#$ MISCEL_1`'s trailing block did — see "Neutral file format"),
-  leaving every other element's raw lines untouched.
+  leaving every other element's raw lines untouched. A chunk immediately adjacent to an existing
+  bend is never left shorter than that bend's own tangent length (radius x tan(45°) for the 90°
+  bends Conduit produces) plus a 500 mm shoe-clearance buffer, per direct instruction — a
+  too-short remainder there is merged into the previous chunk instead. Only covers a bend at the
+  split element's own `ToNode`, not at its `FromNode` (needs the preceding element's bend status,
+  which isn't threaded through yet — see "Known open decisions").
 - `IStressSolver` interface + `MockStressSolver` (functional) + `CaesarComStressSolver` (skeleton,
   see above).
 - `INeutralFileConverter` interface + `IechoConverter` (skeleton only, see "Native file adapter
@@ -438,6 +443,18 @@ Per a separate direct instruction, `TESTING.md` now has a "Test this now" sectio
 round with the exact current ask, rather than that living only in PR comments — see CLAUDE.md's
 new bullet on keeping it dynamic.
 
+**Update (2026-08-26, fifth round — bend radius and minimum chunk length)**: a proactive
+follow-up (not from a failing test): bend radius should default to "Long" (confirmed via a CAESAR
+II screenshot of its radius-type dropdown: Short/Long/3D/5D), and an element-split must never
+leave a chunk next to a bend shorter than that bend's own minimum length plus a 500 mm
+shoe-clearance buffer. `NeutralFile-v15.pdf` confirmed there's no separate neutral-file field for
+the radius *type* — just the one numeric radius value — so `NeutralFileFixtureBuilder`'s bend
+generation now computes "Long" (1.5x outside diameter, approximated from actual OD since Conduit
+has no NPS table) per bend instead of reusing 44002.cii's flat 381 mm; the other two
+`44002.cii`-derived constants ("angle to node position #1", fitting thickness) are still reused
+as-is (see "In scope (v1)" and QUESTIONS.md for what's still unconfirmed there). The
+minimum-chunk-near-a-bend constraint is implemented in `ElementSplitter` — see "In scope (v1)".
+
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —
 install/directory-wide settings (axis convention, default piping code, material/component
@@ -550,6 +567,14 @@ decisions"). This locator only answers "where," not "how to read what's there."
   pass (not just reactively, after a failure is detected) is still deferred. A previous fix that
   forced a guide at every vertical segment's start regardless of span was tried and found unsound
   in review (breaks on short verticals) and has been removed; that heuristic stays removed.
+- **Open (2026-08-26)**: `ElementSplitter`'s minimum-chunk-near-a-bend constraint (see "In scope
+  (v1)") only covers a bend at the split element's own `ToNode`. A bend at the element's `FromNode`
+  (the *preceding* element's own corner) isn't visible from a single `Element` — `OptimizationLoop`
+  doesn't currently thread neighbor context into the split call. Not yet exercised by any real
+  case (our own fixture's two splits are both comfortably clear of their nearest bend either way).
+  **Next step if it ever matters**: pass the preceding element's bend status (`file.Elements` is
+  already in scope in `OptimizationLoop.TrySplit`) into `ElementSplitter.Split` and apply the same
+  minimum to the first chunk too.
 - **Resolved (2026-08-21, updated with the confirmed absolute path):** the "material database...
   in the system folder" question above is clarified — every CAESAR II model directory carries a
   `caesar.cfg` global-settings file (the user shared a real example, confirmed as a

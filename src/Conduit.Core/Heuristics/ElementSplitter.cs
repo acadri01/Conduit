@@ -19,6 +19,36 @@ public static class ElementSplitter
     /// </summary>
     public const double ChunkRoundingIncrementMillimetres = 1000.0;
 
+    /// <summary>
+    /// "Long radius" (per ASME B16.9 — the default CAESAR II bend-radius preset the user asked
+    /// for) is 1.5x the pipe's diameter. Approximated here from the element's actual outside
+    /// diameter rather than a true nominal-pipe-size lookup (Conduit has no NPS table), which is
+    /// off by only a percent or two for standard schedules — see QUESTIONS.md if that approximation
+    /// ever needs tightening.
+    /// </summary>
+    public const double LongRadiusToOutsideDiameterFactor = 1.5;
+
+    /// <summary>
+    /// Minimum clearance (mm) required between a bend's weld/tangent point and any restraint
+    /// placed near it, to leave room for a pipe shoe, per direct instruction.
+    /// </summary>
+    public const double ShoeClearanceBufferMillimetres = 500.0;
+
+    /// <summary>
+    /// The straight length (mm) a 90° bend of the given outside diameter (mm) needs beyond its
+    /// own corner node before another feature (like a split-off restraint) can go there: the
+    /// bend's own tangent length (radius x tan(45°) = radius, for a 90° bend at
+    /// <see cref="LongRadiusToOutsideDiameterFactor"/>'s default radius) plus the shoe clearance
+    /// buffer above. Every bend Conduit places or preserves is currently a 90° corner turn (see
+    /// <c>NeutralFileFixtureBuilder.BuildBendLines</c>), so this doesn't (yet) need a general bend
+    /// angle.
+    /// </summary>
+    public static double ComputeMinimumChunkLengthNearBendMillimetres(double outsideDiameterMillimetres)
+    {
+        var tangentLength = LongRadiusToOutsideDiameterFactor * outsideDiameterMillimetres; // radius * tan(45°) = radius
+        return tangentLength + ShoeClearanceBufferMillimetres;
+    }
+
     /// <summary>The elements <paramref name="element"/> was split into, and the new interior node at each internal boundary (in order, one fewer than <see cref="Elements"/>' count).</summary>
     public readonly record struct SplitPlan(List<Element> Elements, List<int> NewInteriorNodes);
 
@@ -29,11 +59,21 @@ public static class ElementSplitter
     /// no-new-nodes plan (a no-op) when the element already fits, or the max span rounds down to
     /// zero (a pipe too small for even a 1 m chunk — left for the caller to report as a failure,
     /// not divided into a meaningless number of chunks).
+    ///
+    /// <para>When <paramref name="element"/>'s own <c>ToNode</c> is a bend corner
+    /// (<c>AuxiliaryPointers[0] != 0</c>), the final chunk (the one that still ends there) is
+    /// never left shorter than <see cref="ComputeMinimumChunkLengthNearBendMillimetres"/> — a
+    /// too-short remainder is merged into the previous chunk instead, per direct instruction ("an
+    /// element break should never cause an element with a bend to be shorter than this
+    /// [minimum] length"). <b>Known gap</b>: this only covers a bend at the element's own
+    /// <c>ToNode</c> — a bend at its <c>FromNode</c> (the *preceding* element's own corner) isn't
+    /// visible from a single element and isn't handled yet; see QUESTIONS.md.</para>
     /// </summary>
     public static SplitPlan Split(
         Element element,
         double elementLengthMillimetres,
         double maxAllowableSpanMillimetres,
+        double outsideDiameterMillimetres,
         Func<int> allocateNode)
     {
         var chunkMillimetres = Math.Floor(maxAllowableSpanMillimetres / ChunkRoundingIncrementMillimetres) * ChunkRoundingIncrementMillimetres;
@@ -49,6 +89,16 @@ public static class ElementSplitter
         if (remainderMillimetres > 0)
         {
             chunkLengths.Add(remainderMillimetres);
+        }
+
+        if (element.AuxiliaryPointers[0] != 0 && chunkLengths.Count > 1)
+        {
+            var minimumNearBend = ComputeMinimumChunkLengthNearBendMillimetres(outsideDiameterMillimetres);
+            if (chunkLengths[^1] < minimumNearBend)
+            {
+                chunkLengths[^2] += chunkLengths[^1];
+                chunkLengths.RemoveAt(chunkLengths.Count - 1);
+            }
         }
 
         var newElements = new List<Element>(chunkLengths.Count);

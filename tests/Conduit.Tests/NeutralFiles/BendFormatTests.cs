@@ -39,15 +39,16 @@ public class BendFormatTests
     }
 
     [Fact]
-    public void BendRecord_UsesConfirmedRealSampleDefaults_AndCornerMinusOneMinusTwoTangentNodes()
+    public void BendRecord_UsesLongRadiusDefault_AndCornerMinusOneMinusTwoTangentNodes()
     {
         var file = NeutralFileFixtureBuilder.Build(LoopSegments, anchorNodes: [10, 40], bendNodes: [20, 30]);
         var bendLines = file.Blocks.First(b => b.Name == "BEND").RawLines;
 
         // First bend is for corner node 20 -> tangent nodes 19, 18 (corner - 1, corner - 2).
+        // Radius: "Long" = 1.5 x the 168.3 mm pipe's outside diameter = 252.45 mm.
         Assert.Equal(
         [
-            "   3.810000E+02 0.000000E+00-2.020200E+00 1.900000E+01 0.000000E+00 1.800000E+01",
+            "   2.524500E+02 0.000000E+00-2.020200E+00 1.900000E+01 0.000000E+00 1.800000E+01",
             "   0.000000E+00 0.000000E+00 0.000000E+00 4.191000E+00 0.000000E+00 0.000000E+00",
             "   0.000000E+00 0.000000E+00",
         ],

@@ -66,7 +66,7 @@ public static class NeutralFileFixtureBuilder
         AddBlock("CONTROL");
         var elementsBlock = AddBlock("ELEMENTS", BuildElementLines(segments, bendNodes));
         AddBlock("AUX_DATA");
-        AddBlock("BEND", BuildBendLines(bendNodes));
+        AddBlock("BEND", BuildBendLines(segments, bendNodes));
         AddBlock("RIGID");
         AddBlock("EXPJT");
         AddBlock("RESTRANT");
@@ -259,17 +259,26 @@ public static class NeutralFileFixtureBuilder
     /// <c>FromNode</c>/<c>ToNode</c> values anywhere else in the file — confirmed against
     /// <c>44002.cii</c>, where every bend's tangent nodes are exactly (corner - 1, corner - 2)
     /// and don't appear anywhere in <c>#$ ELEMENTS</c>; reused here for the same convention.
-    /// Radius (381 mm), "angle to node position #1" (-2.0202), and fitting thickness (4.191 mm)
-    /// are confirmed *constant* across all 13 of that file's bends despite differing bend
-    /// orientations — since radius and turn angle (all 90°) are also constant across them, these
-    /// are reused verbatim rather than derived from first principles (the exact formula relating
-    /// "angle to node position" to radius/turn-angle isn't confirmed — see QUESTIONS.md).
+    /// Radius defaults to "Long" (<see cref="ElementSplitter.LongRadiusToOutsideDiameterFactor"/>
+    /// x the bend's own element's outside diameter), per direct instruction — CAESAR II's own
+    /// bend-radius preset dropdown offers Short/Long/3D/5D, all of which just resolve to a plain
+    /// radius number in the neutral file (no separate "type" field), so this is the only field
+    /// that needs setting. "Angle to node position #1" (-2.0202) and fitting thickness (4.191 mm)
+    /// are still reused verbatim from `44002.cii` (confirmed constant across all 13 of that
+    /// file's bends, which all shared one radius, 381 mm) — since our bends now use a different,
+    /// per-pipe-size radius, whether these two values still hold is unconfirmed; logged in
+    /// QUESTIONS.md.
     /// </summary>
-    private static List<string> BuildBendLines(IReadOnlyList<int> bendNodes) =>
+    private static List<string> BuildBendLines(IReadOnlyList<PipeSegmentSpec> segments, IReadOnlyList<int> bendNodes) =>
         bendNodes
-            .SelectMany(node => FixedWidth.FormatRealLines(
-            [
-                381.0, 0, -2.0202, node - 1, 0, node - 2, 0, 0, 0, 4.191, 0, 0, 0, 0,
-            ]))
+            .SelectMany(node =>
+            {
+                var outsideDiameter = segments.First(s => s.ToNode == node).OutsideDiameter;
+                var radius = ElementSplitter.LongRadiusToOutsideDiameterFactor * outsideDiameter;
+                return FixedWidth.FormatRealLines(
+                [
+                    radius, 0, -2.0202, node - 1, 0, node - 2, 0, 0, 0, 4.191, 0, 0, 0, 0,
+                ]);
+            })
             .ToList();
 }
