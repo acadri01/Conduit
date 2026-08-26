@@ -185,3 +185,21 @@ running status log Claude appends to (skim this from mobile)
   (including the free trial/demo) ships Hexagon's own official tutorial jobs, which the user
   likely already has locally — logged as the next thing to try before a from-scratch throwaway
   model. No code changes this step.
+- 2026-08-26: The user shared a new `iecho.exe` error (converting `out.cii`) plus three real
+  `.cii` files explicitly marked safe to commit — `fixtures/real-samples/{TESTv15,
+  TESTv15_slugged,44002}.cii`. These reconfirmed every VERSION/WIND/UNITS structural fix from the
+  previous round byte-for-byte, and surfaced a new fact: their `#$ ELEMENTS` geometry is in
+  millimetres (confirmed via a 355.6 mm OD element being exactly a 14" pipe OD in mm), unlike
+  every existing fixture which uses inch-scale numbers. Per direct instruction, built
+  `fixtures/loop-50m-3d.cii`: a 50 m leg in X with a 3D expansion loop (up in Y, out in Z) at the
+  midpoint, in millimetre-scale geometry matching the real samples. Running `conduit optimize`
+  against it exposed (not a new bug — an already-documented assumption in
+  `SpanLimitCalculator`'s own XML doc, now empirically triggered) that its span-heuristic
+  constants are calibrated for inch/psi/lb units and produce nonsensical results on real mm-scale
+  geometry; logged as a blocking question in QUESTIONS.md since it's cross-cutting support math,
+  not something to fix unilaterally per the one-support-type-at-a-time consultation rule. Also
+  logged, not yet actioned: the user's CNODES note (CNODE-bearing nodes are not anchor supports)
+  and 44002.cii's "equipment as zero-weight rigid elements, ignore for support considerations"
+  note, both future support-placement inputs. 37/37 tests still passing; `dotnet build`/`test`
+  clean. Asked the user to test `fixtures/loop-50m-3d.cii` directly against `iecho.exe` and report
+  back.

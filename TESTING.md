@@ -274,6 +274,19 @@ dotnet run --project src/Conduit.Cli -- optimize fixtures/straight-run.cii /tmp/
 # expect: "Piping code assumed: B31.3_2024 (default — no caesar.cfg DEFAULT_CODE found)"
 ```
 
+## Real sample files and the loop test case
+
+`fixtures/real-samples/` holds three real CAESAR II-exported `.cii` files the user explicitly
+authorized committing (unlike every other real file shared during this project, which stays
+local-only) — useful as ground truth for neutral-file structure/byte-layout questions, and safe
+to point `run-and-log.sh` or a manual `iecho.exe` test at directly.
+
+`fixtures/loop-50m-3d.cii` is a synthetic, Conduit-generated file: a straight 50 m leg in X with a
+3D expansion loop (up in Y, out in Z, back down, back in Z) at the midpoint, in millimetre-scale
+geometry matching the real samples' unit convention. It exists specifically to test whether
+`iecho.exe` accepts a Conduit-generated file — run it through iecho on your own CAESAR II machine
+and report back what happens; see `QUESTIONS.md` for the current status of that check.
+
 ## Adding or changing a fixture
 
 Fixtures are generated (not hand-written) via `NeutralFileFixtureBuilder` +

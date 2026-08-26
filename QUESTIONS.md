@@ -319,6 +319,72 @@ this are worth recording:
   actual `.cii` file that triggers it (or as much of it as can be shared) for a byte-level look,
   the same way the CRLF bug itself was diagnosed.
 
+## Noted for later: CNODES are not anchor supports (2026-08-26)
+Per direct instruction (not to act on yet): CAESAR II has a "CNODE" concept — a connection point
+set up to see forces/moments between elements at a shared location, carrying its own CNODE number.
+These are **not** anchor/support restraints even though they connect two points rigidly-ish; a
+node with a CNODE assigned must not be treated as a support candidate by future placement logic.
+**Next step**: once `#$` CNODE data is understood well enough (needs its own primary-source dig,
+not done yet) and it's this support type's turn under the one-at-a-time consultation rule, exclude
+CNODE-bearing nodes from `SupportPlacer`'s candidate set.
+
+## Real test files supplied and committed; new synthetic loop test case built (2026-08-26)
+Per direct instruction, the user supplied three real `.cii` files (renamed `.txt` for GitHub
+upload, since GitHub blocks `.cii`) and explicitly said they're safe to commit — a change from
+the earlier "real files stay local-only" stance for these three specifically:
+- `fixtures/real-samples/TESTv15.cii`
+- `fixtures/real-samples/TESTv15_slugged.cii` (differs from `TESTv15.cii` only in `#$ FORCMNT`'s
+  force magnitudes — a "slug force" load case; structurally identical otherwise)
+- `fixtures/real-samples/44002.cii` (per the user: equipment modeled as rigid elements with no
+  weight — "it is important to ignore such elements for support considerations." Not yet acted on;
+  logged here as a future support-placement input, needs the one-support-type-at-a-time
+  consultation before any logic change.)
+
+Confirmed these files exactly match this branch's current section-structure fixes (61-line
+`VERSION`, 1-line `WIND`, 28-line `UNITS` byte-identical to the earlier "AIBEL (mm)" sample) —
+good independent confirmation the earlier fixes are correct. **New finding**: element geometry
+(`DeltaX/Y/Z`, OD, wall thickness) in these real files is in **millimetres**, confirmed via a
+355.6 mm OD element that's exactly a 14" pipe OD in mm — not inches, which is what every fixture
+`NeutralFileFixtureBuilder` has produced so far (e.g. `OutsideDiameter: 6.625` is 6.625 *inches*).
+This hadn't been checked before since no committed fixture's absolute scale had been verified
+against a real file's units until now.
+
+Per direct instruction, built `fixtures/loop-50m-3d.cii`: a straight 50 m leg in the X direction
+with a 3D expansion loop (up 3 m in +Y, out 3 m in +Z, back down, back in Z) inserted at the
+midpoint — using millimetre-scale geometry (25000/3000 mm) and metric OD/WT (168.3/7.11 mm, a 6"
+Sch 40 pipe's real metric dimensions) to match the real samples' unit convention. Structurally
+verified against the real samples: `dotnet build`/`test` clean (37/37), section byte-layout
+matches exactly (`VERSION` 1→63, `WIND` 1 line, `UNITS` 28 lines, etc.).
+
+**Next step**: ask the user to run `iecho.exe` directly against `fixtures/loop-50m-3d.cii` (the
+raw geometry, no supports added yet) as the cleanest first test — this isolates neutral-file
+*structural* correctness from the separate, already-known `SpanLimitCalculator` unit-scale issue
+below, which currently makes `conduit optimize`'s output on this file not meaningful yet. Report
+back whether iecho accepts it; if not, share the exact error and as much of the file as needed to
+diagnose it, the same way the CRLF and VERSION-length bugs were found.
+
+## Blocking: SpanLimitCalculator's unit-blindness now empirically confirmed on real mm-scale data (2026-08-26)
+This is a pre-existing, already-documented assumption (`SpanLimitCalculator`'s own XML doc:
+"All neutral-file dimensions and densities are assumed to be in a single consistent unit system
+(v1 doesn't parse `#$ UNITS`)") — not a new bug — but running `conduit optimize` against
+`fixtures/loop-50m-3d.cii` just confirmed empirically how badly it breaks down: the calculator's
+constants (`DefaultAllowableBendingStress = 1500` psi, `DefaultSteelDensity = 0.2836` lb/in³) are
+calibrated for inch/psi/lb units, matching every fixture built so far. Fed real millimetre-scale
+OD/WT (168.3/7.11 mm) instead, the formula mixes psi/lb-calibrated constants with mm-scale
+geometry and computes a nonsensical max allowable span (1279 "mm", i.e. ~1.3 m, for a 6" pipe) —
+every single span in the file "fails," including 3 m loop legs that would clearly be fine on a
+real 6" line. This makes `conduit optimize`'s PASS/FAIL and support placement meaningless on any
+metric-unit file right now, even though the *neutral file itself* is still structurally valid
+(iecho-acceptance doesn't depend on this calculator at all).
+
+This affects every support type's underlying math, not just one, so per CLAUDE.md's
+one-support-type-at-a-time consultation rule this needs the user's direction before implementing,
+not a unilateral fix. **Next step, once the user weighs in**: options include (a) parse `#$ UNITS`
+and convert all geometry/stress/density inputs to one consistent internal unit before running any
+heuristic math, (b) require `caesar.cfg` or a CLI flag to declare the model's unit system
+up front, or (c) something else the user prefers — batched here as the concrete question rather
+than guessed at.
+
 ## Investigation: generating our own valid test neutral files (2026-08-24)
 Per direct instruction: "I think perhaps our next focus should be to make sure you are able to
 create functioning neutral files for us to use for testing... If we are able to do this, I am not

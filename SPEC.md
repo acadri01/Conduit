@@ -229,13 +229,17 @@ problem (a Windows-only external tool this container can't exercise):
 ## Neutral file format
 Conduit targets the real, official CAESAR II neutral file format (`.cii`, ASCII, one CAESAR II
 "jobname" per file), as published in Hexagon's CAESAR II Users Guide ("CAESAR II Neutral File",
-v15 interface) — public vendor documentation, not proprietary material. The user also supplied
-several real `.cii` files, used as demonstration/example files rather than client project data;
-those were reviewed locally to confirm the real-world structure matches the published spec (it
-does, closely) but **are not committed to this repo** and are not used as source data for
-anything committed — v1's fixtures are freshly authored synthetic files with invented node
-numbers and geometry that are merely *structurally* valid `.cii` files, not derived from those
-supplied examples. See "Known open decisions" for the reasoning.
+v15 interface) — public vendor documentation, not proprietary material. The user has supplied
+several real `.cii` files over the course of this project. Most were used as demonstration/example
+files rather than client project data — reviewed locally to confirm the real-world structure
+matches the published spec (it does, closely) but **not committed**, and not used as source data
+for anything committed. **Three specific files are the exception**: `fixtures/real-samples/
+TESTv15.cii`, `TESTv15_slugged.cii`, and `44002.cii` — the user explicitly said these are safe to
+commit, so unlike the rest they *are* committed and available as real, non-synthetic structural
+references. Everything else under `fixtures/` (`straight-run.cii`, `run-with-riser.cii`,
+`loop-50m-3d.cii`, ...) remains freshly authored synthetic geometry with invented node numbers —
+merely *structurally* valid `.cii` files, cross-checked against the real samples' byte layout but
+not derived from their content. See "Known open decisions" for the reasoning.
 
 Key structural facts the parser/writer must honor:
 - **Line endings are CRLF, always** — confirmed against real CAESAR II-exported `.cii` files.
@@ -324,10 +328,24 @@ confirmed byte-for-byte against 4 real samples and `NeutralFile-v15.pdf`:
   `CCVNAME` itself, which the real samples set to the company-specific "AIBEL (mm)"; the builder
   uses the generic "Metric (mm)" instead.
 
-**Next step**: get one or more small, throwaway, non-proprietary test models exported directly
-from the user's own CAESAR II as `.cii` seeds, so the patch half of the blend can start; Conduit's
-read/patch/write round-trip only ever needs to vary geometry/restraints on top of a seed, never
-touching the sections above.
+**Update (2026-08-26)**: the user supplied three real, explicitly-safe-to-commit `.cii` files —
+`fixtures/real-samples/TESTv15.cii`, `TESTv15_slugged.cii`, `44002.cii` — unblocking the patch half
+of the blend. These reconfirmed every fix above byte-for-byte (same 61-line `VERSION`, 1-line
+`WIND`, 28-line "AIBEL (mm)" `UNITS` block) and surfaced a new fact: their `#$ ELEMENTS` geometry
+(`DeltaX/Y/Z`, OD, wall thickness) is in **millimetres**, confirmed via a 355.6 mm OD element being
+exactly a 14" pipe OD in mm. Every `NeutralFileFixtureBuilder`-produced fixture up to this point
+used inch-scale numbers instead (e.g. `OutsideDiameter: 6.625`) — harmless for the fixtures'
+own unit tests (self-consistent either way), but it means `SpanLimitCalculator`'s heuristic math
+(calibrated in psi/lb/inch) produces nonsensical results on real mm-scale geometry — see
+`QUESTIONS.md`'s "Blocking: SpanLimitCalculator's unit-blindness" entry; not fixed yet, needs the
+user's direction since it's cross-cutting support-placement math, not a single support type.
+
+Built `fixtures/loop-50m-3d.cii` per direct instruction: a straight 50 m leg in X with a 3D
+expansion loop (up in Y, out in Z, back down, back in Z) at the midpoint, using millimetre-scale
+geometry and metric OD/WT (168.3/7.11 mm) to match the real samples' unit convention. **Next
+step**: get the user's `iecho.exe` test result against this file (structural acceptance, decoupled
+from the `SpanLimitCalculator` issue above); if it fails, diagnose from the reported error the same
+way the `VERSION`/`WIND`/`UNITS` bugs were found.
 
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —
