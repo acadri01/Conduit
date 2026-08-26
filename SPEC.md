@@ -162,8 +162,20 @@ problem (a Windows-only external tool this container can't exercise):
 - Support-placement algorithm: walk each pipe run between fixed points (anchors, and — when `#$
   EQUIPMNT` is populated — real nozzle/equipment node locations), place candidate supports
   at/under the max allowable span, assign a type via the heuristic above, and write them as new
-  `#$ RESTRANT` records. v1 only places supports at existing nodes (no element-splitting yet — see
-  "Known open decisions" for why a short vertical segment doesn't always get its own guide).
+  `#$ RESTRANT` records. `SupportPlacer`'s own walk still only places at existing nodes (see
+  "Known open decisions" for why a short vertical segment doesn't always get its own guide), but
+  the iterate-and-adjust loop below now splits an element when there's no existing node to use.
+- Element-splitting (`ElementSplitter` + `NeutralFile.ReplaceElement`), per direct instruction:
+  when the iterate-and-adjust loop hits a single-element span with no existing intermediate node
+  (previously reported as an unresolvable failure), it splits that element into evenly-spaced
+  chunks — the max allowable span rounded *down* to the nearest 1000 mm — with a new node and
+  support at each interior boundary, e.g. a 25550 mm span against a 6446.76 mm max allowable span
+  becomes four 6000 mm elements plus a 1550 mm remainder (four new restraints). This is Conduit's
+  first production capability that adds/mutates pipe elements, not just restraints —
+  `NeutralFile.ReplaceElement` surgically splices the new element records into both `#$ ELEMENTS`
+  and `#$ MISCEL_1`'s positional `RRMAT` array (which would otherwise desync from the new element
+  count the same way `#$ WIND`/`#$ MISCEL_1`'s trailing block did — see "Neutral file format"),
+  leaving every other element's raw lines untouched.
 - `IStressSolver` interface + `MockStressSolver` (functional) + `CaesarComStressSolver` (skeleton,
   see above).
 - `INeutralFileConverter` interface + `IechoConverter` (skeleton only, see "Native file adapter
@@ -198,7 +210,11 @@ problem (a Windows-only external tool this container can't exercise):
   `DISPLMNT`, `FORCMNT`, `UNIFORM`, `WIND`, `OFFSETS`, `SIF&TEES`, `REDUCERS`, `FLANGES`, hanger
   data, and `#$ UNITS` / `#$ COORDS` are round-tripped opaquely in *production* Conduit.Core
   (preserved byte-for-byte on write when read from a real file) but not modeled or reasoned about
-  in v1. `#$ MISCEL_1` is a partial exception — its leading `RRMAT` (material ID) array is now
+  in v1. **One narrow exception**: `Element.AuxiliaryPointers[0]` (the bend pointer) is preserved
+  correctly when `ElementSplitter` splits an element whose `ToNode` has a bend — only the final
+  chunk keeps the pointer, not every interior one — but this is pointer *bookkeeping* during a
+  split, not interpreting `#$ BEND`'s own contents; Conduit.Core still never reads or reasons
+  about a bend record itself. `#$ MISCEL_1` is a partial exception — its leading `RRMAT` (material ID) array is now
   parsed and exposed, but the rest of that section's content is still opaque. Interpreting the
   remaining sections is future work as later stages need them (e.g. `UNITS` for cross-unit-system
   correctness) — per review direction, the goal is to have as much of the neutral file's data
@@ -398,6 +414,30 @@ the field layout and the confirmed real-sample conventions it follows — bend r
 values reused from `44002.cii`'s 13 real bends, tangent-point node numbering following that same
 file's convention). Total X span across the loop is exactly 50 m, per direct instruction.
 
+**Update (2026-08-26, fourth round — geometry corrected again, element-splitting added)**: the
+`.C2` conversion worked again, confirming the 6-bend geometry was structurally sound, but the
+user pointed out the *shape* was still wrong — it collapsed the 3D jog into a single diagonal
+element instead of two separate axis-aligned legs. The exact element sequence, per direct
+instruction: `+DX` (long), `+DY`, `-DZ`, `+DX`, `+DZ` (opposite of the `-DZ` leg), `-DY` (opposite
+of the `+DY` leg), `+DX` (long, to complete) — 7 elements, 6 bends (one at the end of every
+element but the last). Rebuilt again to match exactly.
+
+Also per direct instruction: **element-splitting** (see "In scope (v1)" above for the mechanism).
+The user noticed the two 24 m straight legs were being reported as unresolvable failures rather
+than fixed, and gave the exact algorithm to use: round the max allowable span down to the nearest
+1000 mm (e.g. 6446.76 mm → 6000 mm), divide the span by that to get full chunks plus a remainder,
+and add a restraint at each new interior boundary. Implemented as `ElementSplitter` (pure
+chunking math, unit-tested against the user's own worked example) plus
+`NeutralFile.ReplaceElement` (the production element-mutation mechanism, splicing into both
+`#$ ELEMENTS` and `#$ MISCEL_1`'s `RRMAT` array). Wired into `OptimizationLoop.Adjust` as the
+fallback when no existing node is available. Verified against the corrected loop file: both 24 m
+legs now split into 4×6000 mm elements with 3 interior rest supports each, and the file passes in
+2 iterations instead of failing after 5.
+
+Per a separate direct instruction, `TESTING.md` now has a "Test this now" section rewritten every
+round with the exact current ask, rather than that living only in PR comments — see CLAUDE.md's
+new bullet on keeping it dynamic.
+
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —
 install/directory-wide settings (axis convention, default piping code, material/component
@@ -498,15 +538,18 @@ decisions"). This locator only answers "where," not "how to read what's there."
   is truly silent or needs the interactive-launch-and-poll pattern) is deferred the same way —
   developed/tested later on Windows against a real licensed CAESAR II install. See "Native file
   adapter (iecho)" for what's known so far from the user's reference implementation.
-- v1 doesn't split elements to introduce a new node mid-span, so a support can only land at an
-  existing node — the largest node-to-node spacing at or under the max allowable span, not
-  necessarily the max allowable span itself. One consequence (flagged in review): a vertical
-  riser only gets classified as a guide when it happens to be the element whose own length
-  triggers the span-driven overflow check; a short riser fully contained within an otherwise-fine
-  span may not get its own guide. A previous fix that forced a guide at every vertical segment's
-  start regardless of span was tried and found unsound in review (breaks on short verticals) and
-  has been removed. The real fix — splitting elements to place a support mid-span — is deferred,
-  not papered over with that heuristic.
+- **Partially resolved (2026-08-26)**: `SupportPlacer`'s own initial-pass walk still doesn't split
+  elements — a support from that first pass can only land at an existing node — but per direct
+  instruction, `OptimizationLoop`'s iterate-and-adjust fallback now does (`ElementSplitter` +
+  `NeutralFile.ReplaceElement`, see "In scope (v1)"): a single-element span with no existing node
+  is split into evenly-spaced chunks rather than reported as an unresolvable failure. The
+  consequence flagged in the original review (a vertical riser only gets classified as a guide
+  when it happens to be the element whose own length triggers the span-driven overflow check; a
+  short riser fully contained within an otherwise-fine span may not get its own guide) still
+  applies to `SupportPlacer`'s own walk, unchanged — proactively splitting *during* the initial
+  pass (not just reactively, after a failure is detected) is still deferred. A previous fix that
+  forced a guide at every vertical segment's start regardless of span was tried and found unsound
+  in review (breaks on short verticals) and has been removed; that heuristic stays removed.
 - **Resolved (2026-08-21, updated with the confirmed absolute path):** the "material database...
   in the system folder" question above is clarified — every CAESAR II model directory carries a
   `caesar.cfg` global-settings file (the user shared a real example, confirmed as a

@@ -7,6 +7,28 @@ Kept up to date per CLAUDE.md: update this file whenever what/how to test change
 a new fixture convention, a new manual check that matters), and consult it whenever testing is
 relevant to the task at hand.
 
+# Test this now
+
+**This section is rewritten every round — it's not a permanent record, just the current ask.**
+Per direct instruction (2026-08-26): after any round of changes that needs your hands (a real
+CAESAR II install, `iecho.exe`, or anything else Claude can't run itself), the exact commands to
+run and what to report back live here, not scattered across PR comments — so you always have one
+place to check for "what do you want me to test." Once you've reported back and a round is
+resolved, this section is replaced with whatever the next thing to verify is (or left saying
+there's nothing outstanding).
+
+**Status: nothing outstanding right now.** The most recent structural round (ELEMENTS, `#$ WIND`,
+`#$ MISCEL_1`, then the corrected loop geometry with bends) is confirmed working end to end via
+`iecho.exe`. If you want to re-verify anything from scratch:
+
+```powershell
+dotnet run --project src\Conduit.Cli -- optimize fixtures\loop-50m-3d.cii out.cii
+```
+
+then run `out.cii` (the `optimize`d output) and/or `fixtures\loop-50m-3d.cii` (the raw input)
+through `iecho.exe`'s "Convert Neutral File to CAESAR II Input File" and report whether it
+converts cleanly, plus the console output above.
+
 # Step-by-step: test Conduit on your own machine
 
 This walks through everything from "I have nothing installed" to "I ran Conduit and can see what
@@ -211,7 +233,7 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 55 tests, all
+`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 62 tests, all
 expected to pass on every commit. A failing test blocks the change; there are no known-flaky or
 skipped tests in this project.
 
@@ -244,6 +266,11 @@ skipped tests in this project.
 - `tests/Conduit.Tests/NeutralFiles/BendFormatTests.cs` — `#$ BEND` record byte layout, the
   corner-element pointer wiring (1-based, matching `bendNodes`' order), `#$ CONTROL`'s `NumBends`
   count, and the no-bends case (empty section, all-zero pointers).
+- `tests/Conduit.Tests/Heuristics/ElementSplitterTests.cs` — the element-splitting math (the
+  user's own worked example: a 25550 mm span against a 6446.76 mm max allowable span splits into
+  four 6000 mm elements plus a 1550 mm remainder, four new interior nodes), the exact-multiple and
+  already-fits no-op cases, and — a real bug this caught — that a bend pointer on the original
+  element's `ToNode` only survives on the final chunk, not every interior one.
 - `tests/Conduit.Tests/Heuristics/SupportTypeClassifierTests.cs` — rest/guide/anchor
   classification rules in isolation.
 - `tests/Conduit.Tests/Heuristics/SupportPlacerTests.cs` — the run-walking placement algorithm:
@@ -252,8 +279,10 @@ skipped tests in this project.
   span overflow — not "every vertical segment always gets one", see SPEC.md's "Known open
   decisions" for why).
 - `tests/Conduit.Tests/Optimization/OptimizationLoopTests.cs` — the iterate-and-adjust loop
-  against `MockStressSolver`: adding intermediate rest supports, and reporting (not escalating —
-  no spring logic in the MVP) a span that has no room left to add one.
+  against `MockStressSolver`: adding intermediate rest supports at existing nodes, splitting an
+  overlong span with none into evenly-spaced chunks (per direct instruction) and resolving it,
+  and reporting (not escalating — no spring logic in the MVP) the genuinely irreducible case
+  (a max allowable span under 1 m, too small for even one chunk).
 - `tests/Conduit.Tests/Configuration/CaesarConfigReaderTests.cs` and `CaesarConfigTests.cs` — the
   `caesar.cfg` parser (against the real example at `fixtures/caesar.cfg`) and the
   config-vs-default piping-code fallback (`CaesarConfig.EffectiveCode`).

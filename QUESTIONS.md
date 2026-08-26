@@ -662,3 +662,59 @@ Added `BendFormatTests` (pointer wiring, record byte layout, `NumBends` consiste
 no-bends case). 55/55 tests passing (4 new), `dotnet build`/`test` clean. Ran the CLI against the
 new geometry — `optimize` correctly reports the two 24 m straight legs as failures (no intermediate
 node to place a support at, same known v1 limitation as before — not a new bug).
+
+## Milestone confirmed again; loop geometry corrected a second time; element-splitting implemented (2026-08-26)
+User's fourth retest: the `.C2` conversion **worked again** (confirming the 6-bend geometry from
+the last round was structurally sound), but flagged the *shape* was still wrong — the 3D jog had
+been collapsed into a single diagonal element instead of two separate legs. Gave the exact element
+sequence to use: `+DX` (long), `+DY`, `-DZ`, `+DX`, `+DZ` (opposite of the `-DZ` leg), `-DY`
+(opposite of the `+DY` leg), `+DX` (long, to complete) — 7 elements, 6 bends. Rebuilt
+`fixtures/loop-50m-3d.cii` to match exactly (same 2 m loop dimensions, same 50 m total X span).
+
+**Also per direct instruction: implemented element-splitting**, closing a long-standing documented
+v1 limitation ("Conduit never splits an element to introduce a new node mid-span"). The user's
+own worked example: a 25550 mm span against a 6446.76 mm max allowable span — round the max span
+down to the nearest 1000 mm (6000 mm), divide with remainder (4×6000 + 1550), one restraint per
+new interior boundary (4 restraints). Implemented as:
+- `ElementSplitter` (`src/Conduit.Core/Heuristics/`) — pure chunking math, no file I/O. Unit
+  tested directly against the user's own worked example, plus the exact-multiple case, the
+  already-fits no-op case, and the "max span rounds down to 0" edge case (nothing meaningful to
+  split into — stays a genuine failure).
+- `NeutralFile.ReplaceElement` — the actual production element-mutation mechanism (new capability;
+  previously Element.cs's doc comment claimed "Conduit never adds or modifies pipe elements").
+  Splices the new element records into `#$ ELEMENTS` at the correct raw-line position, **and** into
+  `#$ MISCEL_1`'s positional `RRMAT` array — without this second part, the element count and
+  RRMAT's line count would desync exactly the way `#$ WIND`/`#$ MISCEL_1`'s trailing block did in
+  earlier rounds, so this was caught and fixed proactively rather than needing another `iecho.exe`
+  round-trip to discover it.
+- `Element.ToRawLines()` — the inverse of `Element.ParseMany`'s per-element format, now shared by
+  both `NeutralFile.ReplaceElement` (production) and `NeutralFileFixtureBuilder.BuildElementLines`
+  (test fixtures), so the two can never format-drift apart the way the color/visibility line once
+  did. `BuildElementLines` was refactored to call it instead of duplicating the format logic.
+- Wired into `OptimizationLoop.Adjust` as the fallback when `TryPickMidpointNode` finds no
+  existing node (i.e. the segment is a single element) — the loop already iterates and re-checks,
+  so a resolved split converges to PASS on the very next iteration.
+
+**Bug caught before shipping** (not from a real-world test this time — caught by re-checking the
+CLI's own output before regenerating fixtures): the first version of `ElementSplitter` copied the
+original element's full `AuxiliaryPointers` array to *every* new chunk, including the bend pointer
+— so all 3 interior chunks of a split element whose original `ToNode` was a bend corner falsely
+claimed to be that same bend, not just the 1 chunk that actually still ends there. Fixed: the bend
+pointer (index 0) is now zeroed on every chunk except the final one. Added
+`BendPointer_OnlySurvivesOnTheFinalChunk_NotEveryInteriorOne` to guard it. Logged here rather than
+silently fixed, since it's a good illustration of why "verify against the real build before
+committing" (CLAUDE.md's TESTING.md rule) matters even for changes that never touch documented
+neutral-file format gotchas — this one was a plain logic bug, not a format one.
+
+Verified against the corrected loop file: both 24 m legs now split into 4×6000 mm elements with 3
+interior rest supports each (matching the user's own "4 elements and a restraint between each"
+description exactly), and `conduit optimize` passes in 2 iterations instead of failing after 5.
+
+**Also per direct instruction**: `TESTING.md` now has a "Test this now" section, rewritten every
+round with the exact current ask rather than that living only in PR comments — see CLAUDE.md's
+new bullet on keeping it dynamic, and TESTING.md's new top section.
+
+62/62 tests passing (7 new: `ElementSplitterTests` × 6, plus one more `OptimizationLoopTests`
+case for the genuinely-irreducible failure), `dotnet build`/`test` clean. **Next step**: get the
+user's `iecho.exe` retest result against the regenerated `fixtures/loop-50m-3d.cii` (see
+TESTING.md's "Test this now").

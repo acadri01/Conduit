@@ -258,3 +258,19 @@ running status log Claude appends to (skim this from mobile)
   (corner-1, corner-2) convention, radius/angle/fitting values reused from the real sample rather
   than derived). Added `BendFormatTests`. 55/55 tests passing (4 new), `dotnet build`/`test`
   clean.
+- 2026-08-26: `.C2` conversion confirmed working again, but the loop's shape was still wrong (a
+  diagonal element instead of two separate legs) — rebuilt to the user's exact 7-element/6-bend
+  sequence (+DX, +DY, -DZ, +DX, +DZ, -DY, +DX). Per direct instruction, also implemented
+  element-splitting: `ElementSplitter` (chunking math, unit-tested against the user's own worked
+  example — 25550 mm over a 6446.76 mm max span becomes 4×6000 mm + a 1550 mm remainder) and
+  `NeutralFile.ReplaceElement` (the first production capability that adds/mutates pipe elements,
+  not just restraints — surgically splices into both `#$ ELEMENTS` and `#$ MISCEL_1`'s RRMAT
+  array so the two can't desync), wired into `OptimizationLoop.Adjust` as the fallback when no
+  existing node is available. Refactored `Element.ToRawLines()` out as the single shared
+  element-formatting path for both production and test-fixture code. Caught and fixed a real bug
+  before shipping: the first version copied a bend pointer to every split chunk instead of just
+  the final one. Verified: the loop file's two 24 m legs now split and pass in 2 iterations
+  instead of failing after 5, matching the user's own description exactly. Also added a "Test
+  this now" section to TESTING.md (rewritten every round with the current ask, per direct
+  instruction) and a CLAUDE.md bullet codifying it. 62/62 tests passing (7 new), `dotnet
+  build`/`test` clean. Asked the user to retest again.

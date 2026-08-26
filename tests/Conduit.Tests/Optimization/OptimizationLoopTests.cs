@@ -29,13 +29,13 @@ public class OptimizationLoopTests
     }
 
     [Fact]
-    public void SingleOverlongElement_CannotBeAdjusted_StopsAtIterationCap()
+    public void SingleOverlongElement_GetsSplitIntoEvenChunks_AndPasses()
     {
         // One element, far too long for its own max allowable span, directly between two
-        // anchors with no intermediate node to add a support at — the loop should recognise it
-        // can't do anything further and stop at the bounded iteration count rather than loop
-        // forever or silently "pass". No spring escalation in the MVP — an irreducible failure
-        // is just reported.
+        // anchors with no intermediate node to add a support at — per direct instruction, the
+        // loop now splits it into evenly-spaced chunks (rounded down to the nearest metre) with
+        // a new rest support at each interior node, rather than reporting an unresolvable
+        // failure. No spring logic in the MVP either way.
         var maxSpan = Schedule40MaxSpan();
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
         {
@@ -45,19 +45,18 @@ public class OptimizationLoopTests
 
         var result = OptimizationLoop.Run(file, new MockStressSolver());
 
-        Assert.False(result.Passed);
-        Assert.Equal(OptimizationLoop.MaxIterations, result.Iterations);
-        Assert.Contains(result.FinalStressResult.Findings, f => !f.Passed);
-        Assert.Contains(result.Notes, n => n.Contains("left as a reported failure", StringComparison.Ordinal));
+        Assert.True(result.Passed);
+        Assert.True(file.Elements.Count > 1, "the single overlong element should have been split into several shorter ones");
+        Assert.True(file.Restraints.Count > 2, "new interior-node restraints should have been added beyond the 2 anchors");
     }
 
     [Fact]
-    public void OverlongSegmentPastAnAddedRestSupport_IsReportedRatherThanEscalated()
+    public void OverlongSegmentPastAnAddedRestSupport_AlsoGetsSplitAndPasses()
     {
         // A short first leg (fits under the max span) followed by a long second leg with no
         // further intermediate node — SupportPlacer's initial pass places a rest support at the
-        // node between them, but that alone can't satisfy the second leg's span. No spring logic
-        // in the MVP: the rest support stays a rest support, and the failure is just reported.
+        // node between them, and the loop now splits the still-overlong second leg to resolve
+        // it too, rather than reporting a failure past that point.
         var maxSpan = Schedule40MaxSpan();
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
         {
@@ -68,10 +67,29 @@ public class OptimizationLoopTests
 
         var result = OptimizationLoop.Run(file, new MockStressSolver());
 
+        Assert.True(result.Passed);
+        Assert.Contains(file.Restraints, r => r.Node == 15 && r.Dofs[0].Type == RestraintType.PlusY);
+        Assert.True(file.Restraints.Count > 3, "the overlong second leg should have gained its own interior restraints");
+    }
+
+    [Fact]
+    public void UnsplittableElement_IsStillReportedRatherThanLoopedForever()
+    {
+        // An unrealistically dense (but nonzero) pipe has a max allowable span under 1 m, which
+        // rounds down to a 0 mm chunk size — ElementSplitter can't chunk that, so this stays a
+        // genuinely irreducible failure, reported rather than looped on. No spring escalation in
+        // the MVP.
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            new(10, 20, DeltaX: 50000, DeltaY: 0, DeltaZ: 0, OutsideDiameter: 168.3, WallThickness: 7.11, PipeDensity: 400000),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 20]);
+
+        var result = OptimizationLoop.Run(file, new MockStressSolver());
+
         Assert.False(result.Passed);
         Assert.Equal(OptimizationLoop.MaxIterations, result.Iterations);
         Assert.Contains(result.Notes, n => n.Contains("left as a reported failure", StringComparison.Ordinal));
-        Assert.Contains(file.Restraints, r => r.Node == 15 && r.Dofs[0].Type == RestraintType.PlusY);
     }
 
     [Fact]

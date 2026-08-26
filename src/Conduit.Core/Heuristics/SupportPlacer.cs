@@ -176,7 +176,8 @@ public static class SupportPlacer
     private static double Distance((double X, double Y, double Z) a, (double X, double Y, double Z) b) =>
         Math.Sqrt(Math.Pow(b.X - a.X, 2) + Math.Pow(b.Y - a.Y, 2) + Math.Pow(b.Z - a.Z, 2));
 
-    private static bool IsVertical(Element element, int izup)
+    /// <summary>Internal (not private) so <see cref="Optimization.OptimizationLoop"/> can reuse the same vertical-segment test when classifying a newly-split element.</summary>
+    internal static bool IsVertical(Element element, int izup)
     {
         if (element.Length <= 0)
         {

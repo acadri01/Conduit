@@ -33,6 +33,12 @@ Optimize for finishing correctly with the fewest interruptions to me.
   the real build before committing it — don't write example output from memory. Developer-only
   reference material (what each automated test covers, how to add a fixture, etc.) belongs after
   the tutorial, not instead of it.
+- **TESTING.md's "Test this now" section is a dynamic document, per direct instruction (2026-08-26)**:
+  whenever a round of work needs something only the user can do (running `iecho.exe` or anything
+  else Claude can't run itself), that section — not a scattered PR comment — is where the exact
+  command(s) to run and what to report back live, so there's always exactly one place to check
+  for "what does Claude want me to test." Rewrite it every round: replace the previous ask once
+  it's resolved, or say plainly there's nothing outstanding when there isn't.
 
 ## Decide-and-proceed (do NOT interrupt me) when the choice is:
 - Reversible and low-stakes, OR internal-only (naming, file layout, helper structure)

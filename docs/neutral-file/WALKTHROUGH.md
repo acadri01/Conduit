@@ -164,6 +164,14 @@ default rather than a universal constant, similar to `#$ UNITS`'s per-install `C
 as a low-priority open question in QUESTIONS.md rather than guessed at. `Miscel1FormatTests`
 guards the trailing block's exact byte layout.
 
+**This matters beyond test fixtures too**: `NeutralFile.ReplaceElement` (production
+element-splitting, see SPEC.md's "In scope (v1)") changes the element count, so it also has to
+rebuild RRMAT's line count and re-append the preserved trailing block — otherwise a split file
+would reintroduce this exact gotcha on its very next read. It does this by re-slicing the
+existing `#$ MISCEL_1` block at the *old* RRMAT line count rather than assuming the trailing
+block's shape, so it works regardless of which real sample's trailing values a given file happens
+to carry.
+
 ## `#$ BEND`
 
 Each bend is a fixed **3-line, 14-value record** (13 documented items plus an always-zero 14th,

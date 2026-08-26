@@ -222,31 +222,30 @@ public static class NeutralFileFixtureBuilder
         return lines;
     }
 
+    /// <summary>
+    /// Delegates to <see cref="Element.ToRawLines"/> — the same formatting logic
+    /// <see cref="NeutralFile.ReplaceElement"/> uses in production — so the two can never
+    /// format-drift apart the way the color/visibility line once did.
+    /// </summary>
     private static List<string> BuildElementLines(IReadOnlyList<PipeSegmentSpec> segments, IReadOnlyList<int> bendNodes)
     {
         var bendNodeList = bendNodes.ToList();
         var lines = new List<string>();
         foreach (var segment in segments)
         {
-            var real = BuildRealValues(segment);
-
-            lines.AddRange(FixedWidth.FormatRealLines(real));
-            lines.Add(FixedWidth.FormatLengthPrefixedString(string.Empty));
-            lines.Add(FixedWidth.FormatLengthPrefixedString(string.Empty));
-            // Line color/line visibility: NeutralFile-v15.pdf labels this (2X, 6G13.6) — real-value
-            // format — but all 3 real samples (fixtures/real-samples/*.cii) write it as plain
-            // integers ("-1 -1", no decimal/E-notation) instead. Writing it as a real (the bug this
-            // replaced) is a confirmed cause of iecho.exe's "Error processing ELEMENT section, line
-            // # NN" — see QUESTIONS.md's "ELEMENTS color/visibility line" entry.
-            lines.AddRange(FixedWidth.FormatIntLines([-1, -1]));
-
             var pointers = new long[15];
             var bendIndex = bendNodeList.IndexOf(segment.ToNode);
             if (bendIndex >= 0)
             {
                 pointers[0] = bendIndex + 1; // 1-based pointer into #$ BEND
             }
-            lines.AddRange(FixedWidth.FormatIntLines(pointers));
+
+            var element = new Element
+            {
+                RealValues = BuildRealValues(segment),
+                AuxiliaryPointers = pointers.Select(p => (int)p).ToArray(),
+            };
+            lines.AddRange(element.ToRawLines());
         }
         return lines;
     }

@@ -6,11 +6,14 @@ namespace Conduit.Core.Optimization;
 
 /// <summary>
 /// Runs the initial support placement, then iterates against an <see cref="IStressSolver"/>:
-/// on a failing span, it tries to add an intermediate rest support if the failing span has a
-/// node to place one at, and otherwise reports the failure — no spring logic in the MVP (per
-/// direct instruction; not implemented, not stubbed). Bounded by <see cref="MaxIterations"/> so
-/// an irreducible failure (e.g. a single element longer than its own max allowable span) is
-/// reported rather than looped on forever.
+/// on a failing span, it tries to add an intermediate rest support if the failing span has an
+/// existing node to place one at; failing that, it splits the span into evenly-spaced chunks
+/// (<see cref="ElementSplitter"/>) with a new support at each interior node, per direct
+/// instruction — Conduit previously reported this case (a single overlong element with no
+/// existing node in range) as an unresolvable failure rather than fixing it. No spring logic in
+/// the MVP (per direct instruction; not implemented, not stubbed). Bounded by
+/// <see cref="MaxIterations"/> so a genuinely irreducible failure (e.g. a pipe too small for even
+/// a 1 m chunk) is reported rather than looped on forever.
 /// </summary>
 public static class OptimizationLoop
 {
@@ -66,8 +69,58 @@ public static class OptimizationLoop
                    $"added an intermediate rest support at node {node}.";
         }
 
+        if (segment.Count == 1)
+        {
+            var splitNote = TrySplit(file, segment[0], finding);
+            if (splitNote is not null)
+            {
+                return splitNote;
+            }
+        }
+
         return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) has no room " +
                "for an intermediate support — left as a reported failure.";
+    }
+
+    /// <summary>
+    /// Splits a single-element span with no existing intermediate node into evenly-spaced chunks,
+    /// adding a support at each new interior node. Returns null (falls through to the "no room"
+    /// report) when the max allowable span rounds down to under
+    /// <see cref="ElementSplitter.ChunkRoundingIncrementMillimetres"/> — a pipe too small for even
+    /// a 1 m chunk, which splitting can't meaningfully fix.
+    /// </summary>
+    private static string? TrySplit(NeutralFile file, Element element, StressFinding finding)
+    {
+        var toMillimetres = file.Units.LengthToMillimetres;
+        var elementLengthMillimetres = element.Length * toMillimetres;
+        var maxAllowableSpanMillimetres = SpanLimitCalculator.ComputeMaxSpan(file, element);
+
+        var nextNode = file.Elements.SelectMany(e => new[] { e.FromNode, e.ToNode }).DefaultIfEmpty(0).Max() + 10;
+        var plan = ElementSplitter.Split(element, elementLengthMillimetres, maxAllowableSpanMillimetres, () =>
+        {
+            var allocated = nextNode;
+            nextNode += 10;
+            return allocated;
+        });
+
+        if (plan.NewInteriorNodes.Count == 0)
+        {
+            return null;
+        }
+
+        file.ReplaceElement(element, plan.Elements);
+
+        var izup = file.Control.Izup;
+        var supportType = SupportPlacer.IsVertical(element, izup) ? SupportType.Guide : SupportType.Rest;
+        var restraintType = RestraintTypeMapper.Map(supportType, izup);
+        foreach (var interiorNode in plan.NewInteriorNodes)
+        {
+            file.AddRestraint(Restraint.CreateSingleDof(interiorNode, restraintType));
+        }
+
+        return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) — " +
+               $"no existing node was close enough, so split it into {plan.Elements.Count} elements with a {supportType} " +
+               $"support at each new interior node: {string.Join(", ", plan.NewInteriorNodes)}.";
     }
 
     private static List<Element> GetSegmentElements(IReadOnlyList<Element> elements, int fromNode, int toNode)
