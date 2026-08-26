@@ -586,3 +586,34 @@ of bug (not just this one field) can't regress silently. Corrected the now-wrong
 populated" claims in SPEC.md and `docs/neutral-file/WALKTHROUGH.md`. 50/50 tests passing (4 new).
 **Next step**: get the user's `iecho.exe` retest result against the regenerated
 `fixtures/loop-50m-3d.cii`.
+
+## Fixed: MISCEL_1 section missing its unconditional trailing block (2026-08-26)
+Direct follow-up to the user's second retest, this time attempting the `.C2` conversion directly:
+confirmed the `#$ WIND` fix (no more OFFSETS error), but a new one appeared — "Error processing
+MISCEL_1 section, line # 295" (`out.cii`) / "# 223" (`loop-50m-3d.cii`). Checked
+`NeutralFile-v15.pdf`'s `#$ MISCEL_1` description in full this time (not just the RRMAT part
+covered by the existing material-ID parser): the section contains RRMAT (material IDs) *plus*
+nozzle data, hanger data, and execution options — and unlike every other section checked so far,
+**the hanger-table-defaults and execution-options portion is present unconditionally, not gated
+by any `#$ CONTROL` count** (confirmed: `TESTv15.cii`/`TESTv15_slugged.cii`/`44002.cii` all have
+zero hangers and zero nozzles, yet all three still carry this trailing 4-line block after RRMAT).
+`NeutralFileFixtureBuilder` was only ever writing the RRMAT array — the same "content missing
+where the reader expects it unconditionally" failure mode as the `#$ WIND` bug, just without an
+actual count field to have mismatched.
+
+Fixed: `BuildMiscel1Lines` now appends the exact trailing block, confirmed byte-identical between
+`TESTv15.cii` and `TESTv15_slugged.cii`. **Open, low-priority question**: `44002.cii`'s trailing
+block differs slightly in a few fields (e.g. `4.001740E+00`/`2.159830E+01` vs. `3.999999E+00`/
+`2.159827E+01`, and a few 0/1 int flags) — all three samples have zero hangers/nozzles, so this
+isn't obviously tied to actual hanger/nozzle data; more likely an installation/config-level default
+(similar to `#$ UNITS`'s per-install `CCVNAME`) than a universal constant, but unconfirmed. Not
+blocking — reusing the 2-of-3-agreeing values is a reasonable default either way, and any
+discrepancy here is a values question, not a structural one. **Next step if it ever matters**: ask
+the user whether they know what these hanger-table-default/execution-option fields correspond to
+in CAESAR II's install-level settings (Configuration Editor's "Database Definitions"/hanger-related
+tabs are the likely place), and whether it's worth exposing as a `caesar.cfg`-driven setting the
+way `DEFAULT_CODE` already is — otherwise leave as-is indefinitely, since it doesn't block anything.
+Added `Miscel1FormatTests` guarding the trailing block's exact byte layout. Regenerated
+`fixtures/loop-50m-3d.cii`/`straight-run.cii`/`run-with-riser.cii` again. 51/51 tests passing (1
+new). **Next step**: get the user's retest result against the regenerated
+`fixtures/loop-50m-3d.cii`.

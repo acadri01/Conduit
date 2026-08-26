@@ -75,7 +75,7 @@ public static class NeutralFileFixtureBuilder
         AddBlock("REDUCERS");
         AddBlock("FLANGES");
         AddBlock("EQUIPMNT");
-        AddBlock("MISCEL_1", FixedWidth.FormatRealLines(segments.Select(_ => 1.0).ToList()));
+        AddBlock("MISCEL_1", BuildMiscel1Lines(segments.Count));
         var unitsBlock = AddBlock("UNITS", BuildUnitsLines());
         AddBlock("COORDS", BuildCoordsLines());
 
@@ -185,6 +185,35 @@ public static class NeutralFileFixtureBuilder
 
         var lines = FixedWidth.FormatRealLines(constants).ToList();
         lines.AddRange(labels.Select(l => FixedWidth.FormatFixedWidthText(l.Label, l.Width)));
+        return lines;
+    }
+
+    /// <summary>
+    /// <c>#$ MISCEL_1</c>'s RRMAT array (one material ID per element, packed 6-per-line, FORTRAN
+    /// <c>(2X, 6G13.6)</c>) plus a fixed 4-line trailing block — hanger-table defaults and
+    /// execution options (<c>NeutralFile-v15.pdf</c>'s "Hangers"/"Execution Options"
+    /// subsections) — that's present even with zero hangers/nozzles/execution overrides, unlike
+    /// this builder's earlier RRMAT-only version. Omitting it is a confirmed cause of
+    /// <c>iecho.exe</c>'s "Error processing MISCEL_1 section, line # NN": the reader expects this
+    /// trailing data unconditionally (it isn't gated by any <c>#$ CONTROL</c> count), so leaving
+    /// it out desyncs every read after it, surfacing as a parse error in whatever section comes
+    /// next (<c>#$ UNITS</c>). The trailing values themselves are confirmed byte-identical
+    /// between <c>TESTv15.cii</c> and <c>TESTv15_slugged.cii</c> (both zero hangers/nozzles); a
+    /// third real sample (<c>44002.cii</c>, also zero hangers/nozzles) has slightly different
+    /// values for a few fields — logged as an open, low-priority question in QUESTIONS.md, same
+    /// treatment as <c>#$ UNITS</c>'s <c>CCVNAME</c> placeholder — but the two agreeing samples
+    /// are reused here rather than guessing at which fields are safe to vary.
+    /// </summary>
+    private static List<string> BuildMiscel1Lines(int numElements)
+    {
+        var lines = FixedWidth.FormatRealLines(Enumerable.Repeat(1.0, numElements).ToList()).ToList();
+        lines.AddRange(
+        [
+            "              1            0            2            2 0.000000E+00            0",
+            "              0            0 4.001740E+00 2.159830E+01            0            0",
+            "              0            0            0            0 2.500000E-01            3",
+            "              3            1",
+        ]);
         return lines;
     }
 

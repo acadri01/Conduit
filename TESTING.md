@@ -211,7 +211,7 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 50 tests, all
+`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 51 tests, all
 expected to pass on every commit. A failing test blocks the change; there are no known-flaky or
 skipped tests in this project.
 
@@ -237,6 +237,10 @@ skipped tests in this project.
   second confirmed class of `iecho.exe`-rejection bug: a count/content mismatch here doesn't error
   at the mismatched section itself, it desyncs the reader and surfaces as an error several
   sections later.
+- `tests/Conduit.Tests/NeutralFiles/Miscel1FormatTests.cs` — checks `#$ MISCEL_1`'s trailing
+  hanger-table-defaults/execution-options block (present unconditionally, unlike everything else
+  in the section) against the byte layout confirmed from the real samples — a third confirmed
+  class of the same "content missing where the reader expects it unconditionally" bug.
 - `tests/Conduit.Tests/Heuristics/SupportTypeClassifierTests.cs` — rest/guide/anchor
   classification rules in isolation.
 - `tests/Conduit.Tests/Heuristics/SupportPlacerTests.cs` — the run-walking placement algorithm:
@@ -304,9 +308,10 @@ to point `run-and-log.sh` or a manual `iecho.exe` test at directly.
 geometry matching the real samples' unit convention. It exists specifically to test whether
 `iecho.exe` accepts a Conduit-generated file — run it through iecho on your own CAESAR II machine
 and report back what happens; see `QUESTIONS.md` for the current status of that check (as of
-2026-08-26: two real-world test rounds found and fixed two structural bugs — the `#$ ELEMENTS`
-color/visibility line, then a `#$ WIND`/`#$ CONTROL` count mismatch — and this file has been
-regenerated with both fixes, but not yet retested against `iecho.exe`).
+2026-08-26: three real-world test rounds found and fixed three structural bugs — the
+`#$ ELEMENTS` color/visibility line, a `#$ WIND`/`#$ CONTROL` count mismatch, and a missing
+`#$ MISCEL_1` trailing block — and this file has been regenerated with all three fixes, but not
+yet retested against `iecho.exe`).
 
 **`docs/neutral-file/WALKTHROUGH.md`** is the step-by-step, field-by-field guide to the neutral
 file format itself — what every section and field means, confirmed against both

@@ -238,3 +238,11 @@ running status log Claude appends to (skim this from mobile)
   just this one field. Corrected the now-wrong "WIND always populated" claims in SPEC.md and
   docs/neutral-file/WALKTHROUGH.md. 50/50 tests passing (4 new), `dotnet build`/`test` clean.
   Asked the user to retest again.
+- 2026-08-26: user retested via `.C2` conversion — WIND fix confirmed, new error: "Error
+  processing MISCEL_1 section." `#$ MISCEL_1` turns out to contain RRMAT (material IDs) plus an
+  unconditional trailing block (hanger-table defaults, execution options) present even with zero
+  hangers/nozzles in all 3 real samples — `NeutralFileFixtureBuilder` only ever wrote RRMAT. Fixed
+  by reusing the exact trailing block confirmed byte-identical between 2 of the 3 real samples
+  (the third differs slightly in a few fields — logged as a low-priority open question, not
+  structural). Added `Miscel1FormatTests`. Regenerated all three built fixtures again. 51/51 tests
+  passing (1 new), `dotnet build`/`test` clean. Asked the user to retest again.

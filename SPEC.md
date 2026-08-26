@@ -371,8 +371,19 @@ regression test (`SectionCountConsistencyTests`) checking every count-gated sect
 against its `#$ CONTROL` field, for both the real samples and Conduit's own output — this class of
 bug (a section's content not matching its own count) is confirmed to surface as an error several
 sections later, not at the section that's actually wrong, so a byte-count check is worth more here
-than trusting where `iecho.exe` says the error is. **Next step**: get the user's `iecho.exe`
-retest result against the regenerated `fixtures/loop-50m-3d.cii`.
+than trusting where `iecho.exe` says the error is.
+
+**Update (2026-08-26, second retest)**: confirmed — no more `#$ WIND`/`#$ OFFSETS` error. The
+user then tried converting to `.C2` (CAESAR II's native format) rather than just re-running
+`iecho.exe`'s neutral-file check, and hit a new error: "Error processing MISCEL_1 section." Same
+diagnosis approach: `#$ MISCEL_1` contains the RRMAT material-ID array *plus* an unconditional
+trailing block (hanger-table defaults, execution options — see
+`docs/neutral-file/WALKTHROUGH.md`'s `#$ MISCEL_1` section) that isn't gated by any `#$ CONTROL`
+count at all; `NeutralFileFixtureBuilder` only ever wrote the RRMAT part. Fixed by reusing the
+exact trailing block confirmed byte-identical between two of the three real samples (the third
+differs slightly in a few fields — logged as a low-priority open question, not a structural
+concern). **Next step**: get the user's retest result against the regenerated
+`fixtures/loop-50m-3d.cii`.
 
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —

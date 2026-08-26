@@ -132,6 +132,29 @@ whose elements form one contiguous chain per run has nothing to list beyond the 
 confirmed against real samples. `#$ COORDS` is self-describing (its own count line is always
 present) rather than `#$ CONTROL`-gated, so it doesn't have this failure mode.
 
+## `#$ MISCEL_1`
+
+Contains the RRMAT array (one material ID per element, packed 6-per-line, `(2X, 6G13.6)`,
+`NLINES = ceil(NumElements / 6)`) **plus a trailing block that's present unconditionally — not
+gated by any `#$ CONTROL` count** (no hangers, no nozzles, and it's still there): hanger-table
+defaults (2 lines: `IDFTABLE`/`DEFVAR`/`DEFRIG`/`DEFMXTRAVEL`/`DEFSHTSPR`/`DEFMUL`, then
+`IDFOPER`/`IACTCLD`/`IHGRLDS`/`IACTUAL`/`IMULTIOPTS`) and execution options (3 lines, 6 fields
+each — print/error-check/Bourdon/branch-prompt/thermal-bowing/liberal-stress-allowable flags,
+uniform-load-in-g's/stress-stiffening/ambient-temperature/FRP-expansion/optimizer/next-node
+flags, final-ordering/Collins-ordering/degree-determination/user-control/FRP-shear-ratio flags).
+**Gotcha (confirmed cause of `iecho.exe`'s "Error processing MISCEL_1 section, line # NN")**: an
+earlier version of `NeutralFileFixtureBuilder` wrote only the RRMAT array and stopped — since this
+trailing data isn't gated by a count, the reader still expects it unconditionally, so leaving it
+out desyncs every read after it, surfacing as a parse error in whichever section comes next
+(`#$ UNITS`), not at `#$ MISCEL_1` itself — the same "count/content mismatch surfaces downstream"
+failure mode as the `#$ WIND` gotcha above, just without an actual count field to mismatch against.
+Fixed by reusing the exact trailing block confirmed byte-identical between `TESTv15.cii` and
+`TESTv15_slugged.cii` (both zero hangers/nozzles); `44002.cii` (also zero hangers/nozzles) has
+slightly different values for a few fields in that block — apparently an installation/config-level
+default rather than a universal constant, similar to `#$ UNITS`'s per-install `CCVNAME` — logged
+as a low-priority open question in QUESTIONS.md rather than guessed at. `Miscel1FormatTests`
+guards the trailing block's exact byte layout.
+
 ## Sections not yet used by Conduit's logic
 
 `#$ AUX_DATA`, `#$ BEND`, `#$ RIGID`, `#$ EXPJT`, `#$ DISPLMNT`, `#$ FORCMNT`, `#$ UNIFORM`,
