@@ -845,3 +845,60 @@ the interchange/neutral-file format Conduit reads and writes — out of reach re
 change needed; `NeutralFileFixtureBuilder.BuildBendLines`'s existing approach (compute "Long" =
 1.5x OD, write the resolved number) is already correct per this re-verification. Replied on the PR
 with this finding and the supporting evidence rather than silently re-asserting the old answer.
+
+## BLOCKING: SupportPlacer places supports directly on bend corners (2026-08-27)
+User's sixth retest, with a screenshot: restraints now correctly show up (fix confirmed working),
+but flagged a real, more fundamental bug, plus asked to pause and realign on the overall plan
+before any more support-placement work — both handled here per CLAUDE.md's rule that
+support-placement logic is defined one type at a time with direct consultation, and per the
+explicit request: "You may ask any questions you have here before proceeding. I would also like us
+to rediscuss the vision... to make sure we are aligned."
+
+**Confirmed bug (not waiting on discussion — this part is a plain fact, not a judgment call)**: in
+the `loop-50m-3d.cii` run the user attached, **all three** of `SupportPlacer`'s initial placements
+(nodes 20, 50, 70 — every single one) landed exactly on a bend corner node. Root cause read
+directly from the code: `SupportPlacer.PlaceSupportsForRun` picks `element.FromNode` the moment
+accumulated span would exceed the max allowable span, with **zero awareness of whether that node
+carries a bend pointer** — `OptimizationLoop.TrySplit`'s interior-node placement has the same gap.
+Per the user: a support can't physically sit on a bend corner without a trunnion fitting (out of
+scope for now, per direct instruction — "let's leave that type of support for now").
+
+**Why this wasn't caught already**: `ElementSplitter` already has bend-awareness (the
+minimum-chunk-length-near-a-bend rule from the fifth round), but that logic only fires *when
+splitting an element* — it was never applied to `SupportPlacer`'s ordinary node-selection walk,
+which is a separate code path with no bend-corner check at all.
+
+**Also flagged, needs direct answers before implementing (genuine design questions, not just a bug fix)**:
+1. **GUI's direction cosine, revisited**: "It is also possible to determine the required direction
+   of support by setting the perpendicular unit vector of the pipe." This bears directly on the
+   open `GUI` direction-cosine question logged two rounds ago (currently left at `(0,0,0)`, which
+   defaults to CAESAR's "all-round guide" behavior — restrains both directions perpendicular to
+   the run, which the user's comment confirms is what's happening here on the vertical segment).
+   **Question**: for a given run axis, there are two independent perpendicular directions (e.g. a
+   horizontal X-run has both Y and Z available) — how should Conduit choose which one to set as
+   the guide's direction cosine? Is it always "the axis the adjacent bend turns into" (i.e. derived
+   from the bend geometry immediately before/after the guide), or something else?
+2. **Minimum clearance from a bend**: "placing a guide with only one bend between it and a long
+   piping section will not work due to the stresses." Is this a minimum *straight-line distance*
+   from any bend (like the existing shoe-clearance buffer in `ElementSplitter`, just applied to
+   `SupportPlacer` too), a minimum *number of bends* of separation, or something else? A concrete
+   number/rule to encode would help.
+3. **Loop-specific placement rule**: "The rest on the loop should be centred on the dx segment of
+   the bend. It is not possible to subsequently have a rest at the next bend." Read literally:
+   within a short chain of bends (like the loop's up/out/down/in jog), only the loop's one
+   dominant/long straight segment (the "dx segment") should ever be a rest candidate — none of the
+   short legs between two consecutive bends should get their own support. **Question**: is that
+   the intended general rule (i.e. "never place a rest on a segment that's short relative to the
+   run, or bounded by bends on both ends"), or specific to this loop's particular geometry?
+4. **Vision realignment**: the user asked to step back and confirm current understanding and next
+   priorities before continuing implementation. See PROGRESS.md's matching entry for a state-of-
+   the-project recap posted on the PR — no code response needed here beyond logging that the
+   conversation is happening there.
+
+**Next step once answered**: implement the confirmed part first (exclude bend-corner nodes as
+`SupportPlacer`/`OptimizationLoop.TrySplit` candidates entirely — straightforward, no ambiguity),
+then encode whatever specific clearance/centering/direction-cosine rules come out of the
+discussion into `SupportTypeClassifier`/`SupportPlacer`/`RestraintTypeMapper` as appropriate, with
+tests against the exact `loop-50m-3d.cii` scenario that surfaced this. **No support-placement code
+changes will be pushed until this is resolved** — per CLAUDE.md's reservation of this class of
+decision, and the user's own direct request to discuss first this round.

@@ -316,3 +316,18 @@ running status log Claude appends to (skim this from mobile)
   dropdown selection internally, that's out of reach for a `.cii`-only tool regardless. No code
   change needed — `NeutralFileFixtureBuilder.BuildBendLines`'s existing "Long = 1.5x OD" approach
   is already correct. Replied on the PR with the finding and evidence.
+- 2026-08-27: user's sixth retest confirmed restraints now show up correctly, but flagged (with a
+  screenshot) that all three of `SupportPlacer`'s initial placements in `loop-50m-3d.cii` (nodes
+  20, 50, 70) landed exactly on bend corner nodes — not buildable without a trunnion fitting.
+  Root cause: `SupportPlacer`/`OptimizationLoop.TrySplit` have zero bend-corner awareness when
+  picking a candidate node, unlike `ElementSplitter` (which already has a bend-clearance rule, but
+  only within its own splitting logic). Also raised: GUI's direction cosine should be the pipe's
+  perpendicular unit vector rather than left all-round (ties into the open question from two
+  rounds ago); guides need minimum clearance from bends ("stresses" — exact rule TBD); a loop's
+  rest support should be centered on its dominant straight ("dx") segment, not any short jog
+  between bends. Explicitly asked to pause and realign on the overall plan before continuing.
+  Per CLAUDE.md's rule reserving support-placement logic for direct consultation, and the user's
+  own request, logged all of this as a blocking question batch in QUESTIONS.md and replied on the
+  PR with a diagnosis, the specific clarifying questions needed to implement precisely, and a
+  state-of-the-project recap for the vision-realignment conversation. No code pushed this round —
+  waiting on the user's answers before touching support-placement logic further.

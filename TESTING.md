@@ -17,34 +17,16 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: one specific thing to re-verify — does a restraint actually appear now?** Your last
-report was exactly right and very useful: the splitting and geometry converted fine, but *no
-restraints* showed up in the CAESAR input file after conversion, and you correctly guessed it was
-a missing pointer. Confirmed: `AddRestraint` was writing valid `#$ RESTRANT` records but never
-setting the owning element's pointer to them, so CAESAR II imported the model as having no
-supports at all. Also fixed a second bug found while cross-checking real restraint bytes: every
-restraint's stiffness was `0` (a zero-resistance spring) instead of CAESAR's actual rigid-restraint
-constant. Both are fixed now — `fixtures/loop-50m-3d.cii` has been regenerated with the fix (same
-console output as before; the difference is inside the restraint records themselves, not in what
-Conduit prints):
-
-```powershell
-dotnet run --project src\Conduit.Cli -- optimize fixtures\loop-50m-3d.cii out.cii
-```
-
-then run `out.cii` (the `optimize`d output) through `iecho.exe`'s "Convert Neutral File to CAESAR
-II Input File" and check specifically: **do the 11 restraints (the anchor + guide + rests Conduit
-placed, listed in the console output above) actually appear as restraints in the converted CAESAR
-input file this time?** Report the console output above plus whether the restraints are now
-present — a copy of the converted file (as a `.txt`, like last time) is the most useful thing to
-attach if anything still looks off.
-
-Separately, your bend-radius question from the same comment has been re-checked (not just
-re-asserted) — re-extracted `NeutralFile-v15.pdf`'s own text fresh and cross-checked all 3 real
-samples' actual bend bytes again. Confirmed: the neutral file has no separate pointer/field for
-the Short/Long/3D/5D radius presets, only a plain resolved radius number (`#$ BEND`'s item 1) —
-see `docs/neutral-file/WALKTHROUGH.md`'s `#$ BEND` section and QUESTIONS.md for the full evidence.
-No code change was needed as a result. Nothing new to test for this part.
+**Status: nothing to test right now — paused for a design discussion.** Thank you for confirming
+restraints now show up correctly. Your latest report also caught a real bug (all three initial
+supports in `loop-50m-3d.cii` landed directly on bend corners — not buildable without a trunnion)
+plus asked to realign on the overall plan before continuing. Per CLAUDE.md's rule that
+support-placement logic is defined one type at a time with your direct input, I've replied on the
+PR with a diagnosis, the specific clarifying questions I need answered to implement this correctly
+(bend-clearance rule, guide direction-cosine convention, the loop-centering rule), and a
+state-of-the-project recap for the vision conversation you asked for — see QUESTIONS.md's
+"BLOCKING: SupportPlacer places supports directly on bend corners" entry for the full detail. No
+code changes went out this round; nothing needs your hands until that conversation resolves.
 
 # Step-by-step: test Conduit on your own machine
 
