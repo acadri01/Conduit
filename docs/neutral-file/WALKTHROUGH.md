@@ -22,9 +22,12 @@ proof of what CAESAR II's own writer/reader actually do, not just what the docs 
 through `iecho.exe`** (`fixtures/loop-50m-3d.cii`, confirmed by the user against a real CAESAR II
 install), after fixing three confirmed structural bugs in sequence — `#$ ELEMENTS`'s
 color/visibility line, `#$ WIND` being unconditionally populated, and `#$ MISCEL_1`'s missing
-trailing block (each documented in its own section below). This walkthrough and the regression
-tests it references (`ElementSectionFormatTests`, `SectionCountConsistencyTests`,
-`Miscel1FormatTests`, `BendFormatTests`) are the current source of truth for what a Conduit-built
+trailing block (each documented in its own section below). A fourth, more severe bug was found and
+fixed afterward: the converted file had a valid `#$ RESTRANT` section, but **no element actually
+pointed to any restraint record**, so CAESAR II silently modeled the run as having no supports at
+all — see the `#$ RESTRANT` section below. This walkthrough and the regression tests it references
+(`ElementSectionFormatTests`, `SectionCountConsistencyTests`, `Miscel1FormatTests`,
+`BendFormatTests`, `RestraintFormatTests`) are the current source of truth for what a Conduit-built
 `.cii` file needs — keep both in sync with any future structural fix the same way.
 
 ## File-level rules
@@ -123,6 +126,15 @@ mm/N/MPa/kg before computing (see `SpanLimitCalculator`'s doc comment; QUESTIONS
 default" entry). Never empty in a real file, even when all values are the generic defaults — like
 `#$ WIND`, this looks like a CAESAR II structural requirement, not optional per-project data.
 
+**The 14th constant, CNVTSF** ("translational stiffness conversion" — native force/length units
+per 1 lbf/in), is what `#$ RESTRANT`'s stiffness field is expressed in (see below). Confirmed
+byte-exact against `44002.cii` (metric, N/mm): `CNVTSF = 0.17512`, and every single restraint's
+stiffness field in that file equals `1e12 * 0.17512 = 1.7512e11` regardless of restraint type —
+cross-checkable as `CNVFOR / CNVLEN` (position 2 / position 1 = `4.448 / 25.4 = 0.17512`).
+`UnitsSection.Parse` now also reads this constant (`TryParseCnvtsf`, tolerant of a short/partial
+block so `LengthToMillimetres` parsing is unaffected if it's missing), falling back to the same
+`0.17512` value for a metric file with no parseable `#$ UNITS` block at all.
+
 ## `#$ WIND`, `#$ COORDS`
 
 **`#$ WIND`'s presence is gated by `#$ CONTROL`'s `NumWindLoads` count, like any other
@@ -200,6 +212,59 @@ deriving them — the same treatment already given to `#$ UNITS`'s conversion co
 unconfirmed formula). See QUESTIONS.md for the open question if this ever needs to vary (e.g. a
 non-90° bend, or a different radius).
 
+## `#$ RESTRANT`
+
+Each restraint is one 6-DOF-slot record, packed as 4 lines per DOF slot (only slot 0 is ever
+populated by Conduit's own `Restraint.CreateSingleDof`): 2 data lines (9 packed real values —
+node, restraint-type code, stiffness, gap, friction, connecting node, then X/Y/Z direction
+cosines), then a length-prefixed tag line and a length-prefixed GUID line — 24 lines total per
+restraint.
+
+**Confirmed root cause of a real "the program does not actually set any restraints" report**: a
+valid, correctly-formatted `#$ RESTRANT` section is not enough on its own — **an element must also
+point to it**. Per `NeutralFile-v15.pdf`, an element's 4th auxiliary pointer (`AuxiliaryPointers[3]`
+in `Element.cs`, `Element.RestraintPointerIndex`) is a 1-based pointer into `#$ RESTRANT`'s records,
+the same mechanism as the bend pointer at index 0. A restraint record that exists but has no
+element pointing to it is silently invisible to CAESAR II/`iecho.exe` — the model imports as having
+no support there at all, even though the restraint data itself parses fine. `NeutralFile.AddRestraint`
+previously never touched this pointer at all; see its doc comment for the full fix (owning-element
+selection: prefer the element whose `ToNode` matches the restrained node, matching every restraint
+in `fixtures/real-samples/44002.cii`, falling back to a `FromNode` match for a run's very first
+node, with collision-avoidance for two restraints that would otherwise want the same one
+connecting element's single pointer slot). `ElementSplitter.Split` has matching logic to preserve
+(not duplicate or drop) an existing restraint pointer across a split element's new chunks.
+`RestraintFormatTests` and `ElementSplitterTests`' `RestraintPointer_*` cases guard this.
+
+**Stiffness is not just "any nonzero number" — CAESAR II's own rigid-restraint constant is
+`1e12 lbf/in`**, confirmed byte-exact against every restraint in `44002.cii` (converted to the
+file's native force/length unit via `#$ UNITS`' CNVTSF constant — see the `#$ UNITS` section
+above): for that file's metric units, `1e12 * 0.17512 = 1.7512e11`, matching every single restraint
+regardless of type (anchor, guide, rest — all rigid, no springs in v1 per CLAUDE.md). A restraint
+written with `Stiffness = 0` is a second, independent way to get "no restraint" behavior even with
+the pointer correctly wired — a spring with zero resistance restrains nothing. `UnitsSection`
+exposes this as `RigidRestraintStiffness`, computed from the file's own CNVTSF (or a metric
+default) so every `Restraint.CreateSingleDof` call in production code passes it explicitly rather
+than leaving stiffness at its type's zero default.
+
+**Direction cosines**: confirmed to match the restrained axis for every axis-implied restraint type
+(`X`/`Y`/`Z` and their `+`/`-`/snubber/rod/"2" variants) in every real restraint sample — e.g. a
+`Y` or `+Y` restraint has direction cosine `(0,1,0)`. `ANC`'s is confirmed `(0,0,0)`. **`GUI`'s
+direction cosine is an open question, not guessed at**: the one real example available (`44002.cii`)
+has a `GUI` restraint on a vertical (Y-axis) run with direction cosine `(1,0,0)` — not matching the
+run's own axis — which isn't enough to tell whether that's the general rule for a plain full guide,
+or specific to some "directional guide" variant. `Restraint.CreateSingleDof` leaves `GUI`'s
+direction cosine at `(0,0,0)` (the same as `ANC`'s confirmed value) rather than guessing; this
+is logged in QUESTIONS.md as an open question reserved for direct consultation, per CLAUDE.md's
+rule that support-placement logic — which this borders on — isn't decided unilaterally.
+
+**Known residual gap**: `NeutralFile.AddRestraint`'s owner-selection fallback chain has a
+theoretical failure mode if a *third* restraint ever converges on the same one-or-two-element
+neighborhood (both its `ToNode` and `FromNode` candidate elements already claimed by other
+restraints) — it would silently overwrite the `ToNode` match's pointer rather than erroring.
+Assessed as extremely unlikely given Conduit's current placement patterns (verified against the
+actual `loop-50m-3d.cii` optimize run: 11 restraints, all correctly and distinctly wired); not
+fixed further, just documented here and in the method's own doc comment.
+
 ## Sections not yet used by Conduit's logic
 
 `#$ AUX_DATA`, `#$ BEND`, `#$ RIGID`, `#$ EXPJT`, `#$ DISPLMNT`, `#$ FORCMNT`, `#$ UNIFORM`,
@@ -210,6 +275,10 @@ Conduit's own model parses — see their respective `NeutralFiles/*.cs` classes.
 
 ## Known open items (not yet built)
 
+- **`GUI` restraint direction cosine**: see the `#$ RESTRANT` section above — only one real example
+  available, ambiguous whether `(1,0,0)` is a plain full guide's general rule or a
+  "directional guide" special case. Left at `(0,0,0)` rather than guessed; reserved for direct
+  consultation per CLAUDE.md's support-placement-logic rule.
 - **CNODES**: a CAESAR II connection-point concept (reading forces/moments between elements at a
   shared node) — a CNODE-bearing node is explicitly *not* an anchor support and must be excluded
   from future support-placement candidate logic. Not yet researched in the neutral-file format

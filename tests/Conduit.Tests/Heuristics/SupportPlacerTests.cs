@@ -32,7 +32,7 @@ public class SupportPlacerTests
 
         foreach (var support in SupportPlacer.PlaceSupports(file))
         {
-            file.AddRestraint(Restraint.CreateSingleDof(support.Node, support.RestraintType));
+            file.AddRestraint(Restraint.CreateSingleDof(support.Node, support.RestraintType, file.Units.RigidRestraintStiffness));
         }
 
         var positions = file.ComputeNodePositions();

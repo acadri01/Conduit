@@ -68,13 +68,26 @@ public static class ElementSplitter
     /// [minimum] length"). <b>Known gap</b>: this only covers a bend at the element's own
     /// <c>ToNode</c> — a bend at its <c>FromNode</c> (the *preceding* element's own corner) isn't
     /// visible from a single element and isn't handled yet; see QUESTIONS.md.</para>
+    ///
+    /// <para>When <paramref name="element"/> already carries a restraint pointer
+    /// (<c>AuxiliaryPointers[3] != 0</c> — e.g. it's the element ending at a run's anchor, or
+    /// starting at one, per <see cref="NeutralFiles.NeutralFile.AddRestraint"/>'s doc comment),
+    /// that pointer is preserved on whichever chunk still touches the node it actually belongs
+    /// to — the first chunk if it's a <c>FromNode</c>-side restraint, the last if it's a
+    /// <c>ToNode</c>-side one (<paramref name="restraintBelongsToFromNode"/> tells the split which)
+    /// — and cleared on every other chunk. Naively copying it to every chunk (as bend's pointer
+    /// briefly was) would leave several elements claiming the same restraint, and a later restraint
+    /// added at one of the new interior nodes would silently overwrite it on whichever chunk
+    /// happened to end up owning that node — losing the original restraint's association entirely.
+    /// </para>
     /// </summary>
     public static SplitPlan Split(
         Element element,
         double elementLengthMillimetres,
         double maxAllowableSpanMillimetres,
         double outsideDiameterMillimetres,
-        Func<int> allocateNode)
+        Func<int> allocateNode,
+        bool restraintBelongsToFromNode = false)
     {
         var chunkMillimetres = Math.Floor(maxAllowableSpanMillimetres / ChunkRoundingIncrementMillimetres) * ChunkRoundingIncrementMillimetres;
         if (chunkMillimetres <= 0 || elementLengthMillimetres <= chunkMillimetres)
@@ -125,6 +138,16 @@ public static class ElementSplitter
                 // one true corner — so only the final chunk (the one that still ends there) may
                 // keep it; every interior chunk must not claim to be that same bend.
                 pointers[0] = 0;
+            }
+
+            // The restraint pointer (index 3) belongs to one specific node of the original
+            // element — the first chunk if that's its FromNode, the last if its ToNode — never
+            // both, and never an interior chunk that touches neither original endpoint.
+            var isFirst = i == 0;
+            var keepsRestraint = restraintBelongsToFromNode ? isFirst : isLast;
+            if (!keepsRestraint)
+            {
+                pointers[Element.RestraintPointerIndex] = 0;
             }
 
             newElements.Add(new Element { RealValues = real, AuxiliaryPointers = pointers });

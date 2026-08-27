@@ -24,6 +24,9 @@ public sealed class Element
     /// </summary>
     public required IReadOnlyList<int> AuxiliaryPointers { get; init; }
 
+    /// <summary>0-based index of the restraint pointer within <see cref="AuxiliaryPointers"/> (vendor doc's pointer #4).</summary>
+    public const int RestraintPointerIndex = 3;
+
     public int FromNode => (int)RealValues[0];
     public int ToNode => (int)RealValues[1];
     public double DeltaX => RealValues[2];

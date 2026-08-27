@@ -26,7 +26,7 @@ public static class OptimizationLoop
         var placements = SupportPlacer.PlaceSupports(file);
         foreach (var support in placements)
         {
-            file.AddRestraint(Restraint.CreateSingleDof(support.Node, support.RestraintType));
+            file.AddRestraint(Restraint.CreateSingleDof(support.Node, support.RestraintType, file.Units.RigidRestraintStiffness));
         }
         notes.Add($"Placed {placements.Count} initial support(s):");
         foreach (var support in placements)
@@ -64,7 +64,7 @@ public static class OptimizationLoop
         if (midpointNode is { } node)
         {
             var restraintType = RestraintTypeMapper.Map(SupportType.Rest, file.Control.Izup);
-            file.AddRestraint(Restraint.CreateSingleDof(node, restraintType));
+            file.AddRestraint(Restraint.CreateSingleDof(node, restraintType, file.Units.RigidRestraintStiffness));
             return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) — " +
                    $"added an intermediate rest support at node {node}.";
         }
@@ -97,12 +97,23 @@ public static class OptimizationLoop
 
         var outsideDiameterMillimetres = element.OutsideDiameter * toMillimetres;
         var nextNode = file.Elements.SelectMany(e => new[] { e.FromNode, e.ToNode }).DefaultIfEmpty(0).Max() + 10;
-        var plan = ElementSplitter.Split(element, elementLengthMillimetres, maxAllowableSpanMillimetres, outsideDiameterMillimetres, () =>
-        {
-            var allocated = nextNode;
-            nextNode += 10;
-            return allocated;
-        });
+
+        // If this element already carries a restraint (its FromNode or ToNode is a run's
+        // anchor), the split must preserve that pointer on whichever new chunk still ends at
+        // that same node — see ElementSplitter.Split's doc comment.
+        var restraintPointer = element.AuxiliaryPointers[Element.RestraintPointerIndex];
+        var restraintBelongsToFromNode = restraintPointer != 0
+            && file.Restraints[restraintPointer - 1].Node == element.FromNode;
+
+        var plan = ElementSplitter.Split(
+            element, elementLengthMillimetres, maxAllowableSpanMillimetres, outsideDiameterMillimetres,
+            () =>
+            {
+                var allocated = nextNode;
+                nextNode += 10;
+                return allocated;
+            },
+            restraintBelongsToFromNode);
 
         if (plan.NewInteriorNodes.Count == 0)
         {
@@ -116,7 +127,7 @@ public static class OptimizationLoop
         var restraintType = RestraintTypeMapper.Map(supportType, izup);
         foreach (var interiorNode in plan.NewInteriorNodes)
         {
-            file.AddRestraint(Restraint.CreateSingleDof(interiorNode, restraintType));
+            file.AddRestraint(Restraint.CreateSingleDof(interiorNode, restraintType, file.Units.RigidRestraintStiffness));
         }
 
         return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) — " +

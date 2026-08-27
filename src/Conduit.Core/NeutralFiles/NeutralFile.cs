@@ -30,11 +30,61 @@ public sealed class NeutralFile
     /// <summary>
     /// Appends a new support and keeps <see cref="Control"/>'s restraint count in sync so the
     /// regenerated <c>#$ CONTROL</c> section matches the regenerated <c>#$ RESTRANT</c> section.
+    ///
+    /// <para>Also wires up the restraint: per <c>NeutralFile-v15.pdf</c>, an element's 4th
+    /// auxiliary pointer ("Pointer to Restraint Auxiliary field") is how CAESAR II actually
+    /// associates a <c>#$ RESTRANT</c> record with a node — the record's own node number is not
+    /// enough by itself. A restraint whose owning element's pointer is left at 0 sits in the file
+    /// unreferenced and CAESAR II/iecho.exe silently treats the model as having no restraint
+    /// there at all (confirmed via direct report: "the program does not actually set any
+    /// restraints" — the previous version never touched this pointer). The preferred owning
+    /// element is the one ending at this restraint's node (<c>ToNode</c> match, matching every
+    /// restraint in <c>fixtures/real-samples/44002.cii</c>); the one starting there
+    /// (<c>FromNode</c> match) is the fallback for a node with no preceding element at all (a
+    /// run's very first node — an anchor Conduit never places itself, but reads back out of the
+    /// input file, so still needs correct wiring for splitting to preserve — see below).</para>
+    ///
+    /// <para>Either candidate is skipped if it already has a *different* restraint's pointer set
+    /// (each real restraint always got its own dedicated element/block — never observed sharing
+    /// one), falling through to the other node's candidate instead — this is what actually
+    /// happens for e.g. an anchor immediately followed by a support with nothing between them:
+    /// both nodes sit on the one connecting element, so the second restraint added has to attach
+    /// via that element's *other* end's neighbour rather than stealing the first restraint's
+    /// pointer. Only if *both* candidates are already claimed does this fall back to overwriting
+    /// the <c>ToNode</c> match anyway (extremely unlikely to ever be hit — would need a third
+    /// restraint converging on the same one or two elements).</para>
+    ///
+    /// <para>Splitting an element that already carries a restraint pointer — a run's anchor sits
+    /// at one end of an overlong element that then gets split — needs the pointer preserved on
+    /// the correct new chunk rather than lost or duplicated; see
+    /// <see cref="Heuristics.ElementSplitter.Split"/>'s <c>restraintBelongsToFromNode</c> handling
+    /// for that half of the fix (this method only wires up *newly added* restraints, not ones a
+    /// split element already had).</para>
     /// </summary>
     public void AddRestraint(Restraint restraint)
     {
         Restraints.Add(restraint);
         Control.NumRestraints = Restraints.Count;
+
+        bool IsUnclaimed(Element e) => e.AuxiliaryPointers[Element.RestraintPointerIndex] == 0;
+
+        var owner = Elements.LastOrDefault(e => e.ToNode == restraint.Node && IsUnclaimed(e))
+            ?? Elements.LastOrDefault(e => e.FromNode == restraint.Node && IsUnclaimed(e))
+            ?? Elements.LastOrDefault(e => e.ToNode == restraint.Node)
+            ?? Elements.LastOrDefault(e => e.FromNode == restraint.Node);
+        if (owner is not null)
+        {
+            var pointers = owner.AuxiliaryPointers.ToArray();
+            pointers[Element.RestraintPointerIndex] = Restraints.Count;
+            var updated = new Element
+            {
+                RealValues = owner.RealValues,
+                Name = owner.Name,
+                LineNumber = owner.LineNumber,
+                AuxiliaryPointers = pointers,
+            };
+            ReplaceElement(owner, [updated]);
+        }
     }
 
     /// <summary>

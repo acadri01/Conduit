@@ -64,7 +64,7 @@ public static class NeutralFileFixtureBuilder
 
         AddBlock("VERSION", BuildVersionLines());
         AddBlock("CONTROL");
-        var elementsBlock = AddBlock("ELEMENTS", BuildElementLines(segments, bendNodes));
+        var elementsBlock = AddBlock("ELEMENTS", BuildElementLines(segments, bendNodes, anchorNodes));
         AddBlock("AUX_DATA");
         AddBlock("BEND", BuildBendLines(segments, bendNodes));
         AddBlock("RIGID");
@@ -108,9 +108,10 @@ public static class NeutralFileFixtureBuilder
         };
 
         var elements = Element.ParseMany(elementsBlock.RawLines, 0, segments.Count);
+        var units = UnitsSection.Parse(unitsBlock);
 
         var restraints = anchorNodes
-            .Select(node => Restraint.CreateSingleDof(node, RestraintType.Anc))
+            .Select(node => Restraint.CreateSingleDof(node, RestraintType.Anc, units.RigidRestraintStiffness))
             .ToList();
 
         var file = new NeutralFile
@@ -123,7 +124,7 @@ public static class NeutralFileFixtureBuilder
             MaterialIds = segments.Select(_ => 1).ToList(),
             AllowableStresses = [],
             NozzleLimits = [],
-            Units = UnitsSection.Parse(unitsBlock),
+            Units = units,
         };
 
         // Regenerate CONTROL/RESTRANT raw lines from the model right away, so the returned
@@ -227,17 +228,45 @@ public static class NeutralFileFixtureBuilder
     /// <see cref="NeutralFile.ReplaceElement"/> uses in production — so the two can never
     /// format-drift apart the way the color/visibility line once did.
     /// </summary>
-    private static List<string> BuildElementLines(IReadOnlyList<PipeSegmentSpec> segments, IReadOnlyList<int> bendNodes)
+    private static List<string> BuildElementLines(
+        IReadOnlyList<PipeSegmentSpec> segments, IReadOnlyList<int> bendNodes, IReadOnlyList<int> anchorNodes)
     {
         var bendNodeList = bendNodes.ToList();
-        var lines = new List<string>();
-        foreach (var segment in segments)
+
+        // Per NeutralFile.AddRestraint's doc comment: the owning element for a restraint at some
+        // node is the one whose ToNode is that node — except a run's very first node, which is
+        // nobody's ToNode, so it falls back to the one segment whose FromNode is that node
+        // (there's exactly one, since these fixtures are always a single contiguous chain).
+        var segmentList = segments.ToList();
+        var restraintOwnerSegmentIndex = new Dictionary<int, int>();
+        for (var i = 0; i < anchorNodes.Count; i++)
         {
+            var node = anchorNodes[i];
+            var ownerIndex = segmentList.FindLastIndex(s => s.ToNode == node);
+            if (ownerIndex < 0)
+            {
+                ownerIndex = segmentList.FindIndex(s => s.FromNode == node);
+            }
+            if (ownerIndex >= 0)
+            {
+                restraintOwnerSegmentIndex[ownerIndex] = i + 1; // 1-based pointer into #$ RESTRANT
+            }
+        }
+
+        var lines = new List<string>();
+        for (var segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
+        {
+            var segment = segments[segmentIndex];
             var pointers = new long[15];
             var bendIndex = bendNodeList.IndexOf(segment.ToNode);
             if (bendIndex >= 0)
             {
                 pointers[0] = bendIndex + 1; // 1-based pointer into #$ BEND
+            }
+
+            if (restraintOwnerSegmentIndex.TryGetValue(segmentIndex, out var restraintIndex))
+            {
+                pointers[3] = restraintIndex;
             }
 
             var element = new Element

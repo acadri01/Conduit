@@ -8,7 +8,7 @@ public class ElementSplitterTests
 {
     private const double OutsideDiameterMillimetres = 168.3;
 
-    private static Element MakeElement(int fromNode, int toNode, double deltaX, int bendPointer = 0)
+    private static Element MakeElement(int fromNode, int toNode, double deltaX, int bendPointer = 0, int restraintPointer = 0)
     {
         var real = new double[53];
         real[0] = fromNode;
@@ -18,6 +18,7 @@ public class ElementSplitterTests
         real[6] = 7.11;
         var pointers = new int[15];
         pointers[0] = bendPointer;
+        pointers[Element.RestraintPointerIndex] = restraintPointer;
         return new Element { RealValues = real, AuxiliaryPointers = pointers };
     }
 
@@ -121,6 +122,39 @@ public class ElementSplitterTests
 
         Assert.Equal(5, plan.Elements.Count);
         Assert.Equal([6000, 6000, 6000, 6000, 500], plan.Elements.Select(e => Math.Round(e.DeltaX, 6)));
+    }
+
+    /// <summary>
+    /// A restraint at the original element's ToNode (e.g. a run's end anchor, or any restraint
+    /// Conduit itself placed there before this span turned out to need splitting) must stay on
+    /// the one chunk that still ends at that node — the last — not every chunk, and not lost.
+    /// </summary>
+    [Fact]
+    public void RestraintPointer_AtToNode_OnlySurvivesOnTheFinalChunk()
+    {
+        var element = MakeElement(10, 20, 24000, restraintPointer: 7);
+
+        var plan = ElementSplitter.Split(element, 24000, 6446.76, OutsideDiameterMillimetres, () => 999, restraintBelongsToFromNode: false);
+
+        Assert.Equal(4, plan.Elements.Count);
+        Assert.All(plan.Elements.Take(3), e => Assert.Equal(0, e.AuxiliaryPointers[Element.RestraintPointerIndex]));
+        Assert.Equal(7, plan.Elements[^1].AuxiliaryPointers[Element.RestraintPointerIndex]);
+    }
+
+    /// <summary>
+    /// A restraint at the original element's FromNode (e.g. a run's very first node, whose anchor
+    /// is nobody's ToNode) must stay on the first chunk, not the last.
+    /// </summary>
+    [Fact]
+    public void RestraintPointer_AtFromNode_OnlySurvivesOnTheFirstChunk()
+    {
+        var element = MakeElement(10, 20, 24000, restraintPointer: 7);
+
+        var plan = ElementSplitter.Split(element, 24000, 6446.76, OutsideDiameterMillimetres, () => 999, restraintBelongsToFromNode: true);
+
+        Assert.Equal(4, plan.Elements.Count);
+        Assert.Equal(7, plan.Elements[0].AuxiliaryPointers[Element.RestraintPointerIndex]);
+        Assert.All(plan.Elements.Skip(1), e => Assert.Equal(0, e.AuxiliaryPointers[Element.RestraintPointerIndex]));
     }
 
     [Fact]

@@ -288,3 +288,20 @@ running status log Claude appends to (skim this from mobile)
   `OptimizationLoop` doesn't thread through yet) — not exercised by our own fixture either way.
   64/64 tests passing (2 new), `dotnet build`/`test` clean. Regenerated `loop-50m-3d.cii` with the
   new radius; `conduit optimize` still passes in 2 iterations. Asked the user to retest.
+- 2026-08-27: user's fifth retest confirmed splitting/geometry work, but reported no restraints
+  actually appeared after converting the neutral file — correctly guessed a missing pointer.
+  Root cause confirmed: `NeutralFile.AddRestraint` never set the owning element's 4th auxiliary
+  pointer (the actual CAESAR II mechanism linking a `#$ RESTRANT` record to a node), so every
+  restraint Conduit wrote was valid but unreferenced and invisible on import. Fixed with a
+  `ToNode`-preferred/`FromNode`-fallback owner-selection convention (with collision-avoidance for
+  two restraints wanting the same connecting element), plus matching pointer-preservation logic in
+  `ElementSplitter.Split`. Found and fixed a second, independent bug in the same pass: every
+  restraint's stiffness was left at `0` (a zero-resistance spring, not a rigid support) — now uses
+  CAESAR II's confirmed rigid constant (`1e12 lbf/in`, converted via `#$ UNITS`' CNVTSF constant).
+  Axis-implied restraint types now also get correct direction cosines; `GUI`'s is left an open
+  question (only one ambiguous real example) rather than guessed, logged in QUESTIONS.md per
+  CLAUDE.md's support-placement-logic consultation rule. 79/79 tests passing (15 new), `dotnet
+  build`/`test` clean. Regenerated `loop-50m-3d.cii`; `conduit optimize` output unchanged but
+  restraints are now correctly wired and rigid. Updated `docs/neutral-file/WALKTHROUGH.md` with a
+  new `#$ RESTRANT` section covering all of this. Asked the user to retest, and logged the
+  still-unaddressed bend-radius-pointer question from the same PR comment as the next task.

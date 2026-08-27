@@ -314,6 +314,13 @@ Key structural facts the parser/writer must honor:
   re-emitted verbatim on write, so a file round-tripped through Conduit without any support
   changes is byte-identical, and a file with only `#$ RESTRANT` changes preserves everything
   else CAESAR II needs to re-import it.
+- **A restraint record alone is not enough — the owning element must point to it.** Per
+  `NeutralFile-v15.pdf`, an element's 4th auxiliary pointer is a 1-based pointer into
+  `#$ RESTRANT`'s records; without it, CAESAR II/`iecho.exe` silently treats the node as having no
+  support at all even though the restraint data itself is well-formed. `NeutralFile.AddRestraint`
+  wires this up (see its doc comment and `docs/neutral-file/WALKTHROUGH.md`'s `#$ RESTRANT`
+  section for the full fix, including the rigid-stiffness-constant and direction-cosine findings
+  that came with it — this was a confirmed, real user-reported bug, not a hypothetical).
 
 ## Generating test neutral files
 Per direct instruction (2026-08-24): Conduit should be able to produce its own valid test neutral
@@ -454,6 +461,28 @@ has no NPS table) per bend instead of reusing 44002.cii's flat 381 mm; the other
 `44002.cii`-derived constants ("angle to node position #1", fitting thickness) are still reused
 as-is (see "In scope (v1)" and QUESTIONS.md for what's still unconfirmed there). The
 minimum-chunk-near-a-bend constraint is implemented in `ElementSplitter` — see "In scope (v1)".
+
+**Update (2026-08-27, sixth round — restraint pointer wiring, the actual root cause of "no
+restraints appear")**: user's fifth retest confirmed the splitting and geometry work, but reported
+that after converting the neutral file to a CAESAR input file, **no restraints existed at all** —
+"I therefore suspect that the elements which are supposed to have the restraints do not correctly
+point to them ... Check for a pointer first." Confirmed exactly right: `NeutralFile.AddRestraint`
+had never set an element's 4th auxiliary pointer (the restraint pointer), so every restraint
+Conduit ever wrote sat in `#$ RESTRANT` unreferenced by any element — valid data, but invisible to
+CAESAR II. Fixed by wiring the pointer on every `AddRestraint` call (`ToNode`-preferred,
+`FromNode`-fallback, with collision-avoidance for two restraints that would otherwise both want the
+same connecting element), and by extending `ElementSplitter.Split` to preserve (not duplicate or
+drop) an existing restraint pointer across a split element's chunks. Found and fixed a second,
+independent contributing bug in the same pass: every restraint's `Stiffness` was left at `0` (a
+spring with zero resistance, not a rigid support) — CAESAR II's actual rigid-restraint constant
+(`1e12 lbf/in`, converted via `#$ UNITS`' CNVTSF constant) is now used instead, and axis-implied
+restraint types (`X`/`Y`/`Z` and variants) now get their confirmed direction cosines too (`GUI`'s
+is left an open question — see QUESTIONS.md — rather than guessed, per the support-placement-logic
+consultation rule). Full details, vendor-doc/real-sample justification, and the known residual gap
+in the owner-selection fallback are in `docs/neutral-file/WALKTHROUGH.md`'s `#$ RESTRANT` section.
+79/79 tests passing (15 new), `dotnet build`/`test` clean. Regenerated `fixtures/loop-50m-3d.cii`;
+`conduit optimize` still passes in 2 iterations with the same output the user originally reported,
+now with all 11 final restraints correctly and distinctly wired.
 
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —

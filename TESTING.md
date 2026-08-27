@@ -17,19 +17,31 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: one thing to re-verify.** The structural round (ELEMENTS, `#$ WIND`, `#$ MISCEL_1`, the
-corrected loop geometry with bends) is confirmed working end to end via `iecho.exe`. Since then,
-`fixtures/loop-50m-3d.cii` changed again — bend radius now defaults to "Long" (252.45 mm instead
-of the flat 381 mm reused before) — so it's worth one more pass to make sure that didn't reopen
-anything:
+**Status: one specific thing to re-verify — does a restraint actually appear now?** Your last
+report was exactly right and very useful: the splitting and geometry converted fine, but *no
+restraints* showed up in the CAESAR input file after conversion, and you correctly guessed it was
+a missing pointer. Confirmed: `AddRestraint` was writing valid `#$ RESTRANT` records but never
+setting the owning element's pointer to them, so CAESAR II imported the model as having no
+supports at all. Also fixed a second bug found while cross-checking real restraint bytes: every
+restraint's stiffness was `0` (a zero-resistance spring) instead of CAESAR's actual rigid-restraint
+constant. Both are fixed now — `fixtures/loop-50m-3d.cii` has been regenerated with the fix (same
+console output as before; the difference is inside the restraint records themselves, not in what
+Conduit prints):
 
 ```powershell
 dotnet run --project src\Conduit.Cli -- optimize fixtures\loop-50m-3d.cii out.cii
 ```
 
-then run `out.cii` (the `optimize`d output) and/or `fixtures\loop-50m-3d.cii` (the raw input)
-through `iecho.exe`'s "Convert Neutral File to CAESAR II Input File" and report whether it
-converts cleanly, plus the console output above.
+then run `out.cii` (the `optimize`d output) through `iecho.exe`'s "Convert Neutral File to CAESAR
+II Input File" and check specifically: **do the 11 restraints (the anchor + guide + rests Conduit
+placed, listed in the console output above) actually appear as restraints in the converted CAESAR
+input file this time?** Report the console output above plus whether the restraints are now
+present — a copy of the converted file (as a `.txt`, like last time) is the most useful thing to
+attach if anything still looks off.
+
+Separately, still outstanding from the same comment and not yet investigated: your bend-radius
+question — whether CAESAR II's neutral file has a proper pointer/field for the Short/Long/3D/5D
+radius presets rather than just a plain computed number. That's next, but didn't block this fix.
 
 # Step-by-step: test Conduit on your own machine
 
@@ -235,7 +247,7 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 64 tests, all
+`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 79 tests, all
 expected to pass on every commit. A failing test blocks the change; there are no known-flaky or
 skipped tests in this project.
 
@@ -268,13 +280,20 @@ skipped tests in this project.
 - `tests/Conduit.Tests/NeutralFiles/BendFormatTests.cs` — `#$ BEND` record byte layout, the
   corner-element pointer wiring (1-based, matching `bendNodes`' order), `#$ CONTROL`'s `NumBends`
   count, and the no-bends case (empty section, all-zero pointers).
+- `tests/Conduit.Tests/NeutralFiles/RestraintFormatTests.cs` — `Restraint.CreateSingleDof`'s
+  rigid-stiffness and direction-cosine correctness, and `NeutralFile.AddRestraint`'s
+  owner-element-pointer wiring: `ToNode`-preferred, `FromNode`-fallback for a run's first node, and
+  the collision-avoidance case (two restraints that would otherwise both want the same connecting
+  element) that reproduces the exact scenario behind the "no restraints appear" bug report.
 - `tests/Conduit.Tests/Heuristics/ElementSplitterTests.cs` — the element-splitting math (the
   user's own worked example: a 25550 mm span against a 6446.76 mm max allowable span splits into
   four 6000 mm elements plus a 1550 mm remainder, four new interior nodes), the exact-multiple and
   already-fits no-op cases, and — a real bug this caught — that a bend pointer on the original
   element's `ToNode` only survives on the final chunk, not every interior one. Also covers the
   minimum-chunk-near-a-bend constraint (a too-short remainder next to a bend gets merged into the
-  previous chunk; the same remainder next to a non-bend node is left alone).
+  previous chunk; the same remainder next to a non-bend node is left alone), and that a restraint
+  pointer on the original element survives on the correct chunk (first if it belongs to the
+  `FromNode`, last if the `ToNode`) rather than being duplicated or lost across the split.
 - `tests/Conduit.Tests/Heuristics/SupportTypeClassifierTests.cs` — rest/guide/anchor
   classification rules in isolation.
 - `tests/Conduit.Tests/Heuristics/SupportPlacerTests.cs` — the run-walking placement algorithm:

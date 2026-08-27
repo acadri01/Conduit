@@ -764,3 +764,58 @@ lengths," plus a screenshot of CAESAR II's bend-radius dropdown (Short/Long/3D/5
 with the new Long-radius bends (252.45 mm for the 168.3 mm-OD pipe, was 381 mm) — structurally
 unaffected otherwise, verified `conduit optimize` still passes in 2 iterations. **Next step**: get
 the user's `iecho.exe` retest result (see TESTING.md's "Test this now").
+
+## Fixed: restraints never actually applied — root cause was a missing pointer (2026-08-27)
+User's fifth retest reported the splitting and geometry both work, but after converting the
+neutral file, **no restraints existed in the CAESAR input file at all**, and correctly guessed why:
+"I therefore suspect that the elements which are supposed to have the restraints do not correctly
+point to them, or that the restraints are not correctly formatted. Check for a pointer first."
+
+Confirmed against `NeutralFile-v15.pdf` and `fixtures/real-samples/44002.cii`: exactly right.
+`NeutralFile.AddRestraint` wrote a well-formed `#$ RESTRANT` record but never set the owning
+element's 4th auxiliary pointer — the actual mechanism CAESAR II uses to associate a restraint
+record with a node (same convention as the bend pointer at index 0, confirmed earlier this
+project). An unreferenced restraint record is invisible to CAESAR II/`iecho.exe` even though it
+parses fine on its own. Fixed — see `docs/neutral-file/WALKTHROUGH.md`'s `#$ RESTRANT` section and
+SPEC.md's 2026-08-27 update for the full owner-selection convention (`ToNode`-preferred,
+`FromNode`-fallback, collision-avoidance) and `ElementSplitter.Split`'s matching pointer-
+preservation logic.
+
+A second, independent bug found in the same pass while cross-checking real restraint bytes: every
+restraint's `Stiffness` field was left at its type default of `0` — a spring with zero resistance,
+not a rigid support, so even a *correctly pointed-to* restraint wouldn't have actually restrained
+anything. CAESAR II's real rigid-restraint constant (`1e12 lbf/in`, confirmed byte-exact against
+`44002.cii` once converted through `#$ UNITS`' CNVTSF constant) is now used for every restraint
+Conduit creates.
+
+**Open question, deliberately not guessed at (per CLAUDE.md's support-placement-logic consultation
+rule — this borders on it)**: `GUI` restraint direction cosine. Every axis-implied restraint type
+(`X`/`Y`/`Z` and their `+`/`-`/snubber/rod/"2" variants) matches its restrained axis in every real
+sample checked, and `ANC`'s is confirmed `(0,0,0)` — but the one real `GUI` example available
+(`44002.cii`) is on a vertical (Y-axis) run with direction cosine `(1,0,0)`, not matching the run's
+own axis. That's not enough data to tell whether `(1,0,0)` is the general rule for a plain full
+guide, or specific to some "directional guide" variant CAESAR II also supports. Left at `(0,0,0)`
+(the same as `ANC`'s confirmed default) rather than guessed. **Next step**: if/when a second real
+`GUI` example becomes available (ideally on a non-Y-axis run), compare direction cosines directly;
+otherwise this needs a direct answer from the user about what CAESAR II's UI actually does for a
+plain guide before `Restraint.CreateSingleDof` can set it with confidence.
+
+**Known residual gap, logged rather than fixed** (assessed as very unlikely to matter given
+Conduit's actual placement patterns): `NeutralFile.AddRestraint`'s owner-selection fallback still
+has a theoretical failure mode if a *third* restraint converges on the same one-or-two-element
+neighborhood (both its `ToNode` and `FromNode` candidates already claimed by other restraints) — it
+would silently overwrite the `ToNode` match rather than erroring. Verified this doesn't occur in
+the actual `loop-50m-3d.cii` optimize run (11 restraints, all correctly and distinctly wired) but
+isn't proven impossible in general.
+
+79/79 tests passing (15 new — `RestraintFormatTests` plus new `ElementSplitterTests`/
+`NeutralFileRoundTripTests` cases), `dotnet build`/`test` clean. Regenerated
+`fixtures/loop-50m-3d.cii`; `conduit optimize` output is unchanged (same console output the user
+originally reported), but the restraint records are now correctly wired and rigid. **Next step**:
+get the user's `iecho.exe` retest result confirming restraints now actually appear in the converted
+CAESAR file (see TESTING.md's "Test this now"). Also still pending from the same PR comment (not
+yet investigated): the user's separate bend-radius question — whether there's a proper
+pointer/preset field for CAESAR's Short/Long/3D/5D bend-radius UI options, as opposed to just
+writing the computed radius number (prior conclusion in this project, from `NeutralFile-v15.pdf`,
+was that no such field exists — the user's comment suggests re-verifying this rather than assuming
+it still holds).

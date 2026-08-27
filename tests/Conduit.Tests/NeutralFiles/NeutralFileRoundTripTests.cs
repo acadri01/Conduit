@@ -38,7 +38,7 @@ public class NeutralFileRoundTripTests
     {
         var file = NeutralFileReader.Read(FixturePath("straight-run.cii"));
 
-        file.AddRestraint(Restraint.CreateSingleDof(60, RestraintType.Y));
+        file.AddRestraint(Restraint.CreateSingleDof(60, RestraintType.Y, UnitsSection.Metric.RigidRestraintStiffness));
 
         Assert.Equal(3, file.Control.NumRestraints);
 
@@ -49,17 +49,30 @@ public class NeutralFileRoundTripTests
         Assert.Contains(reparsed.Restraints, r => r.Node == 60 && r.Dofs[0].Type == RestraintType.Y);
     }
 
+    /// <summary>
+    /// Adding a restraint must wire up its owning element's restraint pointer (see
+    /// <see cref="NeutralFile.AddRestraint"/>'s doc comment) — so the ELEMENTS section is
+    /// expected to change, but only the one element ending at the restrained node, and only its
+    /// pointer array (not its geometry or any other element).
+    /// </summary>
     [Fact]
-    public void OtherSections_StayByteIdentical_WhenOnlyRestraintsChange()
+    public void AddingARestraint_OnlyChangesItsOwningElementsPointer()
     {
         var file = NeutralFileReader.Read(FixturePath("straight-run.cii"));
-        var elementsBlockBefore = file.Blocks.First(b => b.Name == "ELEMENTS").RawLines.ToList();
+        var owningElementIndex = file.Elements.FindIndex(e => e.ToNode == 60);
+        Assert.True(owningElementIndex >= 0, "fixture must have an element ending at node 60 for this test to mean anything");
 
-        file.AddRestraint(Restraint.CreateSingleDof(60, RestraintType.Y));
+        var miscel1Before = file.Blocks.First(b => b.Name == "MISCEL_1").RawLines.ToList();
+        var otherElementsBefore = file.Elements.Where((_, i) => i != owningElementIndex).ToList();
+
+        file.AddRestraint(Restraint.CreateSingleDof(60, RestraintType.Y, UnitsSection.Metric.RigidRestraintStiffness));
         NeutralFileWriter.ToLines(file); // syncs edited blocks
 
-        var elementsBlockAfter = file.Blocks.First(b => b.Name == "ELEMENTS").RawLines;
-        Assert.Equal(elementsBlockBefore, elementsBlockAfter);
+        Assert.Equal(3, file.Elements[owningElementIndex].AuxiliaryPointers[Element.RestraintPointerIndex]);
+        Assert.Equal(
+            otherElementsBefore.Select(e => e.ToRawLines()),
+            file.Elements.Where((_, i) => i != owningElementIndex).Select(e => e.ToRawLines()));
+        Assert.Equal(miscel1Before, file.Blocks.First(b => b.Name == "MISCEL_1").RawLines);
     }
 
     [Fact]
