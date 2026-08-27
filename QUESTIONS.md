@@ -1260,3 +1260,138 @@ earlier entries. Test against `loop-50m-3d.cii` (still expecting zero supports i
 given its current 2000 mm transverse legs, now for the added reason that each of its short jog legs
 is its own bend-bounded span-accumulation zone, all comfortably under max span) plus new fixtures:
 one with a tee, and one exercising the "transverse leg trips it, extending doesn't" loop case.
+
+## Major finding: ALLOWBLS's cold allowable stress has likely never been real (2026-08-27)
+Triggered by the user pushing back on the earlier "Conduit doesn't need UMAT1" answer: "the neutral
+file allowables that have been currently set are based on my previous inputs... based on my choice
+of material from the Caesar GUI which uses the UMAT1 file... Currently you've only been using the
+low carbon steel inputs, but I don't know if you've been using the correct allowable... it will not
+work for any other materials the way it is currently being used." Investigated rather than
+re-asserting the prior answer, and found something more significant than either of us expected.
+
+**The per-element ALLOWBLS-lookup mechanism itself is correct.** `SpanLimitCalculator.ComputeMaxSpan
+(NeutralFile, Element)` does prefer `file.TryGetAllowableStress(element)?.ColdAllowableStress` over
+the hardcoded fallback (`DefaultAllowableBendingStressMpa`, ~10.3 MPa / 1500 psi — explicitly
+documented as "not a code value"), and `AllowableStress.ColdAllowableStress => Values[0]` matches
+`NeutralFile-v15.pdf`'s `#$ ALLOWBLS` section exactly ("1. Cold allowable stress"). So *if* a file
+has a real, populated allowable at that index, Conduit already uses it correctly, regardless of
+material — no UMAT1 parsing needed for that part, exactly as answered before.
+
+**But two things mean this path has likely never actually fired in this project so far:**
+1. `NeutralFileFixtureBuilder` (every Conduit-generated fixture, including `loop-50m-3d.cii`) writes
+   an **empty** `#$ ALLOWBLS` section — `NumAllowableStress = 0`, `AllowableStresses = []` — so every
+   fixture-based test and every `iecho.exe` round-trip this project has ever run has silently used
+   the ~10.3 MPa placeholder constant, not a real material's allowable.
+2. **More surprising**: checked all 3 *real* CAESAR II-exported sample files' actual `#$ ALLOWBLS`
+   bytes — `ColdAllowableStress` (item 1) is `0.0` in all three (`44002.cii`, `TESTv15.cii`,
+   `TESTv15_slugged.cii`). So even a real file's own populated `#$ ALLOWBLS` section doesn't
+   necessarily carry a nonzero cold allowable at that index — meaning Conduit's fallback constant
+   may have been silently firing for *real* files too, not just synthetic ones.
+
+Since max allowable span scales with `sqrt(allowable stress)`, and ~10.3 MPa is roughly 10-14x
+lower than a typical B31.3 basic allowable stress for carbon steel (~110-140 MPa depending on
+temperature/edition), this would make every max-span Conduit has ever computed against a real
+sample file (and every fixture) come out **roughly 3-4x shorter than it should be** — meaning
+far more supports than actually necessary. This plausibly explains an old, never-resolved note
+already sitting in this file from much earlier in the project: "the observation that `SupportPlacer`
+may be placing supports too aggressively — no real fixture files to diagnose against yet." That
+observation may have had this exact root cause all along.
+
+**What's not yet confirmed, and needs your input rather than a guess**: *why* is `ColdAllowableStress`
+zero in the real samples? Two possibilities, and I don't want to assume which: (a) this is normal —
+CAESAR/B31.3 populates the *actually-used* allowable somewhere else for these files' specific
+code/configuration (the vendor doc itself warns "some of these items (notably 8-24) may have
+different meanings based on the active piping code," so it's plausible item 1 isn't always the
+right field to read), or (b) these three files simply don't have this field populated for some
+reason specific to them (demo/example files, a particular workflow that doesn't fill it in, etc.)
+and a typical production model would have it. **Could you check one of your real models in CAESAR
+II's own GUI — what does "allowable stress" show for an element there, and does it correspond to
+any of the numbers actually present in that element's `#$ ALLOWBLS` record?** That would tell me
+definitively whether item 1 is the right field to trust, or whether Conduit needs to read a
+different item (possibly code-specific) instead.
+
+**Next step**: (1) get your read on the above before changing `SpanLimitCalculator`'s lookup logic,
+since guessing at a different field index risks the same problem it's meant to fix; (2) regardless
+of that answer, fix `NeutralFileFixtureBuilder` to populate a real, sourced allowable stress in its
+fixtures (reusing a real sample's own `#$ ALLOWBLS` record is the established pattern for constants
+in this project) so Conduit's own tests actually exercise the real-value code path instead of the
+fallback — this part doesn't need to wait, it's a fixture-fidelity fix, not a placement decision.
+
+## Horizontal-segment guide heuristic, deferred general axis model, and per-axis span-accumulation proposal (2026-08-27)
+Same round, three more items, all explicitly framed as "let's take one thing at a time" — logging
+all three, proposing a concrete design for the one most load-bearing (span accumulation), and not
+implementing any of it yet.
+
+**New heuristic question, not yet resolved**: "I would also like it if we found some heuristic for
+determining when a guide is required on the horizontal segments. Generally, I would put a guide
+wherever there is a rest myself. However, near bends, where there is perhaps a large expansion and
+the guide restrains the expansion... this would have to be reconsidered. This is the same notion as
+we previously discussed." So: the default becomes "every rest also gets a guide," modified by the
+same near-bend/expansion-restraint caution already under discussion for vertical guides and loops.
+Not resolved into a concrete rule yet — logged for the same "one thing at a time" follow-up.
+
+**Deferred: 45°/diagonal segments and non-axis-aligned local coordinate systems.** "In some cases,
+the piping segment's unit vector isn't even collinear with any of the horizontal axis. In that case
+we will have to determine some form of local coordinate system... We will have to be able to
+determine 45° bends [vs] 90° bends... if we have a 45° bend, applying a guide to that bend will
+restrict movement in two directions both in the expanding direction and the perpendicular
+direction... usually problematic as it will... act as a limit stop. We should avoid this, especially
+close to the bend itself." Explicitly framed as uncertain ("I'm not 100% certain about this so I am
+very open to suggestions"). **Proposing to scope the MVP implementation to axis-aligned (90°-bend)
+geometry only** — which covers `loop-50m-3d.cii` and is almost certainly most real near-term
+cases — and log 45°/arbitrary-angle handling as an explicit, deferred follow-up rather than trying
+to solve a general local-coordinate-system problem alongside everything else already queued.
+
+**Corrected/refined span-accumulation model — my own proposed design, not yet confirmed.** The
+user's own restatement: "I think I was slightly misunderstood on the span reset... each straight
+segment consisting of any number of elements should be considered as one segment for the span
+calculation. The division of the segment should then be applied so that it cuts at the correct
+lengths... An example: a 25,000 mm piping segment consisting of four elements (3×7000 mm + 1×4000
+mm)... the span length should be 4×6000 mm and a final 1000 mm... This would require cutting the
+three 7000 mm elements and the final 1000 mm element." Also: "the rest support on the loop's DX
+segment should have a distance in the X axis between the last rest support on the long straight
+line and itself no longer than the acceptable span length" — i.e. the loop's own extending segment's
+placement is measured against the *last support on the same axis*, not reset to zero by the
+intervening Y/Z jog. And: "if the change in direction is horizontal then the new span length in
+the change direction has to be evaluated in the direction of that pipe segment until its direction
+changes again... we kind of need to evaluate the two horizontal axes and the segments in these axes'
+span length separately."
+
+Read together, this isn't "reset accumulation at every bend" (my earlier, now-superseded framing) —
+it's **track accumulated unsupported distance per principal axis independently** (X, the other
+horizontal axis, and vertical), rather than one single running total for the whole run:
+- Walking a run element by element, each element's length adds to *its own dominant axis's*
+  accumulator (not to a single combined total) — a bend into a different axis doesn't reset that
+  new axis's accumulator to zero if it had prior accumulated distance from earlier in the run (this
+  is exactly what makes the loop's DX segment example work: the X-axis accumulator was already
+  partway through its allowance before the loop, pauses while Y/Z accumulate during the jog, and
+  resumes counting from where it left off once back on X).
+- When an axis's accumulator would exceed max span, that's the trigger — and the *placement* isn't
+  constrained to existing element boundaries: the accumulated zone (from the last support on that
+  axis to now) gets evenly re-cut via the same chunking approach `ElementSplitter` already uses for
+  a single overlong element (round down to nearest 1000 mm, divide with remainder), just generalized
+  to operate across however many pre-existing elements that zone actually spans — which is exactly
+  what makes the 25,000 mm / 4-element worked example come out to 4×6000 mm + 1000 mm regardless of
+  the original 7000/7000/7000/4000 element boundaries.
+- Placing a support resets *only that axis's* accumulator to zero; the others are untouched.
+- Bend-corner exclusion (already agreed) still applies — a placement is never chosen at a node that
+  is itself a bend corner, regardless of which axis's accumulator triggered it.
+
+This is offered as my own proposed synthesis, not something already confirmed — explicitly asking
+for pushback before implementing, per the user's own invitation ("you may give me your opinion...
+perhaps you have a better way of doing it").
+
+**Tee/SIF**: confirmed correct — "you have correctly understood the notion of the tee." New note,
+not yet actioned: "we need to also be able to apply the SIF for this" — parsing/using `#$ SIF&TEES`
+data is needed eventually, tying into the viewer's "Tees and SIFS" requirement from the same round.
+
+**Viewer**: confirmed the phased-parsing plan is right — "I would like the viewer to be able to
+parse all parts of the neutral file. We will need to create examples for each of the cases that
+need to be parsed." No new decision needed; matches the already-proposed incremental approach.
+
+**Next step**: get confirmation on the ALLOWBLS question (needs the user's own CAESAR GUI check —
+can't resolve from this container alone) and on the per-axis span-accumulation proposal above,
+before implementing any of the now-substantial queue: bend-corner exclusion, per-axis span
+accumulation + even re-chunking, 2x vertical guide-spacing multiplier, tee/branch exclusion via
+collinearity, the loop rule, and (separately, unblocked) fixing `NeutralFileFixtureBuilder` to
+populate a real ALLOWBLS record.

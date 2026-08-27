@@ -388,3 +388,22 @@ running status log Claude appends to (skim this from mobile)
   exclusion, loop rule, 2x multiplier), decided to hold all support-placement code until this lands
   together as one consistent pass rather than implementing pieces against a model that's about to
   change. Logged in QUESTIONS.md; replied on the PR restating the correction for confirmation.
+- 2026-08-27: user pushed back on the "Conduit doesn't need UMAT1" answer, prompting a real
+  investigation rather than re-asserting it. Found the per-element ALLOWBLS-lookup mechanism itself
+  is correct (field indices match the vendor PDF exactly), but that it's likely never actually
+  fired: `NeutralFileFixtureBuilder` writes an empty `#$ ALLOWBLS` section in every fixture, AND all
+  3 real sample files' own `ColdAllowableStress` field is 0.0 too — so Conduit's span math has
+  probably always used the ~10.3 MPa placeholder fallback (vs. a real ~110-140 MPa B31.3 carbon-
+  steel allowable), producing max spans roughly 3-4x too short and likely far more supports than
+  necessary. This plausibly explains an old, unresolved note already in QUESTIONS.md about
+  `SupportPlacer` placing supports too aggressively. Asked the user to check a real model in
+  CAESAR's own GUI to confirm whether `#$ ALLOWBLS` item 1 is genuinely the right field to trust
+  before changing the lookup logic — can't resolve this from the container alone. Also refined the
+  span-accumulation model further per the user's correction (it's not "reset at every bend" as
+  previously framed, but "track accumulated distance per principal axis independently, re-cutting
+  the accumulated zone evenly regardless of original element boundaries") — proposed this as my own
+  design, explicitly asking for confirmation/pushback, and scoped 45°/diagonal-segment handling as
+  an explicit deferred follow-up. Logged a new open item (guide-on-horizontal-segment heuristic,
+  "generally wherever there's a rest, except near bends") and confirmed tee/SIF understanding is
+  correct. Still holding all support-placement code pending confirmation; the ALLOWBLS-in-fixtures
+  fix is unblocked and independent, queued as next concrete step regardless of the other answers.
