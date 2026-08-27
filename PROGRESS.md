@@ -371,3 +371,20 @@ running status log Claude appends to (skim this from mobile)
   related files Conduit depends on (answered directly — `reference/*.pdf`, `fixtures/real-samples/
   *.cii`, `fixtures/caesar.cfg`, plus `iecho.exe`/the CAESAR install tree as external, not-committed
   dependencies). All logged in QUESTIONS.md; still no support-placement code pushed.
+- 2026-08-27: user confirmed the 2x vertical guide-spacing rule, expanded the viewer scope to full
+  CAESAR-input-GUI parity (read-only) — scoped against what's already parsed vs. what needs new
+  parsers (`#$ BEND`'s own fields, `#$ SIF&TEES`, `#$ REDUCERS`, `#$ FLANGES`, `#$ OFFSETS`,
+  `#$ FORCMNT`, `#$ DISPLMNT`, `#$ RIGID`, `#$ EXPJT`), proposed a phased/incremental build starting
+  from what's already modeled, defaulting to an HTML read-only page format unless told otherwise —
+  answered the UMAT1 question directly (not used; already documented, `#$ ALLOWBLS` covers what's
+  needed). Also raised a real, previously-unhandled gap: `SupportPlacer` accumulates span across
+  multiple elements but never resets that accumulation at a bend (confirmed by tracing the actual
+  `loop-50m-3d.cii` console output — the node-20 placement literally sums two elements across a
+  bend) — a bend must end one span-accumulation zone and start a new one, same as a restraint
+  already does. Also flagged tees (3 elements at one node) as an unhandled topology; checked
+  `NeutralFile-v15.pdf`'s `#$ SIF&TEES` section and a real sample and confirmed the neutral file
+  only identifies an intersection by node, not which element is the branch — that has to come from
+  geometric collinearity. Given this interacts with everything already agreed (bend-corner
+  exclusion, loop rule, 2x multiplier), decided to hold all support-placement code until this lands
+  together as one consistent pass rather than implementing pieces against a model that's about to
+  change. Logged in QUESTIONS.md; replied on the PR restating the correction for confirmation.

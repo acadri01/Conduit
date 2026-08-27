@@ -1178,3 +1178,85 @@ during development. Answered directly on the PR (factual, no ambiguity) — as o
 if a text table turns out to be sufficient) — not support-placement logic, so not blocked by the
 loop/guide-spacing discussion above; can proceed on a decide-and-proceed basis once the one scope
 question is settled.
+
+## Confirmed: 2x vertical guide-spacing rule; viewer scope expanded; UMAT1 answered; new span/tee correction (2026-08-27)
+
+**2x rule confirmed** — "You can go for the 2x rule." Will implement together with the rest of the
+support-placement work below, not in isolation (see the "implement together" reasoning under the
+new correction further down).
+
+**Viewer scope is much bigger than the `conduit inspect` proposal**: "It should have all the same
+viewing options as the input GUI in Caesar... material, OD, thickness, temperatures, pressures,
+densities per element viewing, restraints displayed, bends displayed and bend option viewer, Tees
+and SIFS, insulation density and thickness, applied forces, applied displacements. Anything that
+can be seen in Caesar input basically without the editing." This is full CAESAR-input-GUI parity,
+read-only. Scoping this against what Conduit currently parses into structured models vs. what's
+still opaque raw text (per `docs/neutral-file/WALKTHROUGH.md`'s "Sections not yet used" list):
+already modeled — `#$ ELEMENTS`' real values (OD, wall thickness, insulation thickness, densities,
+pressures, temperatures, etc.), `#$ RESTRANT`, `#$ ALLOWBLS`, `#$ EQUIPMNT`, `#$ MISCEL_1`'s
+material IDs. **Not yet modeled, would need new parsers first**: `#$ BEND` (currently only its
+pointer is used — the record's own 14 fields aren't parsed into a queryable object),
+`#$ SIF&TEES`, `#$ REDUCERS`, `#$ FLANGES`, `#$ OFFSETS`, `#$ FORCMNT` (applied forces),
+`#$ DISPLMNT` (applied displacements), `#$ RIGID`, `#$ EXPJT`. Proposed approach: build the viewer
+incrementally against what's already modeled first (a real, useful subset — geometry, sizes,
+materials, restraints), then add a parser per additional section as it's needed for the viewer,
+same as how `#$ ALLOWBLS`/`#$ EQUIPMNT`/`#$ BEND`'s pointer were added earlier in this project.
+Not yet started — this is a real, separate body of work; flagging the phased plan rather than
+committing to a full-parity timeline. **Format decision still open**: a rendered read-only web
+page (HTML, viewable without any install) is the natural fit for "no license required" — will
+default to that unless told otherwise, per decide-and-proceed, since it's reversible/low-stakes
+(a delivery-format choice, not a support-placement decision).
+
+**UMAT1 — answered directly, not new**: no, Conduit doesn't read `UMAT1.UMD` or any material
+database file. This is already documented (SPEC.md's "Known open decisions," the
+"Resolved (2026-08-21...)" entry): there's no format documentation for CAESAR's material/component
+database files (same situation as `iecho.exe`), and it isn't needed for v1's purposes — `#$
+ALLOWBLS` already carries the allowable stress CAESAR II itself computed per-element from whatever
+that database lookup would have produced, which is what `SpanLimitCalculator` actually consumes.
+`caesar.cfg`'s `User_Material_File_Name`/`SYSTEM_DIRECTORY_NAME` fields are parsed and surfaced
+(so the *path* is known), but the file's own contents are never opened.
+
+**New correction — span accumulation must reset at a bend, and tees need their own handling.**
+"It isn't just so that the lengths should be checked per element against the allowable. Unless
+there are changes in the direction of the pipe, that is a long straight segment, which should be
+considered one piping section and the distance should be its length not the individual length of
+each element... unless there is some type of directional change such as a bend or a restraint,
+this should be considered one line segment."
+
+Checked this against `SupportPlacer.PlaceSupportsForRun`'s actual current behavior (not assumed):
+it **does** already accumulate span across multiple elements within a run rather than checking each
+element in isolation — but it does **not** reset that accumulation at a bend. Traced this against
+the exact `loop-50m-3d.cii` console output that originally surfaced the bend-corner bug: the
+"node 20 (Guide): span 26000.00 mm" placement is literally `10→20`'s 24000 mm plus `20→30`'s
+2000 mm summed together across a bend at node 20, which is exactly the behavior being corrected
+here. So this is a real, confirmed gap, not a restatement of something already handled: **a bend
+(direction change) must end one span-accumulation zone and start a new one**, same as a restraint
+already does. Combined with the already-agreed "never place a support directly at a bend corner"
+rule, this means the two corrections have to land together — implementing bend-corner exclusion
+against the *old* accumulation model first would need redoing once this lands, so **holding off on
+pushing any of the confirmed pieces (bend-corner exclusion, 2x vertical multiplier, loop rule)
+until this is implemented as one consistent pass**, rather than doing it twice.
+
+**Tees — a new topology `SupportPlacer` doesn't handle at all today.** "There are also tees in the
+piping systems and these will have three elements connecting to a single note. It's important that
+we're able to determine which of the elements is the tee and which two elements are the main
+header." Checked `NeutralFile-v15.pdf`'s `#$ SIF&TEES` section for whether the neutral file labels
+this explicitly rather than guessing: it identifies an intersection only by **node number** (item 1,
+"the intersection node number") plus a type code and SIF/stress values — confirmed against a real
+example (`TESTv15.cii`'s one `#$ SIF&TEES` record: node 50, type 3) — **it does not identify which
+of the three connecting elements is the branch**. So that has to come from geometry: the two
+elements whose direction vectors are collinear (same or opposite unit vector) are the header/main
+run; the third, non-collinear element is the branch. Reading the request as: **when walking a run
+for span-accumulation purposes, a tee's branch element should be excluded from the header's
+straight-segment length entirely** (it's a separate, presumably much shorter, side connection with
+its own span rules, not part of the "how long is this straight run" question) — please correct me
+if the branch needs its own span check folded in differently.
+
+**Next step**: implement all four confirmed/corrected pieces together once acknowledged — (1)
+bend-corner exclusion, (2) span-accumulation resets at each bend (not just at restraints), (3) the
+2× vertical guide-spacing multiplier, (4) tee detection via element-direction collinearity so a
+branch element doesn't get folded into the header's span-accumulation — plus the loop rule from the
+earlier entries. Test against `loop-50m-3d.cii` (still expecting zero supports inside the loop
+given its current 2000 mm transverse legs, now for the added reason that each of its short jog legs
+is its own bend-bounded span-accumulation zone, all comfortably under max span) plus new fixtures:
+one with a tee, and one exercising the "transverse leg trips it, extending doesn't" loop case.
