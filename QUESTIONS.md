@@ -902,3 +902,127 @@ discussion into `SupportTypeClassifier`/`SupportPlacer`/`RestraintTypeMapper` as
 tests against the exact `loop-50m-3d.cii` scenario that surfaced this. **No support-placement code
 changes will be pushed until this is resolved** — per CLAUDE.md's reservation of this class of
 decision, and the user's own direct request to discuss first this round.
+
+## Answers received: deterministic loop-placement rule (2026-08-27) — restated, not yet implemented
+The user answered all three questions from the entry above, in detail, and explicitly asked for a
+restatement to confirm before implementing ("You may give a summary of your understanding of this
+for me to confirm"). Per that request and CLAUDE.md's consult-before-implementing rule, **nothing
+below is implemented yet** — this is the restatement, logged here as the record, with a couple of
+narrow follow-up questions where the given rules don't fully specify an edge case.
+
+**1. GUI's direction cosine — CAESAR's own behavior, not a Conduit choice, for the ordinary case.**
+With `Izup=0` (Y vertical): a `GUI` restraint on a *horizontal* run auto-resolves to a single
+restraint perpendicular to the pipe's own axis when its direction cosine is left `(0,0,0)` — this
+is CAESAR's own resolution, confirmed working as-is, nothing to change. A `GUI` on a *vertical* run
+with `(0,0,0)` becomes an "all-round guide" — CAESAR restrains **both** horizontal directions (X
+and Z) automatically. That's the actual problem: on a vertical segment near a bend into a long
+run with limited flexibility (as in this loop), an all-round guide restrains the very direction the
+loop exists to let the pipe expand into, driving up bend stress — "this is a poor design." The fix
+in this specific case: restrain **only** the transverse direction (Z here), leaving the run's own
+expansion axis (X here) free — which requires an explicit, non-zero direction cosine rather than
+relying on the all-round default. Understood as: **Conduit doesn't need general logic to pick a
+guide's perpendicular direction for the ordinary case** (CAESAR already does that correctly) — the
+only place an explicit direction cosine is needed is where the default all-round behavior on a
+vertical segment would over-restrain a designed expansion path, which (per point 3 below) is
+exactly the case a loop-placement rule replaces anyway, since no guide ends up on the loop's
+vertical/transverse legs at all under the new rule.
+
+**2. No fixed minimum-clearance constant — this is inherently a stress question, not a geometry
+one.** Confirmed: there's no set distance. The underlying principle is thermal expansion: the
+closer a restraint sits to a segment that's expanding in the restrained direction, the higher the
+stress in the pipe between the restraint and that expansion. Getting this precisely right needs
+real stress analysis (`CaesarComStressSolver`, still a skeleton) — "restraining a pipe in the
+direction of its expansion is poor design," full stop, rather than a distance-threshold problem.
+For MVP purposes, the loop rule in point 3 is the concrete, implementable stand-in: it avoids the
+close-to-a-bend problem structurally (by choosing where a support *can* go) rather than by
+measuring a clearance distance.
+
+**3. Deterministic loop-detection and placement rule — the concrete algorithm, restated in full:**
+- **Loop detection**: a short bend-connected chain of segments where **two of the three axes each
+  appear exactly twice with opposite sign** (a there-and-back pair — e.g. `+DY` then later `-DY`;
+  `-DZ` then later `+DZ`), and the **third axis has one segment matching the direction of the long
+  run either side of the loop** (e.g. `+DX`, same direction as the run's own long legs before and
+  after). That third segment is the loop's "extending" segment.
+  - Worked against `loop-50m-3d.cii`'s actual geometry to confirm the reading: segments (in order)
+    are `+DX` (long), `+DY`, `-DZ`, `+DX`, `+DZ`, `-DY`, `+DX` (long). Y appears at `+DY`/`-DY`
+    (symmetric pair), Z appears at `-DZ`/`+DZ` (symmetric pair), and the middle `+DX` segment
+    matches the two long legs' own direction — exactly the pattern described. This matches "any of
+    these combinations where there is symmetry in two of the dimensions."
+- **Placement trigger**: if the loop's transverse segment length (the `DZ` legs in the 3D case,
+  evaluated presumably via the same `SpanLimitCalculator.ComputeMaxSpan` already used everywhere
+  else) exceeds the max allowable span for that segment, **the loop's extending segment (`DX`
+  here) gets a single rest, centered** — "at the centre of the extending segment." No support goes
+  on the rise (`DY`) or transverse (`DZ`) legs themselves, and if the transverse leg does *not*
+  exceed max span, the loop gets no support at all.
+- **2D case, same notion**: a loop entirely in the horizontal plane (e.g. transverse in `DZ`,
+  extend in `DX`, transverse back in `DZ` — only one axis pair symmetric, no rise) follows the same
+  rule: a rest at the center of the extending segment if the transverse leg exceeds max span.
+- **Sanity check against the actual fixture**: `loop-50m-3d.cii`'s transverse (`DZ`) legs are
+  2000 mm each — well under the 6446.76 mm max allowable span the CLI has been computing for this
+  pipe. Under this rule, **the loop itself would get zero supports** — the bug-triggering
+  placements at nodes 20/50/70 wouldn't happen at all once bend-corner exclusion and this
+  loop-awareness are both in place, since none of them were actually load-bearing decisions to
+  begin with once the loop is recognized as one unit. (The two long `+DX` legs either side still
+  get their own ordinary span-driven rests/splits, unaffected by this rule.)
+
+**Narrow follow-up questions** (the rest is confirmed enough to implement against):
+- Does "symmetry" require the two paired segments' lengths to match exactly (e.g. both `DY` legs
+  exactly 2000 mm), or just same-axis-opposite-sign regardless of magnitude? Read as the latter
+  (topological symmetry — an out-and-back on the same axis) but flagging since "symmetry" could
+  mean exact equal magnitude.
+- For a genuinely standalone vertical riser that is **not** part of a detected loop (continues on
+  to more pipe rather than doubling back) — should Conduit keep the current all-round default
+  (`GUI` at `(0,0,0)`) as an interim placeholder, since a general (non-loop) direction-cosine
+  heuristic is explicitly future work per point 1 above? Assumed yes unless told otherwise.
+- Confirming the transverse-leg-vs-max-span comparison uses the same `SpanLimitCalculator` already
+  used for ordinary span-driven placement (no new formula) — read as yes.
+
+**Also noted (per direct instruction) for later, beyond MVP**: the user explicitly deferred the
+*general* "heuristic for placing loops and determining the type of loop" (arbitrary loop shapes,
+not just the symmetric 2D/3D case above) as future work beyond MVP scope, while asking that
+whatever's derivable now be recorded so it doesn't need re-deriving later. This entry is that
+record for the symmetric-loop case; the general case (asymmetric loops, other loop topologies,
+automatically deciding *where* to route a loop rather than just how to support an existing one)
+remains open and unscoped.
+
+**Next step**: post the restatement above on the PR for confirmation (already drafted to mirror
+this entry) alongside the narrow follow-ups. Once confirmed, implement in this order: (1) bend-
+corner exclusion in `SupportPlacer`/`OptimizationLoop.TrySplit` (already-agreed, no ambiguity —
+see the entry above), (2) loop detection as a new step in `SupportPlacer` that identifies a
+symmetric-axis-pair segment chain and treats it as one unit rather than walking its individual
+elements for span purposes, (3) the centered-rest-on-transverse-trigger rule from point 3, with a
+new node introduced at the extending segment's midpoint via `ElementSplitter` if it doesn't already
+have one there. Test directly against `loop-50m-3d.cii`: expect zero supports inside the loop
+itself (per the sanity check above) given its current 2000 mm transverse legs, plus a second test
+fixture with a longer transverse leg (e.g. 8000 mm, above the 6446.76 mm max span) to actually
+exercise the "loop gets a centered rest" branch.
+
+## Noted for later: `iecho.exe` automation is one-directional only, not two (2026-08-27)
+Per the same round: the user shared reference material from a previous, separate Python project's
+`iecho.py` wrapper (their own code, shared as context, not proprietary CAESAR II material) that
+clarifies a constraint relevant to `IechoConverter`'s eventual implementation (`SPEC.md`'s "Native
+file adapter (iecho)", currently a skeleton with both directions assumed equally automatable):
+- **`.CII` → `.C2` ("silent conversion")**: fully scriptable — blocking subprocess call, no UI,
+  raises on non-zero exit/timeout/missing output file. This is the direction Conduit's own
+  optimize output actually needs (turning a modified neutral file back into something CAESAR II
+  can open directly), and it's the easy direction. The reference wrapper resolves `iecho.exe`'s
+  path via a config-file override first, then an `IECHO_PATH` environment variable, then a
+  hardcoded list of common install paths (both Intergraph CAS and Hexagon branding) — consistent
+  with the discovery-logic pattern already planned for `IechoConverter` in SPEC.md.
+- **`.C2` → `.CII` ("interactive export")**: **not fully scriptable** — `iecho.exe` only exposes
+  this direction through its interactive UI (`launch_for_export`, non-blocking, opens the UI for a
+  person to click through). The reference wrapper's workaround is a watchdog that polls for the
+  expected output file to appear (or the process to exit) rather than a true headless call.
+- **Implication for `IechoConverter`**: `ToNativeFile(ciiPath) -> nativePath` (Conduit's own
+  optimized output back into `.C2`) can eventually be a real, fully headless implementation.
+  `ToNeutralFile(nativePath) -> ciiPath` (getting a user's existing `.C2` file into `.cii` in the
+  first place) cannot be fully headless with `iecho.exe` alone — it needs either the same
+  UI-launch-plus-watchdog pattern (semi-automated, still requires the user to be present to click
+  through the export dialog once) or a different conversion path entirely. This changes what
+  "Conduit's users should never have to run `iecho` by hand" (SPEC.md's existing framing) can
+  actually mean in practice: the write-back direction can be invisible; the read direction can only
+  be made low-friction, not eliminated, without some other resolution. Logged here rather than
+  silently assumed away — worth flagging back if/when `IechoConverter` gets implemented for real.
+**Next step**: fold this into SPEC.md's "Native file adapter (iecho)" section (done, this round) —
+no code change yet since `IechoConverter` is still out of MVP scope; this is purely so the
+constraint isn't rediscovered from scratch when that work starts.

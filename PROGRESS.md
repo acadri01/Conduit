@@ -331,3 +331,22 @@ running status log Claude appends to (skim this from mobile)
   PR with a diagnosis, the specific clarifying questions needed to implement precisely, and a
   state-of-the-project recap for the vision-realignment conversation. No code pushed this round —
   waiting on the user's answers before touching support-placement logic further.
+- 2026-08-27: user answered all three questions in detail and asked for a restatement to confirm
+  before implementing. Restated and logged in QUESTIONS.md: (1) CAESAR itself auto-resolves a
+  GUI's perpendicular direction on a horizontal run from a zero direction cosine; on a vertical run
+  a zero direction cosine becomes an "all-round guide" (restrains both perpendicular directions),
+  which over-restrains a designed expansion path near a bend — fixed not by computing a general
+  direction cosine but by the loop rule below, which stops a guide from ever landing there; (2) no
+  fixed minimum-clearance constant exists — it's a stress question needing a real solver, not a
+  distance threshold; (3) a full deterministic loop-detection and placement rule: a chain where two
+  axes each appear as an opposite-sign pair and the third matches the long run's own direction is a
+  "loop" — its extending segment gets a single centered rest only if the transverse leg's length
+  exceeds the max allowable span, and no support goes on the loop's other legs at all. Verified
+  this reading against `loop-50m-3d.cii`'s actual geometry (matches exactly) and worked out that
+  under this rule the loop currently needs zero supports (its 2000 mm transverse legs are well
+  under the 6446.76 mm max span) — meaning the original bug-triggering placements weren't load-
+  bearing decisions to begin with. Also logged (separately, not blocking): a reference `iecho.py`
+  wrapper the user shared confirms `.cii`→`.C2` is fully scriptable but `.C2`→`.cii` only works
+  through `iecho.exe`'s interactive UI — folded into SPEC.md's "Native file adapter (iecho)"
+  section for when `IechoConverter` gets implemented for real. Posted the restatement plus three
+  narrow follow-up questions on the PR; still no code changes pushed — waiting on confirmation.

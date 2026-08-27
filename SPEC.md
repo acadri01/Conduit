@@ -120,6 +120,22 @@ problem (a Windows-only external tool this container can't exercise):
   paths (Intergraph CAS and Hexagon-branded, multiple CAESAR II versions, 15.00 and up per
   Conduit's supported floor) plus a config/environment-variable override, the same pattern as any
   external-tool discovery, but **do not** assume `CaesarInstallationLocator`'s paths apply to it.
+
+**Update (2026-08-27) — the two conversion directions are not equally automatable.** Per a
+reference Python wrapper the user shared (their own code from a separate project, shared as
+context — see QUESTIONS.md's "Noted for later: `iecho.exe` automation is one-directional only"
+entry for the full detail): `.cii` → `.C2` ("silent conversion") is a genuinely headless, blocking
+subprocess call with no UI — this is the direction Conduit's own optimize output needs, and stays
+fully automatable as originally planned. `.C2` → `.cii` ("interactive export"), however, only
+works through `iecho.exe`'s interactive UI — there is no documented headless call for this
+direction; the reference wrapper's own workaround is launching the UI non-blocking and polling for
+the expected output file to appear. **This means `ToNeutralFile(nativePath) -> ciiPath` cannot be
+fully invisible to the user the way `ToNativeFile(ciiPath) -> nativePath` can** — at minimum it
+needs a launch-and-watch pattern, and the user still has to be present to click through the export
+dialog once. Doesn't change `IechoConverter`'s scope (still a skeleton, still deferred), but does
+change what "Conduit's users should never have to run `iecho` by hand" can mean in practice once
+it's implemented for real — worth revisiting this note at that point rather than assuming both
+directions are symmetric.
 - One asymmetry worth flagging for whoever implements this: in the reference wrapper, `.cii` →
   `.C2` (writing Conduit's changes back to the native format) ran as a plain silent subprocess
   call, but `.C2` → `.cii` (reading a native file in) was done by launching `iecho.exe`
