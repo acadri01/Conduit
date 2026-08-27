@@ -350,3 +350,24 @@ running status log Claude appends to (skim this from mobile)
   through `iecho.exe`'s interactive UI — folded into SPEC.md's "Native file adapter (iecho)"
   section for when `IechoConverter` gets implemented for real. Posted the restatement plus three
   narrow follow-up questions on the PR; still no code changes pushed — waiting on confirmation.
+- 2026-08-27: user replied with corrections and three new items. Corrected the loop restatement:
+  transverse and extending legs are NOT immune from ordinary span rules (guides can legitimately
+  appear on loop-internal legs, especially in large loops) — the loop-specific rule only kicks in
+  when the transverse leg alone triggers a need but the extending segment doesn't independently,
+  in which case the extending segment gets one centered rest; if the extending segment also
+  independently needs support, place multiple supports symmetrically on it instead of a single
+  center point. Confirmed the 2D loop (4 bends/3 segments, one out-and-back pair) and 3D loop (6
+  bends/5 segments, two out-and-back pairs — unchanged from before) taxonomy, and introduced a
+  third pattern, the S-loop (also 6 bends/5 segments but topologically different, harder to detect
+  deterministically) — logged with the user's worked example, explicitly deferred as future work.
+  Also asked for research (not implementation) on a deterministic vertical-riser guide-spacing
+  heuristic — researched via `reference/`'s vendor PDFs (nothing relevant — software docs, not
+  design-practice references) and a web search, finding a well-corroborated industry rule of thumb
+  (guide spacing on a vertical riser ≈ 2× the ordinary horizontal max allowable span), directly
+  implementable against `SpanLimitCalculator.ComputeMaxSpan`'s existing output — reported findings
+  with sources on the PR, not yet implemented. Also logged two new non-support-placement requests:
+  a neutral-file viewer (proposed starting with a low-cost `conduit inspect` text-table CLI command,
+  asked whether that's sufficient or a graphical rendering is the real goal) and a list of CAESAR-
+  related files Conduit depends on (answered directly — `reference/*.pdf`, `fixtures/real-samples/
+  *.cii`, `fixtures/caesar.cfg`, plus `iecho.exe`/the CAESAR install tree as external, not-committed
+  dependencies). All logged in QUESTIONS.md; still no support-placement code pushed.

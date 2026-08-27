@@ -1026,3 +1026,155 @@ file adapter (iecho)", currently a skeleton with both directions assumed equally
 **Next step**: fold this into SPEC.md's "Native file adapter (iecho)" section (done, this round) —
 no code change yet since `IechoConverter` is still out of MVP scope; this is purely so the
 constraint isn't rediscovered from scratch when that work starts.
+
+## Corrections to the loop-placement restatement, plus S-loops and a viewer/research request (2026-08-27)
+The user's next reply corrected part of the restatement above, confirmed the rest, and added three
+separate items. Recorded here in full before any implementation, per the same consult-first rule.
+
+**Correction — transverse and extending legs are NOT immune from ordinary span rules.** My prior
+restatement said "nothing goes on the rise or transverse legs" inside a loop. That's wrong: "if a
+horizontal transverse section exceeds the limit it should receive a rest like all other pipes.
+This goes for the extending loop segment which is parallel to the longer piping segments as well."
+So every segment in a loop is still subject to the *ordinary* per-segment span check — the
+loop-specific rule is narrower than I first stated:
+- If the transverse leg's own length exceeds max span, but the extending segment's own length does
+  **not** independently need a support → the extending segment still gets exactly one rest, and it
+  must be centered ("It does not have to be in the centre if the traverse segment is longer than
+  the allowable, but the extending segment is too" — implying centering is specifically the
+  behavior for *this* case, not a universal rule).
+- If the extending segment's own length **also** independently exceeds max span (i.e. it needs
+  more than one support on its own merits) → place the (multiple) supports "symmetrical on the
+  extending segment" rather than a single center point, and rather than the ordinary greedy
+  left-to-right walk `SupportPlacer` uses elsewhere (which would produce an off-center remainder at
+  one end) — read as: distribute evenly and symmetrically about the segment's midpoint instead.
+- **Guides can legitimately appear on transverse (or other loop-internal) legs** — "I have seen
+  loops with guides on the horizontal transverse sections - especially when the loops are large."
+  So the loop rule is *not* "never place anything inside a loop except the one centered rest" — it
+  only kicks in for the specific "transverse triggers, extending doesn't" case above; otherwise
+  ordinary per-segment classification (vertical → guide, horizontal → rest, subject to the
+  still-confirmed bend-corner exclusion) applies normally inside a loop too.
+
+**Confirmed — loop taxonomy, precisely, with an added third pattern:**
+- **2D loop**: 4 bends, 3 segments between them. Of the 3, two have equal magnitude and opposite
+  direction (a single out-and-back pair on one axis); the straight segment before the loop and the
+  one after it have collinear (same-direction) unit vectors.
+- **3D loop**: 6 bends, 5 segments between them, with *two* out-and-back pairs on two different
+  axes (matches `loop-50m-3d.cii` exactly, and matches my prior restatement — unchanged).
+- **S-loop (new)**: also a planar loop with 6 bends and 5 segments, but *not* the same
+  double-symmetric-pair structure — described as "more topological" and harder to detect
+  deterministically. The user's own worked example (all in the X/Z plane): `dx=25000, dz=3000,
+  dx=2000, dz=-7000, dx=3000, dz=-4000, dx=25000` — three `dz` segments (not a simple ± pair) and
+  two `dx` segments both positive (continuing the outer legs' own direction, not opposing each
+  other). What's confirmed as always true: the segment before and after the loop still have
+  collinear unit vectors (both `dx=25000` here). **Detection algorithm not fully specified** —
+  explicitly the harder case. Per the user's own framing, the *general* loop-type-detection
+  heuristic (arbitrary shapes, S-loops included) is future work beyond MVP; this entry exists so
+  the S-loop pattern and its one worked example aren't lost before that work starts.
+
+**Point 2, restated — this is now a research task, not an implementation one.** "I definitely think
+we should find a heuristic for placing guides/all-round guides for vertical risers with
+deterministic spacing methods. You may do some research on this and get back to me on what you
+find before implementing it." See the separate "Researched: vertical-riser guide spacing" entry
+below for the findings — **not yet implemented**, reporting only, per the explicit instruction.
+
+**Point 3**: confirmed correct as restated ("no fixed minimum clearance — a stress question, not a
+distance one"). Nothing further needed here.
+
+**GUI-logic test fixture**: explicitly deferred — "we can also create a file that test[s] the GUI
+logic we have agreed... once we agree on a GUI placement logic." Not building this yet; it depends
+on the still-open vertical-riser guide-spacing research above.
+
+**Next step once the loop rule and guide-spacing research are both confirmed**: implement in this
+order — (1) bend-corner exclusion (agreed, unambiguous), (2) loop detection (2D/3D symmetric case
+only — S-loops explicitly deferred), (3) the corrected trigger/placement rule above (centered when
+only the transverse leg needs it; symmetric multi-support when the extending segment also
+independently needs it; ordinary per-segment classification otherwise, including guides on
+loop-internal legs when warranted), (4) the vertical-riser guide-spacing multiplier once confirmed.
+Test against `loop-50m-3d.cii` (current geometry: transverse legs under max span, so the loop
+itself should still need zero supports) plus new fixtures that exercise the "transverse only" and
+"both transverse and extending" trigger cases.
+
+## Researched: vertical-riser guide spacing heuristic (2026-08-27) — findings only, not implemented
+Per the user's explicit request to research and report back before implementing anything. Checked
+`reference/`'s vendor PDFs first (per CLAUDE.md's standing instruction to consult primary sources) —
+they contain nothing on this: all 5 are CAESAR II *software/UI* documentation (how to drive the
+program), not piping engineering *design-practice* references, and a full-text search of all five
+for "guide"/"spacing"/"riser" near each other returned zero hits. This is expected, not a gap in
+the docs — support-spacing rules are an engineering-practice topic, not something a stress-analysis
+program's help file would prescribe (CAESAR lets you place whatever you specify; it doesn't dictate
+where).
+
+Web search turned up a well-established, consistently-cited industry rule of thumb, corroborated
+across multiple independent sources (SPED — Society of Piping Engineers and Designers; Eng-Tips;
+wermac.org; hardhatengineer.com; Industrial Monitor Direct's piping knowledge base):
+
+**Guide spacing on a vertical riser ≈ 2× the pipe's ordinary horizontal max allowable span for the
+same size/schedule.** Rationale given consistently across sources: horizontal span tables limit
+*bending stress* between supports under gravity load — a vertical riser has no such gravity-induced
+bending moment along its own axis, so the governing concerns are different (lateral sway/buckling
+resistance, not sag), and the accepted practice is to allow roughly double the horizontal interval
+before requiring another guide.
+
+A related but distinct finding, about the riser's primary *rigid* support location rather than
+guide interval spacing: some sources describe locating the main rigid/anchor support at
+approximately 2/3 of the total riser height (not at the base), so thermal expansion can occur in
+both directions away from it rather than forcing all growth one way and risking compressive
+buckling at the base. This is a different question (where the *one* rigid restraint goes on a
+riser) from guide *spacing* (how far apart repeated guides go along its length) — noted since it's
+adjacent and may matter once loads/anchoring are revisited, but not folded into the guide-spacing
+answer above.
+
+**Implementability**: directly usable with what Conduit already has — `SpanLimitCalculator.
+ComputeMaxSpan` already computes the ordinary (horizontal) max allowable span per element; the
+proposed rule is simply to apply a 2× multiplier to that value specifically when walking a vertical
+segment for guide-interval purposes, rather than reusing the plain horizontal value as
+`SupportPlacer` currently does (confirmed by re-reading `SupportPlacer.PlaceSupportsForRun`: it
+uses the same `maxSpan` for vertical and horizontal segments today, with no distinction).
+
+Sources:
+- https://www.spedweb.com/technical-information/articles/supporting-vertical-piping
+- https://www.eng-tips.com/threads/vertical-supporting-of-pipes.234556/
+- https://www.eng-tips.com/threads/vertical-spacing-for-pipe-supports.216801/
+- https://www.wermac.org/steel/pipesupports_spacing.html
+- https://hardhatengineer.com/pipe-support-span-chart/
+- https://industrialmonitordirect.com/blogs/knowledgebase/vertical-piping-support-span-design-criteria-vs-horizontal
+- https://industrialmonitordirect.com/blogs/knowledgebase/vertical-pipe-riser-support-design-with-expansion-accommodation
+
+**Next step**: reported back on the PR per the explicit instruction; awaiting go-ahead before
+implementing the 2× multiplier in `SupportPlacer`/`SpanLimitCalculator`, and before building the
+GUI-logic test fixture that depends on this.
+
+## Noted: neutral-file viewer request + CAESAR dependency file list (2026-08-27)
+Two new, separate requests in the same round, neither support-placement logic:
+
+**1. A lightweight neutral-file viewer**, so the user doesn't have to open a licensed CAESAR II
+install just to look at what Conduit produced/modified: "It should show all elements of the model
+in the neutral file." Scope is genuinely ambiguous between a cheap option (a text/table dump of
+nodes, elements, coordinates, and existing restraints — everything `NeutralFile.ComputeNodePositions`
+and the parsed model already have in memory) and a much larger one (an actual 2D/3D geometric
+rendering). Per CLAUDE.md's decide-and-proceed default (pick the most reversible option, log it,
+keep moving): proposing to start with the cheap option — a new `conduit inspect <file.cii>` CLI
+command printing a plain-text table (node positions, element connectivity/OD/material, existing
+restraints with type and node) — since it's low-cost, immediately useful for exactly the "check
+what Conduit changed without opening CAESAR" use case, and doesn't foreclose a later graphical
+viewer built on the same data. Asked on the PR whether that's sufficient for now or whether an
+actual visual/graphical rendering (e.g. a simple 2D plan/elevation SVG) is wanted as the real goal —
+that's a big enough scope difference to confirm rather than assume, so not building the graphical
+version yet.
+
+**2. A list of CAESAR-related files Conduit depends on**, so the user can ensure they're available
+during development. Answered directly on the PR (factual, no ambiguity) — as of this round:
+- `reference/*.pdf` (5 files): the public Hexagon vendor documentation Conduit's neutral-file and
+  CAESAR II behavior understanding is built from.
+- `fixtures/real-samples/*.cii` (3 files): real CAESAR II-exported neutral files, committed with
+  the user's explicit authorization, used as ground truth for byte-layout questions.
+- `fixtures/caesar.cfg`: one real (non-proprietary, example) CAESAR II directory-config file.
+- Not committed, referenced only: `iecho.exe` itself (external tool, must be present on whatever
+  machine runs the real conversion — see SPEC.md's "Native file adapter (iecho)") and the
+  `C:\ProgramData\Intergraph CAS\CAESAR II\<version>\System` material/component database tree
+  `CaesarInstallationLocator` locates but doesn't yet parse (see SPEC.md's "CAESAR II installation
+  layout" and "Known open decisions").
+**Next step**: build `conduit inspect` once the scope question above is answered (or immediately,
+if a text table turns out to be sufficient) — not support-placement logic, so not blocked by the
+loop/guide-spacing discussion above; can proceed on a decide-and-proceed basis once the one scope
+question is settled.
