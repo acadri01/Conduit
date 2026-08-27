@@ -484,6 +484,16 @@ in the owner-selection fallback are in `docs/neutral-file/WALKTHROUGH.md`'s `#$ 
 `conduit optimize` still passes in 2 iterations with the same output the user originally reported,
 now with all 11 final restraints correctly and distinctly wired.
 
+**Update (2026-08-27) — re-verified the bend-radius question from the same PR comment**: the user
+was confident there's a proper pointer/preset field for CAESAR's Short/Long/3D/5D bend-radius UI
+options, distinct from just writing the resolved number, and asked that this be re-checked rather
+than assumed. Did so directly: re-extracted `NeutralFile-v15.pdf`'s own text and re-read its
+`#$ BEND` section fresh, plus cross-checked all 3 real samples' actual bend bytes. Conclusion is
+unchanged from the earlier round but is now backed by a fresh, direct re-check rather than a
+carried-forward summary — see QUESTIONS.md's "Re-verified: no bend-radius-type pointer exists"
+entry and `docs/neutral-file/WALKTHROUGH.md`'s `#$ BEND` section for the full evidence. No code
+change was needed.
+
 ## CAESAR II global configuration (`caesar.cfg`)
 Separate from the per-job neutral file, every CAESAR II model directory contains a `caesar.cfg` —
 install/directory-wide settings (axis convention, default piping code, material/component

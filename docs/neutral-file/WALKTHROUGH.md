@@ -192,6 +192,22 @@ Each bend is a fixed **3-line, 14-value record** (13 documented items plus an al
 with a node number, position #3 unused/zero in every real bend checked), number of miter cuts,
 fitting thickness, seam-weld flag, bend flexibility (K) factor, weld strength reduction factor.
 
+**Re-verified (2026-08-27), per direct instruction to check again rather than trust an earlier
+conclusion**: field 1 is a **plain radius number**, not a pointer/code selecting Short/Long/3D/5D.
+Re-extracted `NeutralFile-v15.pdf`'s own text directly (`pdftotext -layout`, not a paraphrase) —
+its `#$ BEND` section is unambiguous: "A 15-member array (BND) ... Only 13 items are currently
+used," item 1 is "Bend radius" (no unit/scale qualifier, no "type" language), and item 2 ("Type")
+is documented as the weld type (single-flange/double-flange/welded) — not a radius preset. A
+document-wide search for "short"/"3d"/"5d" near "radius" turns up nothing else. Cross-checked
+against all 3 real samples' actual `#$ BEND` bytes: every bend within a given file shares one
+constant radius value (381 mm in `44002.cii`, 533.4 mm in `TESTv15.cii`/`TESTv15_slugged.cii`) —
+a physical distance, not a small integer code that would suggest an enum/pointer. **Conclusion
+unchanged, now with fresher evidence**: CAESAR II's Short/Long/3D/5D dropdown is UI-only — it
+picks the multiplier, but only the resolved physical radius survives into the neutral file. If
+CAESAR II's own internal database (`.c2`) keeps the dropdown's selection separately for
+re-editing, that data doesn't round-trip through the interchange/neutral-file format at all, so
+it's out of reach for a tool (like Conduit) that only ever reads/writes `.cii`.
+
 The corner **element** that has the bend (the element whose `ToNode` is the bend's corner node)
 carries a 1-based pointer to its `#$ BEND` record in `AuxiliaryPointers[0]` — the same pointer
 mechanism as every other auxiliary section. **The bend record's "node position #1/#2" values are

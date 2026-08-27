@@ -819,3 +819,29 @@ pointer/preset field for CAESAR's Short/Long/3D/5D bend-radius UI options, as op
 writing the computed radius number (prior conclusion in this project, from `NeutralFile-v15.pdf`,
 was that no such field exists — the user's comment suggests re-verifying this rather than assuming
 it still holds).
+
+## Re-verified: no bend-radius-type pointer exists in the neutral file (2026-08-27)
+Per the same PR comment: "I am sure there are pointers in the bend settings that set the radii
+according to the short, long, 3d and 5d settings available in the UI. You will have to check the
+example files and the relevant documentation for this." Per CLAUDE.md's instruction to re-verify
+against `reference/`'s primary sources rather than trust an earlier summary — did exactly that,
+fresh, rather than assuming the prior conclusion (SPEC.md's 2026-08-26 entry) still held.
+
+Re-extracted `NeutralFile-v15.pdf`'s actual text (`pdftotext -layout`, not relying on a paraphrase
+or memory) and re-read its `#$ BEND` section directly: the `BND` array's item 1 is documented as
+plain "Bend radius" with no unit qualifier or "type" language; item 2 ("Type") is the weld type
+(single-flange/double-flange/welded), not a radius preset. A search of the entire document for
+"short"/"3d"/"5d" near "radius" found nothing else relevant. Cross-checked against all 3 real
+samples' actual `#$ BEND` bytes: every bend within one file shares one constant radius value
+(381 mm in `44002.cii`; 533.4 mm in `TESTv15.cii`/`TESTv15_slugged.cii`) — a physical distance,
+not a small integer code that would suggest an enum/pointer.
+
+**Conclusion: unchanged from before, now backed by a fresh, direct re-check rather than a carried-
+forward summary.** The neutral file format has no separate field for the Short/Long/3D/5D radius
+preset — CAESAR II's UI dropdown is a convenience for computing one plain radius number, and only
+that resolved number survives into `#$ BEND`. If CAESAR II's own native database (`.c2`) keeps the
+dropdown's selection for later re-editing, that's internal to `.c2` and doesn't round-trip through
+the interchange/neutral-file format Conduit reads and writes — out of reach regardless. No code
+change needed; `NeutralFileFixtureBuilder.BuildBendLines`'s existing approach (compute "Long" =
+1.5x OD, write the resolved number) is already correct per this re-verification. Replied on the PR
+with this finding and the supporting evidence rather than silently re-asserting the old answer.

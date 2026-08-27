@@ -39,9 +39,12 @@ input file this time?** Report the console output above plus whether the restrai
 present — a copy of the converted file (as a `.txt`, like last time) is the most useful thing to
 attach if anything still looks off.
 
-Separately, still outstanding from the same comment and not yet investigated: your bend-radius
-question — whether CAESAR II's neutral file has a proper pointer/field for the Short/Long/3D/5D
-radius presets rather than just a plain computed number. That's next, but didn't block this fix.
+Separately, your bend-radius question from the same comment has been re-checked (not just
+re-asserted) — re-extracted `NeutralFile-v15.pdf`'s own text fresh and cross-checked all 3 real
+samples' actual bend bytes again. Confirmed: the neutral file has no separate pointer/field for
+the Short/Long/3D/5D radius presets, only a plain resolved radius number (`#$ BEND`'s item 1) —
+see `docs/neutral-file/WALKTHROUGH.md`'s `#$ BEND` section and QUESTIONS.md for the full evidence.
+No code change was needed as a result. Nothing new to test for this part.
 
 # Step-by-step: test Conduit on your own machine
 

@@ -305,3 +305,14 @@ running status log Claude appends to (skim this from mobile)
   restraints are now correctly wired and rigid. Updated `docs/neutral-file/WALKTHROUGH.md` with a
   new `#$ RESTRANT` section covering all of this. Asked the user to retest, and logged the
   still-unaddressed bend-radius-pointer question from the same PR comment as the next task.
+- 2026-08-27: re-verified the bend-radius question from the same PR comment (the user was
+  confident there's a proper pointer/preset field for Short/Long/3D/5D, not just a plain resolved
+  number). Re-extracted `NeutralFile-v15.pdf`'s text directly and re-read `#$ BEND` fresh rather
+  than trusting the earlier summary, and cross-checked all 3 real samples' actual bend bytes.
+  Conclusion unchanged: no such field exists in the neutral file — field 1 is a plain physical
+  radius, field 2 ("Type") is the weld type, not a radius preset; every real sample's bends within
+  one file share one constant radius value (a physical distance, not an enum code). CAESAR II's UI
+  dropdown resolves to a number before it ever reaches the neutral file; if `.c2` keeps the
+  dropdown selection internally, that's out of reach for a `.cii`-only tool regardless. No code
+  change needed — `NeutralFileFixtureBuilder.BuildBendLines`'s existing "Long = 1.5x OD" approach
+  is already correct. Replied on the PR with the finding and evidence.
