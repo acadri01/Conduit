@@ -499,3 +499,14 @@ running status log Claude appends to (skim this from mobile)
   catch that it's missing a Z component — the figure image itself doesn't show one as drawn, so
   asked for the specific dimension rather than guess a second time; that one fixture stays as-is
   until answered.
+- 2026-08-28 (fourth round): user confirmed both loop fixtures now `PASS` with no bend-corner
+  supports, but flagged that the second leg's new supports were "very closely spaced" and shouldn't
+  be — exactly the conservative-but-suboptimal tradeoff flagged (and left unfixed) last round.
+  Fixed properly: `ElementSplitter.Split` now takes an optional first-chunk budget cap, used only
+  for the first new support (since every support after it resets the budget and can use the pipe's
+  full span again), instead of uniformly shrinking every chunk. Verified against the real fixtures:
+  both loops' second legs now get exactly 2 evenly-spaced new supports on a clean 10,000 mm grid,
+  matching what a human would place by hand (down from 5). Also answered directly ("rises two
+  meters, then extends 12m in z, then goes 9.2 meters in x to the final anchor") and rebuilt
+  `fixtures/fig6-8-example.cii` to the actual, much simpler 3-element geometry, replacing the
+  earlier flattened multi-segment guess. 83/83 tests passing.

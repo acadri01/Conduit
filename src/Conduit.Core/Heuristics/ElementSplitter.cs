@@ -81,13 +81,24 @@ public static class ElementSplitter
     /// happened to end up owning that node — losing the original restraint's association entirely.
     /// </para>
     /// </summary>
+    /// <param name="firstChunkBudgetMillimetres">
+    /// When this element doesn't start at a true reset point — some of <paramref name="maxAllowableSpanMillimetres"/>'s
+    /// budget was already spent by earlier elements since the last actual support (see
+    /// <see cref="Optimization.OptimizationLoop"/>'s <c>TrySplitAtFirstOverflow</c>) — the first
+    /// chunk is capped at whatever budget remains (rounded down, same as every other chunk),
+    /// rather than the element's full max span; every chunk *after* that first one still uses the
+    /// full span, since the new support at the end of the first chunk resets the budget. Null (the
+    /// default) means this element starts fresh, with the full span available throughout — the
+    /// original, single-tier behavior.
+    /// </param>
     public static SplitPlan Split(
         Element element,
         double elementLengthMillimetres,
         double maxAllowableSpanMillimetres,
         double outsideDiameterMillimetres,
         Func<int> allocateNode,
-        bool restraintBelongsToFromNode = false)
+        bool restraintBelongsToFromNode = false,
+        double? firstChunkBudgetMillimetres = null)
     {
         var chunkMillimetres = Math.Floor(maxAllowableSpanMillimetres / ChunkRoundingIncrementMillimetres) * ChunkRoundingIncrementMillimetres;
         if (chunkMillimetres <= 0 || elementLengthMillimetres <= chunkMillimetres)
@@ -95,13 +106,38 @@ public static class ElementSplitter
             return new SplitPlan([element], []);
         }
 
-        var fullChunkCount = (int)Math.Floor(elementLengthMillimetres / chunkMillimetres);
-        var remainderMillimetres = elementLengthMillimetres - (fullChunkCount * chunkMillimetres);
-
-        var chunkLengths = Enumerable.Repeat(chunkMillimetres, fullChunkCount).ToList();
-        if (remainderMillimetres > 0)
+        List<double> chunkLengths;
+        if (firstChunkBudgetMillimetres is { } budget)
         {
-            chunkLengths.Add(remainderMillimetres);
+            var firstChunkMillimetres = Math.Floor(budget / ChunkRoundingIncrementMillimetres) * ChunkRoundingIncrementMillimetres;
+            if (firstChunkMillimetres <= 0)
+            {
+                return new SplitPlan([element], []); // no room for even a first chunk within the remaining budget
+            }
+
+            var restLengthMillimetres = elementLengthMillimetres - firstChunkMillimetres;
+            chunkLengths = [firstChunkMillimetres];
+            if (restLengthMillimetres > 0)
+            {
+                var restFullChunkCount = (int)Math.Floor(restLengthMillimetres / chunkMillimetres);
+                var restRemainderMillimetres = restLengthMillimetres - (restFullChunkCount * chunkMillimetres);
+                chunkLengths.AddRange(Enumerable.Repeat(chunkMillimetres, restFullChunkCount));
+                if (restRemainderMillimetres > 0)
+                {
+                    chunkLengths.Add(restRemainderMillimetres);
+                }
+            }
+        }
+        else
+        {
+            var fullChunkCount = (int)Math.Floor(elementLengthMillimetres / chunkMillimetres);
+            var remainderMillimetres = elementLengthMillimetres - (fullChunkCount * chunkMillimetres);
+
+            chunkLengths = Enumerable.Repeat(chunkMillimetres, fullChunkCount).ToList();
+            if (remainderMillimetres > 0)
+            {
+                chunkLengths.Add(remainderMillimetres);
+            }
         }
 
         if (element.AuxiliaryPointers[0] != 0 && chunkLengths.Count > 1)

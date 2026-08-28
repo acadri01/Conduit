@@ -153,18 +153,17 @@ public static class OptimizationLoop
     /// </summary>
     /// <param name="remainingBudgetMillimetres">
     /// How much of the finding's allowable span is still unspent by the time this element starts
-    /// (see <see cref="TrySplitAtFirstOverflow"/>) — capped against the pipe's own true max span
-    /// and used as the chunk size, so every resulting chunk (not just the first) stays within
-    /// budget. This is deliberately conservative rather than span-optimal: a two-tier scheme (a
-    /// short first chunk using up just the remaining budget, then full-length chunks after that,
-    /// since the new support resets the budget) would need fewer new supports in this specific
-    /// case, but isn't implemented yet — logged in QUESTIONS.md rather than built now.
+    /// (see <see cref="TrySplitAtFirstOverflow"/>). Used as a cap on the *first* chunk only —
+    /// every chunk after that uses the pipe's full max span, since the support at the end of the
+    /// first chunk resets the budget. Two-tier rather than uniformly shrinking every chunk, so a
+    /// zone that already had some of its budget spent doesn't end up with more new supports than
+    /// it actually needs.
     /// </param>
     private static string? TrySplit(NeutralFile file, Element element, StressFinding finding, double remainingBudgetMillimetres)
     {
         var toMillimetres = file.Units.LengthToMillimetres;
         var elementLengthMillimetres = element.Length * toMillimetres;
-        var maxAllowableSpanMillimetres = Math.Min(SpanLimitCalculator.ComputeMaxSpan(file, element), remainingBudgetMillimetres);
+        var maxAllowableSpanMillimetres = SpanLimitCalculator.ComputeMaxSpan(file, element);
 
         var outsideDiameterMillimetres = element.OutsideDiameter * toMillimetres;
         var nextNode = file.Elements.SelectMany(e => new[] { e.FromNode, e.ToNode }).DefaultIfEmpty(0).Max() + 10;
@@ -184,7 +183,8 @@ public static class OptimizationLoop
                 nextNode += 10;
                 return allocated;
             },
-            restraintBelongsToFromNode);
+            restraintBelongsToFromNode,
+            firstChunkBudgetMillimetres: remainingBudgetMillimetres);
 
         if (plan.NewInteriorNodes.Count == 0)
         {

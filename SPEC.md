@@ -689,6 +689,17 @@ decisions"). This locator only answers "where," not "how to read what's there."
   earlier elements in the same zone already spent. This is conservative rather than span-optimal
   (can add more supports than a human would place by hand in the same spot) but always converges
   without landing on an excluded node — logged as a known follow-up, not fixed further this round.
+- **Resolved (2026-08-28, fourth round):** the "more supports than optimal" follow-up above is
+  fixed too, after the user confirmed the bend-corner fix worked but noticed the clustering.
+  `ElementSplitter.Split` gained an optional `firstChunkBudgetMillimetres` parameter — when set,
+  only the first chunk is capped at the remaining budget; every chunk after it uses the pipe's
+  full max span, since the new support at the end of the first chunk resets the budget.
+  `OptimizationLoop`'s reactive split now uses this instead of uniformly shrinking every chunk.
+  Verified against the real fixtures: both loops' second legs now get exactly the true minimum (2)
+  new supports, evenly spaced on a clean 10,000 mm grid. Also corrected `fixtures/fig6-8-example.cii`
+  to the user's own stated geometry (2 m Y riser, 12 m Z run, 9.2 m X run to the tower anchor —
+  three elements, two bends) after they answered the earlier Z-component question directly,
+  replacing the flattened 5-segment guess from two rounds ago.
 - **Resolved (2026-08-21):** the database-for-iteration-tracking question above is answered — not
   needed yet ("the first step of this program is to have a fully functioning support placement
   program"), so SPEC.md's "Storage: none... No database" constraint stands unchanged for v1. It

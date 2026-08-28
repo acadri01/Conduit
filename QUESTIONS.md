@@ -1751,3 +1751,42 @@ mechanical fixture update once the missing number is in hand, not blocked on any
 
 **Next step**: report the bend-corner fix (with the actual verified output) on the PR, and ask for
 the Fig 6.8 Z-component detail needed to correct that one fixture.
+
+## Fixed: reactive splitting was clustering supports instead of spacing them evenly; Fig 6.8 geometry corrected (2026-08-28, fourth round)
+
+User confirmed the bend-corner fix worked (both loops now `PASS` with no bend-corner supports —
+attached their own console output and the actual output `.cii` files as proof) but asked a sharp
+follow-up: the second leg's new supports were "very closely spaced," and "there should be no span
+in the x direction longer than the minimum span length from one support to the next." This is
+exactly the tradeoff I'd flagged as a known, deliberate limitation in the last round's reply — the
+user noticed the same thing and, reasonably, wants it actually fixed rather than just documented.
+
+**Root cause of the clustering**: the previous fix made the reactive split *conservative* by
+uniformly shrinking every chunk's size to the remaining budget, not just the first one — correct
+(never exceeds budget) but wasteful, since only the *first* new support needs to be placed early;
+every support after that resets the budget and can use the pipe's full span again. For the loop
+fixtures this meant 5 new supports on the second leg instead of the true minimum of 2.
+
+**Fixed properly**: `ElementSplitter.Split` now accepts an optional `firstChunkBudgetMillimetres`
+— when given, only the *first* chunk is capped at that (rounded down, same convention as every
+other chunk); every chunk after it uses the pipe's full max span. `OptimizationLoop`'s
+`TrySplitAtFirstOverflow`/`TrySplit` pass the already-computed remaining budget through this new
+parameter instead of shrinking the whole element's chunk size. Verified against the same real
+fixtures: both loops' second legs now get exactly 2 evenly-spaced new supports, landing on a clean
+10,000 mm grid (10000, 20000, 30000, 40000 mm from the run's own start) — matching what a human
+would place by hand. Extended the existing regression test
+(`PlanarJogWithOverlongLegs_ReactiveSplitting_NeverRestrainsABendNode`) to also assert every
+restraint lands on that even grid, not just that none land on a bend. 83/83 tests passing.
+
+**Fig 6.8 — corrected.** The user answered the Z-component question directly: "From the first
+anchor, it rises two meters, then extends 12m in z, then goes 9.2 meters in x to the final anchor
+at the tower." This is a much simpler geometry than my earlier flattened multi-segment guess (which
+had 5 separate X-axis legs at one elevation, trying to approximate a sloped profile) — it's just
+three elements: a 2 m Y riser, a 12 m Z run, then a 9.2 m X run to the tower anchor, two bends (top
+of riser, Z-to-X transition). Rebuilt `fixtures/fig6-8-example.cii` and its test
+(`Fig68Example_PassesWithoutSupportingEitherBendCorner`) to match exactly; confirmed via the CLI
+that it `PASS`es without supporting either bend.
+
+**Next step**: report both fixes on the PR with the verified spacing/geometry. Both loop fixtures
+and Fig 6.8 should now be ready for another real CAESAR II check if the user wants one, though
+nothing is currently known to be wrong with them.

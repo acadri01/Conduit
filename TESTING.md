@@ -17,32 +17,27 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: please recheck `loop-2d.cii`/`loop-50m-3d.cii` in CAESAR II — the bend-corner bug you
-caught is fixed — and one question needed to fix Fig 6.8.**
+**Status: please recheck all three examples once more — the clustering you caught is fixed, and
+Fig 6.8 is rebuilt to your actual geometry.**
 
-Your screenshots caught a real bug: the reactive splitting path (used when the initial placement
-pass alone can't fully resolve a span) had no bend/tee awareness at all, unlike the rewritten
-initial pass — so a support could still land on a bend corner once that path kicked in. Fixed both
-bugs behind it (see QUESTIONS.md's "Fixed: reactive splitting was still placing restraints on bend
-corners" entry for the full trace) and verified directly against the real committed fixtures — zero
-restraint nodes intersect the bend-node set for either file now, not just in a fresh unit test. To
-recheck:
+Thanks for testing and reporting back with the console output and the actual `.cii` files — that
+confirmed the bend-corner fix worked, and caught a real follow-up: the second leg's new supports
+were clustered too closely together instead of being evenly spaced. Fixed (see QUESTIONS.md's
+"Fixed: reactive splitting was clustering supports instead of spacing them evenly" entry) — the
+reactive split now only shrinks the *first* new support's spacing to whatever budget was already
+spent by the jog; every support after that uses the pipe's full span again, same as a human would
+place them. Verified against the real fixtures: both loops' second legs now get exactly 2 new
+supports, evenly spaced on a clean 10,000 mm grid (down from 5). Also rebuilt
+`fixtures/fig6-8-example.cii` to the geometry you described (2 m Y riser, 12 m Z run, 9.2 m X run
+to the tower anchor) rather than my earlier flattened guess. To recheck all three:
 ```
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
 ```
-then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI —
-same check as last round, just confirming the fix actually landed. One thing to know going in: the
-fix is correct but not support-count-optimal in this specific case (it can add a few more supports
-than a human would place by hand when part of a leg's span budget was already spent by an earlier
-jog) — expect to see that, it's a known, logged tradeoff, not a new bug.
-
-**Fig 6.8 still needs one number from you.** You're right that the fixture only modeled X and Y —
-I went back to the actual figure image looking specifically for a Z offset and the drawing itself
-doesn't show one (it reads as a single-plane diagonal line as drawn), but a 2D projection like this
-can't rule it out, and you have context from the book I don't. Rather than guess again on the same
-fixture: what's the Z dimension, and which segment does it apply to? `fixtures/fig6-8-example.cii`
-is a quick, mechanical fix once that's known.
+then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI to
+confirm the placements look right now. Nothing is currently known to be wrong with any of the
+three — this is a "please double check" rather than a specific known issue to verify.
 
 Still open, not part of this round's ask: tee/branch span exclusion (a branch arm's own separate
 accumulation, not yet implemented — only the tee node itself is kept clear of placements), applying
