@@ -407,3 +407,23 @@ running status log Claude appends to (skim this from mobile)
   "generally wherever there's a rest, except near bends") and confirmed tee/SIF understanding is
   correct. Still holding all support-placement code pending confirmation; the ALLOWBLS-in-fixtures
   fix is unblocked and independent, queued as next concrete step regardless of the other answers.
+- 2026-08-28: user shared 5 new PDFs (textbook Ch2/3/6, a UMAT1.umd printout, B31.3-2024) and
+  answered several open questions. Downloaded and read the UMAT1 printout and Ch6's opening
+  section directly (GitHub attachment URLs needed a WebFetch-redirect-then-curl/Read workaround).
+  Found the material database itself carries no allowable/yield/UTS data at all (only density,
+  Poisson's ratio, expansion coefficient, modulus) — confirms allowable stress is a piping-code-
+  table computation, not a material lookup, and gives a cleaner explanation for why real sample
+  files' ALLOWBLS was zero (likely exported before ever running an analysis). Ch6 confirmed
+  Conduit's existing support terminology matches the standard textbook definitions, surfaced a
+  refined max-span formula (semi-fixed-beam constant of 10 vs. Conduit's simply-supported constant
+  of 8 — not changed yet, pending Section 2.7 review), a Table 6.1 sanity-check reference, and the
+  Fig 6.8 worked example the user wants as a future test fixture (equipment as anchors, flanges at
+  both ends) — noted its surrounding nonlinear-resting-support discussion is out of MVP scope.
+  Confirmed: bend clearance is radius+200mm (a different number from ElementSplitter's existing
+  500mm buffer — not merged without confirming they're the same concept), loop symmetry means
+  exact magnitude match, 2x guide-spacing confirmed for standalone risers too, and a significant
+  refinement to the per-axis span model — a rest resets every horizontal axis's accumulator, not
+  just its own segment's axis, since gravity support doesn't care about local pipe direction.
+  Raised (not yet resolved) a copyright question about committing the textbook/code PDFs into
+  reference/, following this project's established "read for context, commit only with explicit
+  authorization" pattern. All logged in QUESTIONS.md; still no support-placement code pushed.

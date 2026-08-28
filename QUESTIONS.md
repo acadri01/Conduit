@@ -1395,3 +1395,123 @@ before implementing any of the now-substantial queue: bend-corner exclusion, per
 accumulation + even re-chunking, 2x vertical guide-spacing multiplier, tee/branch exclusion via
 collinearity, the loop rule, and (separately, unblocked) fixing `NeutralFileFixtureBuilder` to
 populate a real ALLOWBLS record.
+
+## New reference material: textbook chapters, UMAT1 printout, B31.3 PDF (2026-08-28)
+User shared 5 new PDF attachments on the same PR: chapters 2, 3, and 6 of a pipe-stress-engineering
+textbook, a printed (non-parseable-as-UMD, but human-readable) dump of the actual `UMAT1.umd`
+material database, and a copy of B31.3-2024 ("just for reference — CAESAR supports several codes").
+Asked that these be added to `reference/` and consulted going forward, with more chapters available
+on request.
+
+**Downloaded and read directly** (GitHub's `user-attachments` URLs aren't fetchable through the
+normal proxy path — `WebFetch` reports a redirect to a signed `objects.githubusercontent.com` S3
+URL; following that redirect either lets `WebFetch` process it directly, or for files over its 10 MB
+cap, saves the raw PDF locally for the `Read` tool to open directly, which is how both files below
+were actually reviewed):
+
+**UMAT1.umd printout — resolves the ALLOWBLS mystery, but not the way expected.** This is the real
+CAESAR II material database (COADE-supplied). Read the first 10 entries (materials #1-10: LOW
+CARBON, HIGH CARBON, CARBON MOLY, LOW/MED CHROME MOLY, AUSTENITIC STNL, STRGHT CHROMIUM, 310
+STAINLESS, WROUGHT IRON, GREY CAST IRON — material #1, "LOW CARBON," is the one Conduit's fixtures
+have always implicitly modeled). **Confirmed: the material database itself carries no allowable
+stress, yield, or UTS values at all** — every material's "ALLOWABLE," "YIELD," and "UTS" columns
+are blank across every temperature row; only density, Poisson's ratio, thermal expansion
+coefficient, and (cold/hot) elastic modulus are populated. This means allowable stress was never a
+material-database lookup in the first place — it has to be a **piping-code-table computation**
+(B31.3 Appendix A or equivalent, keyed by material + temperature + code edition), done at analysis
+time, not stored in the material file Conduit was asking about. This also gives a cleaner
+explanation for why `#$ ALLOWBLS`'s cold allowable stress was `0.0` in all 3 real sample files (see
+the earlier "Major finding" entry): those files most likely were exported before a static analysis
+was ever run on them (geometry/loads-only exports), so no code-derived allowable was ever computed
+and stored — not a field-mapping bug, and not something UMAT1 could have supplied directly even if
+Conduit parsed it.
+
+**Implication for the fixture-ALLOWBLS fix already queued**: a real, code-compliant allowable can't
+be sourced from the material database alone — it needs either (a) the actual B31.3 basic-allowable-
+stress table (Appendix A) keyed by material and temperature, now available in the B31.3-2024 PDF the
+user also shared, or (b) continuing to use a documented placeholder constant until real code-
+compliance math is in scope. Given B31.3's own table is now available, (a) is worth pursuing rather
+than reusing an arbitrary constant — logged as the concrete next step once acknowledged.
+
+**Ch6 ("Pipe Supports and Restraints") — read the introduction and Section 6.2/6.3 (pages 151-160 of
+28 total; the rest not yet reviewed).** Directly useful:
+- Confirms the standard terminology Conduit already uses (guide, rest/resting support, anchor, line
+  stop, one-way/two-way stop) matches this text's definitions exactly.
+- **"For a long straight segment of piping, guides are generally provided at every other support
+  span."** This slightly refines the user's own "generally, wherever there is a rest" framing — not
+  literally every rest, every *other* one on a long straight run. Worth confirming which reading to
+  encode before implementing the horizontal-guide heuristic.
+- **Eq. 6.1, the same beam-bending max-span formula Conduit already implements — but with a
+  different constant.** The book's version: `L = sqrt(10·Z·S/w)`. Conduit's `SpanLimitCalculator`
+  currently uses `L = sqrt(8·σ·Z/w)` (simply-supported single-span beam, `M = wL²/8`). The book
+  explicitly derives its version from a "semi-fixed beam approach" (its own Section 2.7, not yet
+  reviewed) — a more realistic model that accounts for the pipe continuing past each support (some
+  rotational fixity from the adjacent spans) rather than treating each span as isolated and simply
+  supported, which is presumably why its constant (10) is larger (a longer allowable span) than the
+  naive simply-supported constant (8) Conduit currently uses. **Not changing this yet** — flagging
+  it as a real, sourced opportunity to make `SpanLimitCalculator` less conservative, pending review
+  of Section 2.7 for the actual semi-fixed-beam derivation before touching the formula.
+- **Table 6.1** (suggested B31.1 power-piping span, e.g. 6 in./150 mm: 5.2 m liquid / 6.4 m gas) is
+  useful ground-truth to sanity-check Conduit's own computed max-span numbers against, once the
+  formula question above is settled (B31.1 power piping isn't the same code Conduit defaults to,
+  B31.3, but the same order-of-magnitude check still applies).
+- **Fig. 6.8's worked example is the one the user specifically flagged** ("particularly fond of this
+  example... create a test file for later"): a piping run from a process tower to another
+  equipment, resting on 3 supports (nodes 20/30/40), with a peak between two down-slopes — one side
+  drops 2 m then runs 3 m to the far equipment connection, the other runs 4 m then 5.2 m to the
+  tower. Per direct instruction: model both equipment-nozzle connections as anchors instead, and add
+  flanges at both ends "complying with the entered lengths." **Noted for a future fixture, not
+  built yet.** Important scope distinction: the surrounding text (Section 6.3) is about *nonlinear
+  resting-support behavior across thermal cycles* (a pipe lifting off one support as another moves) —
+  that specific analysis technique is out of MVP scope per CLAUDE.md's "no spring logic of any kind"
+  rule (resting-support nonlinearity is adjacent to spring behavior); the *geometry* is still a
+  useful, concrete future test case independent of whether Conduit ever models that nonlinearity.
+- **Ch2/Ch3 and the rest of Ch6 not yet reviewed** — still pending before answering Q3 (45°-bend/
+  local-coordinate-system handling) with anything more than my own initial synthesis.
+
+**Open question — copyright/IP, not yet resolved, asked rather than assumed.** Per SPEC.md's clean-
+room hard constraint and this project's own established pattern (real `.cii` samples and the
+`iecho.py` reference code were both read locally for context *before* explicit authorization was
+given to actually commit anything — see QUESTIONS.md's earlier "Real neutral file format adopted"
+entry), a purchased textbook's chapters and the B31.3 code document are presumptively copyrighted,
+commercial publications — a materially different category from Hexagon's own public vendor
+documentation (already established as safe to commit). **Not committing the PDFs into `reference/`
+without an explicit answer to this** — asked the user directly on the PR whether they're authorized
+to have this committed (even to a private repo/branch) the same way the CAESAR vendor docs and real
+sample files were. In the meantime, the engineering facts extracted above (in my own words, cited by
+chapter/section) are usable and are what's actually needed for design decisions — the source PDFs
+themselves aren't required in the repo for that.
+
+**Confirmed/answered, no longer open:**
+- Q1 (guide direction cosine understanding): confirmed correct.
+- Q2 (bend clearance): **radius + 200 mm minimum**, the extra 200 mm being the user's own
+  experience-based welding-access allowance. This is a different, more specific number than
+  `ElementSplitter`'s existing 500 mm shoe-clearance buffer (from an earlier, separately-agreed
+  round) — the two may serve different purposes (minimum unbent pipe length near a bend for
+  `ElementSplitter`'s own chunking, vs. this new number specifically for how close a *guide* can sit
+  to a bend without acting like a limit stop) and shouldn't be silently merged into one constant
+  without confirming they're actually the same concept.
+- "Symmetry" in loop detection means **exact** symmetry (equal magnitude, opposite sign) — not just
+  topological (same-axis-opposite-sign regardless of length), resolving the earlier open follow-up.
+- Standalone (non-loop) vertical risers: confirmed the same 2x-horizontal-span guide-spacing rule
+  applies, same as risers inside a loop.
+- **Major refinement to the per-axis span-accumulation model**: a rest support resets *every*
+  horizontal axis's accumulator, not just the accumulator for its own segment's local axis —
+  "If there is a segment in the x direction, then a segment in the z direction with a rest, then
+  the rest will also be part of the x span computation, as it also supports this. It should also be
+  considered in the separate z-span computation. This also goes for vertical cases if there is a
+  rest there for a reason." Physical reasoning (my own restatement, to be confirmed): a rest resists
+  *gravity sag*, which doesn't care which horizontal direction the local pipe segment happens to run
+  in — so a rest anywhere along the path is a valid "unsupported distance since last rest" reset
+  point for *every* horizontal axis being tracked, not just its own segment's axis. This is a
+  meaningfully different (and more physically sound) model than my prior proposal, where each
+  element only fed its own local axis's accumulator. Whether this same universal-reset behavior
+  also applies to *guides* (which restrain a specific lateral direction, not gravity generally) is
+  not yet confirmed — the user's wording specifically discusses rests; not assuming it extends to
+  guides without asking.
+
+**Next step**: post a restatement of the refined per-axis/universal-rest-reset model for
+confirmation (same pattern as before — get this right before implementing), ask the copyright
+question, and report the ALLOWBLS/UMAT1 finding. Once confirmed, implement everything queued so far
+together in one pass, now additionally informed by Eq. 6.1's semi-fixed-beam refinement (pending
+Section 2.7 review) and the radius+200mm bend-clearance number.
