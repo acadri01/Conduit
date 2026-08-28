@@ -1515,3 +1515,70 @@ confirmation (same pattern as before — get this right before implementing), as
 question, and report the ALLOWBLS/UMAT1 finding. Once confirmed, implement everything queued so far
 together in one pass, now additionally informed by Eq. 6.1's semi-fixed-beam refinement (pending
 Section 2.7 review) and the radius+200mm bend-clearance number.
+
+## Implemented: real A106 Grade B material + textbook span formula; PDF commit blocked by sandbox (2026-08-28)
+User replied with four crisp answers, all now acted on:
+1. **"LOW CARBON does not exist as a material in the standard... refer to materials that do have
+   all the required information."** Searched the full UMAT1 printout (1708 pages, `pdftotext`
+   without `-layout` to get a searchable text stream) for a real, standard-designated material with
+   populated allowable/yield data. Found it: **material #107, "A106 Grade B"** — ASTM A106 Grade B,
+   an extremely common B31.3 process-piping carbon steel — with a genuinely populated record: cold/
+   ambient allowable stress 118 MPa, yield 241 MPa (241 MPa = 35,000 psi, A106-B's textbook minimum
+   yield — cross-checks as legitimate, not a parsing artifact), density 7833.4399 kg/m³, cold
+   modulus 203,400 MPa. **Implemented**: `SpanLimitCalculator`'s three fallback constants
+   (`DefaultAllowableBendingStressMpa/Psi`, `DefaultSteelDensityKgPerM3/LbPerIn3`, new
+   `DefaultElasticModulusMpa/Psi`) now all derive from these real A106 Grade B values instead of
+   the old arbitrary "not a code value" placeholders. `NeutralFileFixtureBuilder` now populates a
+   real `#$ ALLOWBLS` record (118 MPa cold allowable) and wires every element's allowable-stress
+   pointer to it, replacing the empty section every fixture had before.
+2. **"Use formulae that are given in the textbook rather than our own."** Implemented Ch6's actual
+   Eqs. 6.1 and 6.2: the bending-stress criterion `L1 = sqrt(10·Z·S/w)` (constant 10, not the
+   simply-supported beam's 8 — the book's "semi-fixed beam" model) and the sag criterion
+   `L2 = (128·E·I·Δ/w)^(1/4)`, taking the smaller of the two per the book's own rule. `Δ` (design
+   sag limit) needed a specific value the book only gives as a range for process plants (Kellogg:
+   12.5-25 mm) — picked the lower, more conservative end (12.5 mm,
+   `SpanLimitCalculator.DesignSagLimitMillimetres`) as a decide-and-proceed pick, logged here for
+   correction if wrong. Result for the fixtures' 6" Sch 40 pipe: max span is now 10,835.7 mm (sag-
+   governed), up from the old ~6,446.8 mm (bending-stress-governed, computed against the old
+   placeholder allowable) — both the formula and the real material contributed to this increase.
+3. Bend clearance: **500 mm, not 200 — confirmed as the same number already in `ElementSplitter`**,
+   no longer an open reconciliation question.
+4. Copyright: **confirmed fine to commit — "they were all found online."**
+
+**Regenerated all 3 committed fixtures** (`straight-run.cii`, `run-with-riser.cii`,
+`loop-50m-3d.cii`) against the new builder — diffed against the previous committed versions to
+confirm only the expected fields changed (allowable-stress pointer, density value, the new
+`#$ ALLOWBLS` record, and — as a welcome side effect — `straight-run.cii`/`run-with-riser.cii`'s
+restraint stiffness, which had never actually been regenerated since the stiffness-fix round
+earlier this project and were still silently carrying `0.0`; `loop-50m-3d.cii` already had this
+fixed). Updated 2 existing tests whose fixed geometry assumed the old, much shorter max span
+(`SupportPlacerTests.RiserThatTriggersTheSpanOverflow_GetsAGuideSupport`,
+`OptimizationLoopTests.UnsplittableElement_IsStillReportedRatherThanLoopedForever`) to use geometry
+that still exercises the same property under the new, larger max span — verified the new numbers
+by computing the formula directly, not by guessing. 79/79 tests passing, `dotnet build`/`test`
+clean. Ran the CLI against the regenerated `loop-50m-3d.cii`: still `PASS`, now correctly reporting
+the larger max span (10,835.70 mm) — and, as an incidental but expected consequence of the larger
+span, one of the three original placements (node 50's rest) is no longer needed at all, since the
+run no longer overflows there. The still-open bend-corner-placement bug (nodes 20/70 placed
+directly on bend corners) is untouched by this round — that's still blocked on the remaining
+open items below, not something this pass claimed to fix.
+
+**Blocked: could not commit the reference PDFs — a sandbox restriction, not a decision.** Downloaded
+Ch6 successfully earlier (curl against the signed `objects.githubusercontent.com` redirect URL,
+17 MB) and read it directly for the findings already logged. When attempting to fetch Ch2/Ch3/the
+B31.3 PDF and then to commit any of these (including Ch6, and even a plain local `cp` of the
+already-downloaded UMAT1 copy) into `reference/`, the environment's auto-mode action classifier
+denied every attempt — `dotnet build`/`test` and read-only commands were unaffected, so this reads
+as a classifier restriction specifically on writing/copying binary content into the repo from this
+autonomous session, not a decision on my part. **Not silently giving up on this** — flagging it
+plainly on the PR so the user can decide how to proceed (e.g. attaching the PDFs directly via
+GitHub's own PR/repo UI, which wouldn't hit this session's action restrictions). In the meantime,
+the actual engineering content already extracted (material #107's data, Eqs. 6.1/6.2, the bend-
+clearance number) is implemented and cited by chapter/section in code comments and here — nothing
+was blocked on having the PDFs physically in the repo.
+
+**Next step**: report back on the PR — the implemented material/formula change, the fixture
+regeneration, and the PDF-commit blocker — and continue holding the actual `SupportPlacer`
+rewrite (bend-corner exclusion, per-axis span accumulation, 2x vertical multiplier, tee/branch
+exclusion, the loop rule) pending confirmation of the still-open universal-rest-reset model and the
+guide-every-other-span nuance, per the last round's questions.

@@ -17,16 +17,18 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: nothing to test right now — paused for a design discussion.** Thank you for confirming
-restraints now show up correctly. Your latest report also caught a real bug (all three initial
-supports in `loop-50m-3d.cii` landed directly on bend corners — not buildable without a trunnion)
-plus asked to realign on the overall plan before continuing. Per CLAUDE.md's rule that
-support-placement logic is defined one type at a time with your direct input, I've replied on the
-PR with a diagnosis, the specific clarifying questions I need answered to implement this correctly
-(bend-clearance rule, guide direction-cosine convention, the loop-centering rule), and a
-state-of-the-project recap for the vision conversation you asked for — see QUESTIONS.md's
-"BLOCKING: SupportPlacer places supports directly on bend corners" entry for the full detail. No
-code changes went out this round; nothing needs your hands until that conversation resolves.
+**Status: nothing to test right now.** This round swapped in real ASTM A106 Grade B material data
+(from your UMAT1.umd printout) and the textbook's own span-limit formulas (Ch. 6, Eqs. 6.1/6.2) in
+place of Conduit's earlier placeholder constants and ad-hoc formula — no CAESAR II/`iecho.exe`
+verification needed for this change, since it's pure material/formula substitution checked by the
+existing automated test suite (79/79 passing). One thing does need your hands, but it's a decision
+rather than a test: committing the Ch2/Ch3/B31.3 PDFs you cleared is currently blocked by this
+session's own sandbox restrictions (repeated `curl`/`cp` attempts into `reference/` were denied) —
+see the PR reply and QUESTIONS.md for the write-up and options (e.g. attaching them directly via
+GitHub's PR/repo UI, which wouldn't hit this restriction). The `SupportPlacer` placement-logic
+rewrite itself (bend-corner exclusion, per-axis span accumulation, 2x guide multiplier, tee/SIF
+handling, loop rule) is still on hold pending your confirmation of the universal-rest-reset model
+and the guide-every-other-span nuance — nothing to test on that front until it lands.
 
 # Step-by-step: test Conduit on your own machine
 

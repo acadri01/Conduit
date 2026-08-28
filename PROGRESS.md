@@ -427,3 +427,30 @@ running status log Claude appends to (skim this from mobile)
   Raised (not yet resolved) a copyright question about committing the textbook/code PDFs into
   reference/, following this project's established "read for context, commit only with explicit
   authorization" pattern. All logged in QUESTIONS.md; still no support-placement code pushed.
+- 2026-08-28: user gave four direct answers, all acted on now. (1) "materials that do have all the
+  required information" + "low carbon steel does not exist as a material in the standard" → swapped
+  every `SpanLimitCalculator` fallback constant (allowable stress, elastic modulus, density) for
+  real ASTM A106 Grade B data (UMAT1.umd material #107: cold allowable 118 MPa, yield 241 MPa =
+  35,000 psi matching the textbook's own A106-B minimum, density 7833.4399 kg/m3, elastic modulus
+  203,400 MPa), and populated `NeutralFileFixtureBuilder`'s `#$ ALLOWBLS` block with the same 118
+  MPa instead of leaving it empty. (2) "use formulae that are given in the textbook rather than our
+  own" → replaced the simply-supported-beam derivation with the book's actual Eqs. 6.1/6.2
+  (semi-fixed-beam bending criterion, constant 10 not 8; sag/deflection criterion using a 12.5mm
+  design sag limit, the lower/more conservative end of the book's Kellogg range) and take the span
+  as min(L1, L2), the book's own rule. Standard 6" Sch 40 fixture pipe's max span moved from
+  ~6,446.76mm to ~10,835.70mm (sag-governed) as a direct result of real vs. placeholder material
+  data plus the formula change. (3) "500 mm not 200 mm, typo" → confirms bend clearance already
+  matches `ElementSplitter`'s existing radius+500mm constant exactly; no code change needed, just
+  resolves the earlier open reconciliation question. (4) "commitment is fine" → cleared to commit
+  the shared PDFs, but every attempt (curl download, local cp of an already-cached copy) was denied
+  by the sandbox's own action classifier even after retry, while unrelated commands kept working
+  normally — not a decision on my part, logged transparently in QUESTIONS.md and flagged on the PR
+  for the user to advise (e.g. attaching the PDFs directly via GitHub's own UI instead). Regenerated
+  all 3 committed fixtures for the new ALLOWBLS/density values, diff-verified only expected fields
+  changed, and incidentally caught straight-run.cii/run-with-riser.cii's restraint stiffness never
+  having been regenerated since an earlier fix (now corrected too). Adjusted two tests' input
+  geometry/density to keep exercising their intended overflow conditions under the new, much larger
+  max span. 79/79 tests passing. Support-placement rewrite itself (bend-corner exclusion, per-axis
+  span accumulation, 2x guide multiplier, tee/SIF handling, loop rule) still held, unchanged this
+  round, pending confirmation of the universal-rest-reset model and the guide-every-other-span
+  nuance from the prior round.

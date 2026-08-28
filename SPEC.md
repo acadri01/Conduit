@@ -662,3 +662,21 @@ decisions"). This locator only answers "where," not "how to read what's there."
   `Izup` with it. Decided this way (reversible, logged in QUESTIONS.md) rather than making
   `caesar.cfg` authoritative, since it's an external file located by directory convention with no
   guaranteed correspondence to a given input file, whereas `Izup` is intrinsic to the file itself.
+- **Resolved (2026-08-28):** `SpanLimitCalculator`'s fallback constants and formula, both flagged
+  above as "best-effort" placeholders, are now real. Per direct instruction, the material fallback
+  is ASTM A106 Grade B (UMAT1.umd material #107 from the user's own database printout — chosen
+  because it's a real material with every field `SpanLimitCalculator` needs populated; materials
+  #1-10, including "LOW CARBON STEEL" previously used implicitly, carry no allowable/yield/UTS data
+  at all and don't exist as usable materials in the standard): cold allowable stress 118 MPa, yield
+  241 MPa, density 7833.4399 kg/m3, elastic modulus 203,400 MPa. The formula itself is now the
+  textbook's own (Pipe Stress Engineering, Ch. 6, Section 6.2, Eqs. 6.1/6.2) rather than Conduit's
+  earlier simply-supported-beam derivation: a semi-fixed-beam bending criterion (`L1 =
+  sqrt(10*Z*S/w)`, constant 10 not 8, since the pipe continues past each support rather than
+  terminating there) and a sag/deflection criterion (`L2 = (128*E*I*delta/w)^(1/4)`, using a 12.5mm
+  design sag limit — the lower/more conservative end of the book's Kellogg range for process
+  piping), taking the allowable span as `min(L1, L2)` per the book's own stated rule. `#$ ALLOWBLS`
+  remains the first-choice source per element when a real file provides it; these are fallback
+  defaults only. Also confirmed: the bend-clearance number from the prior round was a typo (500mm,
+  not 200mm) — already matches `ElementSplitter`'s existing radius+500mm constant exactly, no code
+  change needed. See QUESTIONS.md's "Implemented: real A106 Grade B material + textbook span
+  formula" entry for the full derivation and verification detail.

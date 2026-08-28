@@ -62,12 +62,15 @@ public class SupportPlacerTests
     [Fact]
     public void RiserThatTriggersTheSpanOverflow_GetsAGuideSupport()
     {
+        // 4x2000 mm horizontal (8000 mm) stays under the max allowable span on its own; adding the
+        // 3000 mm riser pushes the accumulated span over it, so the riser itself is what triggers
+        // the overflow (the property this test exists to check).
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>();
         for (var i = 0; i < 4; i++)
         {
-            segments.Add(NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 1270));
+            segments.Add(NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 2000));
         }
-        segments.Add(NeutralFileFixtureBuilder.Schedule40Riser(50, 60, 2032));
+        segments.Add(NeutralFileFixtureBuilder.Schedule40Riser(50, 60, 3000));
         for (var i = 0; i < 4; i++)
         {
             segments.Add(NeutralFileFixtureBuilder.Schedule40Run(60 + (i * 10), 70 + (i * 10), 50));

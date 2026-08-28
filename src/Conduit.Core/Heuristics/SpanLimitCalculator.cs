@@ -3,50 +3,101 @@ using Conduit.Core.NeutralFiles;
 namespace Conduit.Core.Heuristics;
 
 /// <summary>
-/// Computes a maximum allowable unsupported span for a pipe element from simple beam theory,
-/// as a stand-in for a real B31.3 span/sag calculation. Always returns the span in millimetres —
-/// Conduit's default unit system (per direct instruction) — converting the element's own data
-/// first when its file is in a different unit system.
+/// Computes a maximum allowable unsupported span for a pipe element from the same two criteria
+/// used by classic pipe-support-spacing references — per direct instruction to use the textbook's
+/// own formulae rather than an ad-hoc derivation (see "Pipe Stress Engineering," Ch. 6, Section
+/// 6.2, Eqs. 6.1/6.2 — full citation in <c>reference/README.md</c>). Always returns the span in
+/// millimetres — Conduit's default unit system (per direct instruction) — converting the
+/// element's own data first when its file is in a different unit system.
 ///
-/// <para><b>Simplifying assumptions (v1, not code-compliant):</b></para>
+/// <para><b>The two criteria, per the textbook (Section 6.2):</b></para>
 /// <list type="bullet">
-/// <item>Each span is modeled as a uniformly-loaded, simply-supported beam: max bending moment
-/// <c>M = w·L²/8</c>, max bending stress <c>σ = M/Z</c>. Solving for span length at an assumed
-/// allowable bending stress gives <c>L = sqrt(8·σ_allow·Z / w)</c>. Real span tables are usually
-/// governed by a sag/deflection limit rather than bending stress once diameter grows past a few
-/// inches — this is a deliberately simpler, more conservative-by-construction proxy, not a
-/// substitute for either calculation.</item>
-/// <item>The allowable stress used is the element's own <c>#$ ALLOWBLS</c> cold allowable stress
-/// when the file provides one (real, per-material/code/temperature data CAESAR II computed when
-/// generating the file — see <see cref="ComputeMaxSpan(NeutralFile, Element)"/>), falling back to
-/// a default (<see cref="DefaultAllowableBendingStressMpa"/> or
-/// <see cref="DefaultAllowableBendingStressPsi"/>, matching the file's own unit system) only when
-/// the file has no allowable-stress record for that element. Note this still isn't a
-/// code-compliant span calculation even when a real allowable is available — the beam formula
-/// above is still a simplification, just fed a materially better input than a guess.</item>
+/// <item><b>Bending-stress criterion, Eq. 6.1</b>: <c>L1 = sqrt(10·Z·S / w)</c> — a "semi-fixed
+/// beam" model (accounts for the pipe continuing past each support, unlike a naive isolated
+/// simply-supported span, hence the constant 10 rather than the simply-supported beam's 8) where
+/// <c>S</c> is the allowable bending stress, <c>Z</c> the section modulus, <c>w</c> the weight per
+/// unit length.</item>
+/// <item><b>Sag criterion, Eq. 6.2</b>: <c>L2 = (128·E·I·Δ / w)^(1/4)</c> where <c>E</c> is the
+/// elastic modulus, <c>I</c> the moment of inertia (<c>= Z·OD/2</c> for a hollow circular
+/// section), and <c>Δ</c> the design sag limit — the book cites B31.1's 2.5 mm (0.1 in) for power
+/// plants and Kellogg's 12.5-25 mm (0.5-1.0 in) range for process plants. Conduit defaults to
+/// B31.3 (process piping), so <see cref="DesignSagLimitMillimetres"/> uses the lower, more
+/// conservative end of Kellogg's range (12.5 mm) — a decide-and-proceed pick, not itself sourced
+/// from the text, logged in QUESTIONS.md as an assumption open to correction.</item>
+/// <item>The allowable span is <c>min(L1, L2)</c>, per the book: "The allowable span, Ls, is
+/// therefore taken as the smaller of L1 and L2." If the sag criterion can't be evaluated (no
+/// usable elastic modulus), only the bending-stress criterion is used.</item>
+/// </list>
+///
+/// <para><b>Real per-element data vs. fallback constants:</b></para>
+/// <list type="bullet">
+/// <item>The allowable stress <c>S</c> is the element's own <c>#$ ALLOWBLS</c> cold allowable
+/// stress when the file provides one (real, per-material/code/temperature data CAESAR II computed
+/// when generating the file — see <see cref="ComputeMaxSpan(NeutralFile, Element)"/>), falling
+/// back to <see cref="DefaultAllowableBendingStressMpa"/>/<see cref="DefaultAllowableBendingStressPsi"/>
+/// only when the file has no allowable-stress record for that element. This fallback is no longer
+/// an arbitrary placeholder — it's ASTM A106 Grade B's real cold/ambient allowable stress (118 MPa),
+/// read directly from the user's own CAESAR II material database (UMAT1.umd, material #107) —
+/// per direct instruction to reference a real, complete material rather than CAESAR's generic
+/// "LOW CARBON" entry (material #1), which turns out to carry no allowable/yield/UTS data at all.
+/// </item>
 /// <item>Distributed weight <c>w</c> includes pipe metal, insulation, and a fully-liquid-filled
 /// bore, computed from the element's own density fields (falling back to
-/// <see cref="DefaultSteelDensityKgPerM3"/>/<see cref="DefaultSteelDensityLbPerIn3"/> when a
-/// density field is zero/unset). A metric file's density fields are mass density (kg/m³) and are
-/// converted to weight density via <see cref="GravitationalAccelerationMetresPerSecond2"/>; an
-/// English file's are already weight density (lbf/in³) and need no such conversion — see
-/// QUESTIONS.md's "mm as default" entry for how this was confirmed against
-/// <c>#$ UNITS</c>'s CNVPDN constant.</item>
+/// <see cref="DefaultSteelDensityKgPerM3"/>/<see cref="DefaultSteelDensityLbPerIn3"/> — also
+/// A106 Grade B's real density — when a density field is zero/unset). A metric file's density
+/// fields are mass density (kg/m³) and are converted to weight density via
+/// <see cref="GravitationalAccelerationMetresPerSecond2"/>; an English file's are already weight
+/// density (lbf/in³) and need no such conversion — see QUESTIONS.md's "mm as default" entry for
+/// how this was confirmed against <c>#$ UNITS</c>'s CNVPDN constant.</item>
+/// <item>The elastic modulus <c>E</c> is the element's own cold modulus (<c>RealValues[27]</c>)
+/// when populated, falling back to <see cref="DefaultElasticModulusMpa"/>/
+/// <see cref="DefaultElasticModulusPsi"/> — again A106 Grade B's real cold modulus (203,400 MPa),
+/// not an arbitrary constant.</item>
 /// </list>
 /// </summary>
 public static class SpanLimitCalculator
 {
-    /// <summary>Assumed allowable bending stress (MPa) for a metric file's span formula, when it has no <c>#$ ALLOWBLS</c> record. Not a code value — the metric equivalent of <see cref="DefaultAllowableBendingStressPsi"/>.</summary>
-    public const double DefaultAllowableBendingStressMpa = DefaultAllowableBendingStressPsi * MpaPerPsi;
+    /// <summary>
+    /// A106 Grade B's real cold/ambient allowable stress (MPa), read directly from the user's own
+    /// CAESAR II material database (UMAT1.umd, material #107) — used as the fallback allowable
+    /// stress for a metric file with no <c>#$ ALLOWBLS</c> record for an element. The metric
+    /// equivalent of <see cref="DefaultAllowableBendingStressPsi"/>.
+    /// </summary>
+    public const double DefaultAllowableBendingStressMpa = 118.0;
 
-    /// <summary>Assumed allowable bending stress (psi) for an English file's span formula, when it has no <c>#$ ALLOWBLS</c> record. Not a code value.</summary>
-    public const double DefaultAllowableBendingStressPsi = 1500.0;
+    /// <summary>A106 Grade B's real cold/ambient allowable stress (psi), for an English file's span formula, when it has no <c>#$ ALLOWBLS</c> record.</summary>
+    public const double DefaultAllowableBendingStressPsi = DefaultAllowableBendingStressMpa / MpaPerPsi;
 
-    /// <summary>Fallback pipe density (kg/m³) for a metric file, used when an element's own pipe density is zero/unset. Ordinary carbon-steel density — the metric equivalent of <see cref="DefaultSteelDensityLbPerIn3"/>.</summary>
-    public const double DefaultSteelDensityKgPerM3 = DefaultSteelDensityLbPerIn3 * KgPerM3PerLbPerIn3;
+    /// <summary>
+    /// A106 Grade B's real density (kg/m³), read directly from the user's own CAESAR II material
+    /// database — used as the fallback pipe density for a metric file when an element's own pipe
+    /// density is zero/unset. The metric equivalent of <see cref="DefaultSteelDensityLbPerIn3"/>.
+    /// </summary>
+    public const double DefaultSteelDensityKgPerM3 = 7833.4399;
 
     /// <summary>Fallback pipe density (lb/in³) for an English file, used when an element's own pipe density is zero/unset.</summary>
-    public const double DefaultSteelDensityLbPerIn3 = 0.2836;
+    public const double DefaultSteelDensityLbPerIn3 = DefaultSteelDensityKgPerM3 / KgPerM3PerLbPerIn3;
+
+    /// <summary>
+    /// A106 Grade B's real cold elastic modulus (MPa), read directly from the user's own CAESAR II
+    /// material database — used as the fallback elastic modulus (for the sag criterion, Eq. 6.2)
+    /// when an element's own cold modulus (<c>RealValues[27]</c>) is zero/unset.
+    /// </summary>
+    public const double DefaultElasticModulusMpa = 203_400.0;
+
+    /// <summary>Fallback elastic modulus (psi) for an English file, used when an element's own cold modulus is zero/unset.</summary>
+    public const double DefaultElasticModulusPsi = DefaultElasticModulusMpa / MpaPerPsi;
+
+    /// <summary>
+    /// Design sag limit (mm) for Eq. 6.2's sag criterion — Kellogg's suggested range for process
+    /// plants is 12.5-25 mm (0.5-1.0 in); Conduit defaults to B31.3 (process piping), so this uses
+    /// the lower, more conservative end. Not itself sourced from the text (the text gives a range,
+    /// not a single value) — a decide-and-proceed pick, logged in QUESTIONS.md.
+    /// </summary>
+    public const double DesignSagLimitMillimetres = 12.5;
+
+    /// <summary>The bending-stress criterion's "semi-fixed beam" constant, Eq. 6.1 — accounts for the pipe continuing past each support, unlike a naive isolated simply-supported span (whose constant would be 8).</summary>
+    private const double SemiFixedBeamSpanConstant = 10.0;
 
     private const double MillimetresPerInch = 25.4;
     private const double MpaPerPsi = 0.00689476;
@@ -56,12 +107,13 @@ public static class SpanLimitCalculator
 
     /// <summary>Computes max span (mm) assuming <see cref="UnitsSection.Metric"/> — for callers with an <see cref="Element"/> but no <see cref="NeutralFile"/> (e.g. tests).</summary>
     public static double ComputeMaxSpan(Element element) =>
-        ComputeMaxSpanMillimetres(element, DefaultAllowableBendingStressMpa, UnitsSection.Metric);
+        ComputeMaxSpanMillimetres(element, DefaultAllowableBendingStressMpa, DefaultElasticModulusMpa, UnitsSection.Metric);
 
     /// <summary>
     /// Computes max span (always in millimetres) using <paramref name="file"/>'s own
-    /// <c>#$ ALLOWBLS</c> cold allowable stress for <paramref name="element"/> when one is
-    /// linked, falling back to a default matching the file's own unit system otherwise.
+    /// <c>#$ ALLOWBLS</c> cold allowable stress and the element's own cold elastic modulus for
+    /// <paramref name="element"/> when populated, falling back to defaults matching the file's own
+    /// unit system otherwise.
     /// </summary>
     public static double ComputeMaxSpan(NeutralFile file, Element element)
     {
@@ -69,11 +121,14 @@ public static class SpanLimitCalculator
         var allowable = file.TryGetAllowableStress(element)?.ColdAllowableStress;
         var defaultAllowableBendingStress = units.IsMetric ? DefaultAllowableBendingStressMpa : DefaultAllowableBendingStressPsi;
         var allowableBendingStress = allowable is > 0 ? allowable.Value : defaultAllowableBendingStress;
-        return ComputeMaxSpanMillimetres(element, allowableBendingStress, units);
+        var defaultElasticModulus = units.IsMetric ? DefaultElasticModulusMpa : DefaultElasticModulusPsi;
+        var elasticModulus = element.RealValues[27] is > 0 ? element.RealValues[27] : defaultElasticModulus;
+        return ComputeMaxSpanMillimetres(element, allowableBendingStress, elasticModulus, units);
     }
 
     /// <param name="allowableBendingStress">In the same unit system as <paramref name="units"/> (MPa if metric, psi if English).</param>
-    private static double ComputeMaxSpanMillimetres(Element element, double allowableBendingStress, UnitsSection units)
+    /// <param name="elasticModulus">In the same unit system as <paramref name="units"/> (MPa if metric, psi if English).</param>
+    private static double ComputeMaxSpanMillimetres(Element element, double allowableBendingStress, double elasticModulus, UnitsSection units)
     {
         var sectionModulusMm3 = ComputeSectionModulusMillimetres(element, units);
         var weightPerLengthNewtonsPerMm = ComputeWeightPerLengthNewtonsPerMillimetre(element, units);
@@ -84,7 +139,19 @@ public static class SpanLimitCalculator
         }
 
         var allowableStressMpa = units.IsMetric ? allowableBendingStress : allowableBendingStress * MpaPerPsi;
-        return Math.Sqrt(8.0 * allowableStressMpa * sectionModulusMm3 / weightPerLengthNewtonsPerMm);
+        var bendingStressSpan = Math.Sqrt(SemiFixedBeamSpanConstant * allowableStressMpa * sectionModulusMm3 / weightPerLengthNewtonsPerMm);
+
+        var elasticModulusMpa = units.IsMetric ? elasticModulus : elasticModulus * MpaPerPsi;
+        if (elasticModulusMpa <= 0)
+        {
+            return bendingStressSpan; // Eq. 6.2 unusable with no elastic modulus — bending-stress criterion only.
+        }
+
+        var outsideDiameterMm = element.OutsideDiameter * units.LengthToMillimetres;
+        var momentOfInertiaMm4 = sectionModulusMm3 * outsideDiameterMm / 2.0; // I = Z·OD/2 for a hollow circular section
+        var sagSpan = Math.Pow(128.0 * elasticModulusMpa * momentOfInertiaMm4 * DesignSagLimitMillimetres / weightPerLengthNewtonsPerMm, 0.25);
+
+        return Math.Min(bendingStressSpan, sagSpan); // Eq. 6.2's text: "the smaller of L1 and L2"
     }
 
     /// <summary>Section modulus of the pipe's hollow-cylinder cross-section, <c>Z = π(OD⁴-ID⁴)/(32·OD)</c>, in mm³.</summary>

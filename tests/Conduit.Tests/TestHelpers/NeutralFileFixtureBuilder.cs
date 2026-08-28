@@ -75,7 +75,7 @@ public static class NeutralFileFixtureBuilder
         AddBlock("UNIFORM");
         AddBlock("WIND"); // empty: NumWindLoads=0 (no wind load modeled) — see BuildWindLines' doc comment
         AddBlock("OFFSETS");
-        AddBlock("ALLOWBLS");
+        var allowblsBlock = AddBlock("ALLOWBLS", BuildAllowblsLines());
         AddBlock("SIF&TEES");
         AddBlock("REDUCERS");
         AddBlock("FLANGES");
@@ -101,7 +101,7 @@ public static class NeutralFileFixtureBuilder
             NumUniformLoads = 0,
             NumWindLoads = 0,
             NumOffsets = 0,
-            NumAllowableStress = 0,
+            NumAllowableStress = 1,
             NumIntersections = 0,
             Izup = izup,
             NumEquipmentChecks = 0,
@@ -122,7 +122,7 @@ public static class NeutralFileFixtureBuilder
             NodeNames = [],
             Restraints = restraints,
             MaterialIds = segments.Select(_ => 1).ToList(),
-            AllowableStresses = [],
+            AllowableStresses = AllowableStress.ParseMany(allowblsBlock.RawLines, 1),
             NozzleLimits = [],
             Units = units,
         };
@@ -195,6 +195,24 @@ public static class NeutralFileFixtureBuilder
     }
 
     /// <summary>
+    /// <c>#$ ALLOWBLS</c>: one real, sourced allowable-stress record — ASTM A106 Grade B's cold/
+    /// ambient allowable stress (118 MPa), read directly from the user's own CAESAR II material
+    /// database (<c>UMAT1.umd</c>, material #107) — per direct instruction to reference a real,
+    /// complete material rather than CAESAR's generic "LOW CARBON" entry (material #1), which
+    /// turns out to carry no allowable/yield/UTS data at all. Only item 1 (cold allowable stress,
+    /// <see cref="AllowableStress.ColdAllowableStress"/>) is populated — the only field Conduit's
+    /// own model actually reads; the other 167 fields (hot allowables, fatigue curves, code-
+    /// specific items) are left at 0.0 pending future need, same minimalism as every other
+    /// section this builder only partially populates.
+    /// </summary>
+    private static List<string> BuildAllowblsLines()
+    {
+        var values = new double[168];
+        values[0] = SpanLimitCalculator.DefaultAllowableBendingStressMpa;
+        return FixedWidth.FormatRealLines(values).ToList();
+    }
+
+    /// <summary>
     /// <c>#$ MISCEL_1</c>'s RRMAT array (one material ID per element, packed 6-per-line, FORTRAN
     /// <c>(2X, 6G13.6)</c>) plus a fixed 4-line trailing block — hanger-table defaults and
     /// execution options (<c>NeutralFile-v15.pdf</c>'s "Hangers"/"Execution Options"
@@ -263,6 +281,7 @@ public static class NeutralFileFixtureBuilder
             {
                 pointers[0] = bendIndex + 1; // 1-based pointer into #$ BEND
             }
+            pointers[9] = 1; // every element points at the one #$ ALLOWBLS record (see BuildAllowblsLines)
 
             if (restraintOwnerSegmentIndex.TryGetValue(segmentIndex, out var restraintIndex))
             {
