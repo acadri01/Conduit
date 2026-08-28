@@ -112,4 +112,39 @@ public class OptimizationLoopTests
         Assert.True(result.Passed);
         Assert.Contains(file.Restraints, r => r.Node == 15);
     }
+
+    private static NeutralFileFixtureBuilder.PipeSegmentSpec Seg(int from, int to, double dx, double dy, double dz) =>
+        new(from, to, dx, dy, dz, OutsideDiameter: 168.3, WallThickness: 7.11, PipeDensity: SpanLimitCalculator.DefaultSteelDensityKgPerM3);
+
+    /// <summary>
+    /// Mirrors <c>fixtures/fig6-8-example.cii</c> — an axis-aligned *approximation* of "Pipe
+    /// Stress Engineering" Fig. 6.8 (a real worked example the user shared): a 2 m riser from an
+    /// equipment anchor, then four horizontal legs (3 m, 6 m, 3 m, 4 m, 5.2 m — the book's own
+    /// support-to-support distances) to a tower anchor, with no supporting arrangement besides
+    /// the two anchors going in, matching the book's node layout but *not* its sloped/peaked
+    /// elevation profile (diagonal segments are out of MVP scope, per direct instruction — see
+    /// QUESTIONS.md). This is a structural smoke test, not a check against the book's own answer:
+    /// it confirms the whole pipeline (initial placement + iterate loop) runs cleanly end to end
+    /// on this topology and never places a support on the one real bend (node 20, the riser's own
+    /// top), not that Conduit reproduces the book's exact support count or spacing.
+    /// </summary>
+    [Fact]
+    public void Fig68FlattenedApproximation_PassesWithoutSupportingTheRiserCorner()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            Seg(10, 20, 0, 2000, 0),
+            Seg(20, 30, 3000, 0, 0),
+            Seg(30, 40, 6000, 0, 0),
+            Seg(40, 50, 3000, 0, 0),
+            Seg(50, 60, 4000, 0, 0),
+            Seg(60, 70, 5200, 0, 0),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 70], izup: 0, bendNodes: [20]);
+
+        var result = OptimizationLoop.Run(file, new MockStressSolver());
+
+        Assert.True(result.Passed);
+        Assert.DoesNotContain(file.Restraints, r => r.Node == 20);
+    }
 }

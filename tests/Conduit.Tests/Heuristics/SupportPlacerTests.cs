@@ -7,19 +7,31 @@ namespace Conduit.Tests.Heuristics;
 
 public class SupportPlacerTests
 {
+    /// <summary>
+    /// 30x1000 mm (30 m total) keeps both placements comfortably clear of the run's own endpoints
+    /// (each lands ~10 m in from an anchor, well outside <see cref="SupportTypeClassifier"/>'s 15%
+    /// near-endpoint zone), so this exercises the plain rest+guide case specifically rather than
+    /// also tripping the near-equipment anchor heuristic — see
+    /// <see cref="CandidateNearRunEndpoint_IsClassifiedAsAnchor"/> for that one.
+    /// </summary>
     [Fact]
-    public void StraightRun_PlacesOnlyRestSupports_SpacedUnderMaxSpan()
+    public void StraightRun_PlacesRestAndCoLocatedGuideSupports_SpacedUnderMaxSpan()
     {
-        var segments = Enumerable.Range(0, 18)
-            .Select(i => NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 1270))
+        var segments = Enumerable.Range(0, 30)
+            .Select(i => NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 1000))
             .ToList();
-        var file = NeutralFileFixtureBuilder.Build(segments, [10, 190]);
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 310]);
 
         var placed = SupportPlacer.PlaceSupports(file);
 
         Assert.NotEmpty(placed);
-        Assert.All(placed, p => Assert.Equal(SupportType.Rest, p.Type));
-        Assert.All(placed, p => Assert.Equal(RestraintType.PlusY, p.RestraintType));
+        Assert.All(placed, p => Assert.True(p.Type is SupportType.Rest or SupportType.Guide));
+        // Per direct instruction, every plain rest also gets a co-located guide — so every node
+        // that got a placement at all should have gotten exactly one of each.
+        foreach (var group in placed.GroupBy(p => p.Node))
+        {
+            Assert.Equal([SupportType.Rest, SupportType.Guide], group.Select(p => p.Type).OrderBy(t => t));
+        }
     }
 
     [Fact]
@@ -30,9 +42,12 @@ public class SupportPlacerTests
             .ToList();
         var file = NeutralFileFixtureBuilder.Build(segments, [10, 190]);
 
-        foreach (var support in SupportPlacer.PlaceSupports(file))
+        // A node can carry more than one PlacedSupport (e.g. a rest and its co-located guide) —
+        // group into one multi-DOF restraint per node, same as OptimizationLoop.Run does.
+        foreach (var group in SupportPlacer.PlaceSupports(file).GroupBy(p => p.Node))
         {
-            file.AddRestraint(Restraint.CreateSingleDof(support.Node, support.RestraintType, file.Units.RigidRestraintStiffness));
+            var types = group.Select(p => p.RestraintType).Distinct().ToList();
+            file.AddRestraint(Restraint.CreateMultiDof(group.Key, types, file.Units.RigidRestraintStiffness));
         }
 
         var positions = file.ComputeNodePositions();
@@ -52,25 +67,22 @@ public class SupportPlacerTests
     }
 
     /// <summary>
-    /// When the span-driven overflow check fires *on the riser element itself* (i.e. the riser is
-    /// the element whose length pushes the accumulated span past the max allowable), the placer
-    /// correctly classifies that location as a guide. This is narrower than "every vertical segment
-    /// gets a guide" — a short riser whose own length doesn't trigger the overflow (because a later
-    /// horizontal element does) won't get one in v1; see <see cref="SupportPlacer"/>'s remarks for
-    /// why that's a deliberate, documented gap rather than a bug, pending element-splitting.
+    /// A vertical run's own accumulated length is checked against <see cref="SupportPlacer.VerticalSpanMultiplier"/>x
+    /// the horizontal max allowable span, not 1x, per direct instruction ("2x the horizontal span
+    /// requirement" for standalone risers). A 25 m riser comfortably exceeds that 2x threshold
+    /// (~21.7 m for the fixture's standard 6" Sch 40 pipe) entirely on its own, with short
+    /// horizontal legs before/after that stay well under the (1x) horizontal threshold — isolating
+    /// the vertical-specific rule from the horizontal one.
     /// </summary>
     [Fact]
-    public void RiserThatTriggersTheSpanOverflow_GetsAGuideSupport()
+    public void RiserThatExceedsTheVerticalSpanThreshold_GetsAGuideSupport()
     {
-        // 4x2000 mm horizontal (8000 mm) stays under the max allowable span on its own; adding the
-        // 3000 mm riser pushes the accumulated span over it, so the riser itself is what triggers
-        // the overflow (the property this test exists to check).
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>();
         for (var i = 0; i < 4; i++)
         {
             segments.Add(NeutralFileFixtureBuilder.Schedule40Run(10 + (i * 10), 20 + (i * 10), 2000));
         }
-        segments.Add(NeutralFileFixtureBuilder.Schedule40Riser(50, 60, 3000));
+        segments.Add(NeutralFileFixtureBuilder.Schedule40Riser(50, 60, 25_000));
         for (var i = 0; i < 4; i++)
         {
             segments.Add(NeutralFileFixtureBuilder.Schedule40Run(60 + (i * 10), 70 + (i * 10), 50));
@@ -79,7 +91,7 @@ public class SupportPlacerTests
 
         var placed = SupportPlacer.PlaceSupports(file);
 
-        Assert.Contains(placed, p => p.Node == 50 && p.Type == SupportType.Guide && p.RestraintType == RestraintType.Gui);
+        Assert.Contains(placed, p => p.Node == 60 && p.Type == SupportType.Guide && p.RestraintType == RestraintType.Gui);
     }
 
     [Fact]
@@ -95,5 +107,58 @@ public class SupportPlacerTests
         var context = new SupportCandidateContext(IsVerticalSegment: false, DistanceToNearestRunEndpoint: maxSpan * 0.01);
 
         Assert.Equal(SupportType.Anchor, SupportTypeClassifier.Classify(context, maxSpan).Type);
+    }
+
+    private static NeutralFileFixtureBuilder.PipeSegmentSpec Seg(int from, int to, double dx, double dy, double dz) =>
+        new(from, to, dx, dy, dz, OutsideDiameter: 168.3, WallThickness: 7.11, PipeDensity: SpanLimitCalculator.DefaultSteelDensityKgPerM3);
+
+    /// <summary>
+    /// Never place a support directly on a bend corner — the bug report that started this whole
+    /// redesign. A 24 m leg into a 90° bend, on its own, has no interior node to fall back to, so
+    /// <see cref="SupportPlacer"/>'s own pass correctly places nothing there (left for
+    /// <see cref="Optimization.OptimizationLoop"/>'s reactive <see cref="ElementSplitter"/>
+    /// fallback, covered in <see cref="Optimization.OptimizationLoopTests"/>) — what this test
+    /// asserts is simply that nothing ever lands *on* node 20 itself.
+    /// </summary>
+    [Fact]
+    public void NeverPlacesASupportDirectlyOnABendCorner()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            Seg(10, 20, 24000, 0, 0),
+            Seg(20, 30, 0, 0, 2000),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 30], izup: 0, bendNodes: [20]);
+
+        var placed = SupportPlacer.PlaceSupports(file);
+
+        Assert.DoesNotContain(placed, p => p.Node == 20);
+    }
+
+    /// <summary>
+    /// A purely-planar ("2D") jog — mirrors <c>fixtures/loop-2d.cii</c>: a long X leg, a small
+    /// Z-axis offset, then a long X leg back to the far anchor, all in one horizontal plane (no
+    /// vertical element at all). Per direct instruction, the two horizontal axes' span
+    /// accumulation is tracked separately with a universal reset at any support — a rest on
+    /// either long leg (added reactively once each leg is split, since a single 24 m element has
+    /// no interior node of its own) resets the *other* horizontal axis too, so the short 2000 mm
+    /// Z-axis offset in the middle never needs — and never gets — a support of its own.
+    /// </summary>
+    [Fact]
+    public void PlanarJog_GetsNoSupportsInsideTheJogItself()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            Seg(10, 20, 24000, 0, 0),
+            Seg(20, 30, 0, 0, 2000),
+            Seg(30, 40, 2000, 0, 0),
+            Seg(40, 50, 0, 0, -2000),
+            Seg(50, 60, 24000, 0, 0),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 60], izup: 0, bendNodes: [20, 30, 40, 50]);
+
+        var placed = SupportPlacer.PlaceSupports(file);
+
+        Assert.DoesNotContain(placed, p => p.Node is 20 or 30 or 40 or 50);
     }
 }

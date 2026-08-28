@@ -17,18 +17,36 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: nothing to test right now.** This round swapped in real ASTM A106 Grade B material data
-(from your UMAT1.umd printout) and the textbook's own span-limit formulas (Ch. 6, Eqs. 6.1/6.2) in
-place of Conduit's earlier placeholder constants and ad-hoc formula — no CAESAR II/`iecho.exe`
-verification needed for this change, since it's pure material/formula substitution checked by the
-existing automated test suite (79/79 passing). One thing does need your hands, but it's a decision
-rather than a test: committing the Ch2/Ch3/B31.3 PDFs you cleared is currently blocked by this
-session's own sandbox restrictions (repeated `curl`/`cp` attempts into `reference/` were denied) —
-see the PR reply and QUESTIONS.md for the write-up and options (e.g. attaching them directly via
-GitHub's PR/repo UI, which wouldn't hit this restriction). The `SupportPlacer` placement-logic
-rewrite itself (bend-corner exclusion, per-axis span accumulation, 2x guide multiplier, tee/SIF
-handling, loop rule) is still on hold pending your confirmation of the universal-rest-reset model
-and the guide-every-other-span nuance — nothing to test on that front until it lands.
+**Status: please sanity-check the rewritten `SupportPlacer` against real CAESAR II, if you can.**
+This round implemented the bend-corner exclusion, per-axis span accumulation with universal reset,
+2x vertical guide multiplier, and guide-at-every-rest rules — the full placement-logic rewrite that
+was on hold for several rounds. The automated suite (82/82 passing) checks the *internal* logic
+(no supports on bend corners, spans stay under the allowable, etc.), but can't check whether the
+result actually looks right in CAESAR II's own GUI. Two new example files are the best way to see
+it: `fixtures/loop-2d.cii` (a self-designed planar jog) and `fixtures/fig6-8-example.cii` (a
+flattened, axis-aligned approximation of your Fig 6.8 example — see the caveat below). Both, plus
+the existing `fixtures/loop-50m-3d.cii`, are worth a look now that the placement logic behind them
+has actually changed. To test:
+```
+dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
+```
+then, if you're able, run each `out-*.cii` through `iecho.exe` (converts cleanly, same as before)
+and open the result in CAESAR II's GUI to eyeball whether the rest/guide placements look
+reasonable to you — that's the check Conduit's own test suite can't perform. Report back anything
+that looks wrong (a guide where you wouldn't expect one, spacing that looks off, etc.).
+
+**One caveat on Fig 6.8**: before building the fixture, I re-fetched the actual figure image you
+attached (rather than trusting my own earlier paraphrase of it) and found the real geometry is
+sloped/peaked — not axis-aligned, which this MVP's span model doesn't handle yet. I built an
+axis-aligned *flattened* approximation instead (same riser + your five support-to-support
+distances, at one elevation), so don't expect it to reproduce the book's own 3-support answer —
+it's a structural smoke test of the topology, not a check against the book's exact solution.
+
+Still open, not part of this round's ask: tee/branch span exclusion (a branch arm's own separate
+accumulation, not yet implemented — only the tee node itself is kept clear of placements), applying
+the SIF at a tee, and the guide direction-cosine question (still open from a few rounds back).
 
 # Step-by-step: test Conduit on your own machine
 

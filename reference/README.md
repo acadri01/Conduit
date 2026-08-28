@@ -23,6 +23,28 @@ paraphrase instead of verifying against real files and these documents together.
   Restraints, Displacements, Stresses, …) and the Report Template Editor for defining a stable,
   parseable custom report layout.
 
+## `pipe-stress-engineering/`
+
+Excerpts from "Pipe Stress Engineering" (a commercial textbook, not Hexagon vendor material) plus
+the user's own UMAT1 material database printout, shared directly by the user and explicitly
+cleared for commitment ("Commitment is fine they were all found online" — 2026-08-28). Consult
+these, not just SPEC.md's prose summaries of them, before touching span-limit or material-related
+logic.
+
+- **`Ch2.pdf`**, **`Ch3.pdf`** — general pipe stress background chapters, shared for context; not
+  yet the basis of any implemented logic (see QUESTIONS.md for what's still pending review).
+- **`Ch6.pdf`** — support spacing and placement: the source for `SpanLimitCalculator`'s Eqs.
+  6.1/6.2 (semi-fixed-beam bending criterion + sag/deflection criterion), Table 6.1's sanity-check
+  span values, standard support-type definitions (guide/rest/anchor/line stop), and Fig. 6.8 — the
+  worked example approximated by `fixtures/fig6-8-example.cii`.
+- **`UMAT1-material-database.pdf`** — a printed (non-machine-readable) dump of the user's own
+  UMAT1.umd CAESAR II material database. The source for `SpanLimitCalculator`'s real fallback
+  material (ASTM A106 Grade B, material #107) and `NeutralFileFixtureBuilder`'s populated
+  `#$ ALLOWBLS` block — see SPEC.md's "Known open decisions" for the full derivation.
+- **`../B31.3-2024.pdf`** (repo root, not this folder — see below) — the full ASME B31.3-2024
+  code, shared "for reference" per the user, since CAESAR II supports multiple piping codes and
+  this is just the one Conduit defaults to.
+
 Not here, and never committed: the Python neutral-file-generator programs (`iecho.py`,
 `lift_case_builder.py`) the user has shared for context — those stay off-repo per the clean-room
 constraint (see QUESTIONS.md). This folder is for the *public* documentation only. Three real

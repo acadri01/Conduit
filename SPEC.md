@@ -175,12 +175,19 @@ directions are symmetric.
   `-Y`/`-Z` for a hold-down alone, bidirectional `Y`/`Z` for rest+hold-down together, `GUI` for
   guide, `LIM` for line stop, `ANC` for anchor (see "Neutral file format"). v1 focuses on rigid
   supports only.
-- Support-placement algorithm: walk each pipe run between fixed points (anchors, and — when `#$
-  EQUIPMNT` is populated — real nozzle/equipment node locations), place candidate supports
-  at/under the max allowable span, assign a type via the heuristic above, and write them as new
-  `#$ RESTRANT` records. `SupportPlacer`'s own walk still only places at existing nodes (see
-  "Known open decisions" for why a short vertical segment doesn't always get its own guide), but
-  the iterate-and-adjust loop below now splits an element when there's no existing node to use.
+- Support-placement algorithm (rewritten 2026-08-28 — see "Known open decisions" for the full
+  derivation): walk each pipe run between fixed points (anchors, and — when `#$ EQUIPMNT` is
+  populated — real nozzle/equipment node locations), tracking the two horizontal axes' unsupported
+  span *separately* (not summed) plus a vertical accumulator checked against 2x the horizontal max
+  span, with a universal reset (all three accumulators) at any support — placed or pre-existing.
+  Bend corners and tee/branch nodes (node degree > 2 across the whole file) are excluded from
+  placement, with clearance matching `ElementSplitter`'s own bend buffer; the placer backs off to
+  the nearest eligible same-axis node already passed when the natural overflow point falls in an
+  excluded zone. Every eligible plain rest also gets a co-located guide (one multi-DOF
+  `#$ RESTRANT` record, via `Restraint.CreateMultiDof`). `SupportPlacer`'s own walk still only
+  places at existing nodes; the iterate-and-adjust loop below still splits an element (with the
+  same bend clearance) when there's no existing node to use — see "Known open decisions" for why
+  reactively-split rests don't yet get the same companion guide the initial pass's do.
 - Element-splitting (`ElementSplitter` + `NeutralFile.ReplaceElement`), per direct instruction:
   when the iterate-and-adjust loop hits a single-element span with no existing intermediate node
   (previously reported as an unresolvable failure), it splits that element into evenly-spaced
@@ -647,6 +654,29 @@ decisions"). This locator only answers "where," not "how to read what's there."
   CAESAR II computed per-element from whatever that lookup would have produced. Parsing those
   database files becomes necessary only if a future non-mock solver needs to compute allowables
   itself rather than reading what CAESAR II already computed.
+- **Resolved (2026-08-28):** the bend-corner support-placement bug that opened this whole design
+  discussion (`SupportPlacer` placing supports directly on bend corners — not buildable without a
+  trunnion) is fixed, along with everything it turned out to depend on. The final, confirmed model:
+  span accumulation is tracked per horizontal axis (not combined), with a universal reset — any
+  support, on any axis, resets both horizontal accumulators and the vertical one — since a rest
+  resists gravity regardless of which direction the pipe happens to run at that point. Bend corners
+  and tee/branch nodes (detected by node degree, not yet by SIF/collinearity) are excluded from
+  placement with the same clearance buffer `ElementSplitter` already used for splitting; a vertical
+  run's own length is checked against 2x the horizontal max span, not 1x; and every eligible plain
+  rest also gets a co-located guide, since "close to a directional change" (the one condition left
+  undefined, per direct instruction: "no need to define this right now") falls out of the same
+  bend/tee clearance check for free. Implemented in `SupportPlacer`/`PipeAxisClassifier`, with
+  `MockStressSolver` updated to the identical per-axis model so the iterate loop's pass/fail check
+  doesn't fight the placer's own decisions. Verified against three examples (the existing 3D loop
+  fixture, a new self-designed 2D planar-jog fixture at `fixtures/loop-2d.cii`, and a new flattened
+  axis-aligned approximation of the textbook's Fig 6.8 example at `fixtures/fig6-8-example.cii` —
+  flattened because the real figure turned out to be genuinely sloped/diagonal once re-checked
+  against the actual image rather than an earlier paraphrase, and diagonal segments remain out of
+  MVP scope). Still open: tee/branch *span* exclusion (only the node itself is kept clear of
+  placements so far, not a separate accumulator for the branch arm), applying the SIF at a tee, the
+  guide direction-cosine question (still `(0,0,0)`, unresolved from a few rounds back), and a
+  reactive-split rest not getting the same companion guide an initial-pass one does. See
+  QUESTIONS.md's "Implemented: the `SupportPlacer` rewrite" entry for the full derivation.
 - **Resolved (2026-08-21):** the database-for-iteration-tracking question above is answered — not
   needed yet ("the first step of this program is to have a fully functioning support placement
   program"), so SPEC.md's "Storage: none... No database" constraint stands unchanged for v1. It

@@ -1582,3 +1582,111 @@ regeneration, and the PDF-commit blocker — and continue holding the actual `Su
 rewrite (bend-corner exclusion, per-axis span accumulation, 2x vertical multiplier, tee/branch
 exclusion, the loop rule) pending confirmation of the still-open universal-rest-reset model and the
 guide-every-other-span nuance, per the last round's questions.
+
+## Implemented: the `SupportPlacer` rewrite — bend/tee exclusion, per-axis accumulation, 2x vertical, guide-at-rest (2026-08-28)
+
+The user's next comment gave the three remaining confirmations needed to unblock this, plus
+explicit authorization to build: **"I confirm the universal-rest-reset model. I think we can use a
+guide at every rest, unless it comes very close to a directional change. No need to define this
+right now; let's build and see how these changes work."** — and, on the PDF blocker above,
+**"Remember the files, but you can try again."**
+
+**PDF commit — resolved.** Retried the exact same `curl`-into-`reference/` approach that was denied
+last round; this time all five PDFs (Ch2, Ch3, Ch6, the UMAT1 printout, B31.3-2024) downloaded and
+committed without issue. Whatever triggered the classifier denial last round appears to have been
+transient/session-specific, not a durable restriction — noted here in case it recurs, but not
+treated as blocking anything further. Committed at `reference/pipe-stress-engineering/{Ch2,Ch3,
+Ch6,UMAT1-material-database}.pdf` and `reference/B31.3-2024.pdf`; `reference/README.md` updated
+with what each one is for.
+
+**`SupportPlacer` rewrite — implemented.** Full detail is in `SpanPlacer.cs`'s own class doc
+comment (kept in sync with the actual code, so treat that as the primary reference over this
+summary), but the shape of it:
+
+- **Per-axis accumulation** (`PipeAxisClassifier`, new): the model's two horizontal axes track
+  their own unsupported-span accumulator independently, plus a third for the vertical axis. An
+  axis-aligned (90°-only, MVP scope) element contributes its full length to whichever single axis
+  it runs along — diagonal/45° segments still explicitly deferred, per "let's take one thing at a
+  time."
+- **Universal reset**: placing a support (or passing an already-restrained node) resets *all
+  three* accumulators, not just the axis the support happens to sit on — confirmed for the two
+  horizontal axes by direct instruction; extended to the vertical accumulator too as this file's
+  own reversible, logged call (no stated reason to treat it differently).
+- **Bend/tee corner exclusion**: a support is never placed directly on a bend corner or a
+  tee/branch node (branch detection is by node degree across the whole file — a node with a third
+  connecting element beyond the run's own in/out pair — not by SIF/collinearity analysis, which
+  is still deferred), nor within the same bend-clearance buffer `ElementSplitter` already uses.
+  When the natural overflow point falls in an excluded zone, the placer backs off to the nearest
+  eligible node already passed *on that same axis* since the last reset (tracked per axis — a
+  vertical overflow must back off to a point actually up the riser, not to an unrelated horizontal
+  node that happens to be the most recent one seen). If no eligible node exists at all in the zone
+  (a single overlong element with no interior node, ending right at a bend — e.g. either 24 m leg
+  of `loop-50m-3d.cii`), nothing is placed there in the initial pass; `OptimizationLoop`'s existing
+  reactive `ElementSplitter` fallback resolves it, and already keeps the same bend clearance.
+- **2x vertical multiplier**: a vertical run's own accumulated length is checked against 2x the
+  horizontal max allowable span, not 1x, per direct instruction, for both standalone risers and
+  loop verticals.
+- **Guide at every eligible rest**: every plain horizontal rest also gets a co-located guide
+  (packed into the same `#$ RESTRANT` record via a new `Restraint.CreateMultiDof`, matching how
+  real files pack multi-DOF supports at one node — confirmed against
+  `fixtures/real-samples/44002.cii`'s own multi-DOF records). Since eligible nodes are already
+  guaranteed clear of the bend/tee exclusion zone, "not very close to a directional change" — the
+  condition the user said not to bother defining precisely yet — falls out of that same check for
+  free, with no separate threshold introduced.
+- **`MockStressSolver` updated to match**: the iterate-loop's own pass/fail check now uses the
+  *same* per-axis model (reset at any restrained node, not just anchors) instead of the old
+  "sum the whole segment's combined length" check. This was necessary, not optional — without it,
+  the solver would keep reporting the jog/branch stretches `SupportPlacer` correctly leaves alone
+  as failing, and the iterate loop would fight the new placer by re-adding supports right where it
+  had just decided not to. `OptimizationLoop`'s reactive rest-additions (`TryPickMidpointNode` /
+  `TrySplit`) still don't add a companion guide the way the initial pass does — logged as a known,
+  narrower follow-up gap rather than fixed this round, since it only affects the reactive fallback
+  path, not the primary placement decision.
+
+**Tested against three examples, per direct instruction**:
+1. **3D loop** (`fixtures/loop-50m-3d.cii`, unchanged geometry): `SupportPlacer`'s own pass places
+   nothing at all this time (every horizontal node in this specific fixture happens to be a bend,
+   so there's no eligible in-zone node anywhere along the initial walk) — `OptimizationLoop`'s
+   reactive splitting handles both 24 m legs correctly, adding rest supports mid-leg while
+   respecting bend clearance, and the jog itself (nodes 20-70) gets zero supports. `PASS` in 4
+   iterations. New test: `SupportPlacerTests.NeverPlacesASupportDirectlyOnABendCorner`.
+2. **2D loop, my own design** (new `fixtures/loop-2d.cii`): a purely-planar jog — two 24 m X legs
+   with a small (2000/2000/2000 mm) Z-axis offset in between, no vertical element at all — isolates
+   the two-horizontal-axes tracking from the vertical rule. Same result pattern as the 3D case:
+   zero supports inside the jog, both long legs split correctly, `PASS` in 4 iterations. New test:
+   `SupportPlacerTests.PlanarJog_GetsNoSupportsInsideTheJogItself`.
+3. **Fig 6.8, anchors only** (new `fixtures/fig6-8-example.cii`): re-fetched the actual figure
+   image (not just my earlier paraphrase of it, per CLAUDE.md's "always consult the primary
+   source" rule) and found it's a **sloped, peaked** run (a shallow rise from a 2m riser + 3m
+   offset up to a peak, then a shallow fall over 3m+4m+5.2m to a tower) — genuinely diagonal, not
+   axis-aligned, which this MVP's span model still doesn't handle. Built an honest **flattened
+   approximation** instead: the same riser + the book's own five horizontal support-to-support
+   distances (3m, 6m, 3m, 4m, 5.2m), at a single elevation, with only the one real bend (top of the
+   riser) preserved and no supports besides the two anchors going in. This is a structural smoke
+   test, not a check against the book's own answer — it confirms the whole pipeline runs cleanly on
+   this topology and never supports the riser's own corner, not that Conduit reproduces the book's
+   exact 3-support solution (which depends on the slope/peak this approximation drops). New test:
+   `OptimizationLoopTests.Fig68FlattenedApproximation_PassesWithoutSupportingTheRiserCorner`.
+   **Flagging this simplification explicitly** rather than presenting the flattened version as
+   faithful — if an axis-aligned approximation isn't good enough for what the user wants to check
+   against this example, diagonal-segment support would need to be tackled first.
+
+Also updated `SupportPlacerTests.StraightRun_PlacesOnlyRestSupports_SpacedUnderMaxSpan` →
+`StraightRun_PlacesRestAndCoLocatedGuideSupports_SpacedUnderMaxSpan` (renamed; now asserts the
+rest+guide pairing instead of rest-only, an intentional behavior change) and
+`RiserThatTriggersTheSpanOverflow_GetsAGuideSupport` → `RiserThatExceedsTheVerticalSpanThreshold_GetsAGuideSupport`
+(the old 3000 mm riser no longer triggers anything under the new, correct per-axis model — a 3000mm
+riser genuinely doesn't need a mid-height guide under the 2x rule — replaced with a 25,000 mm riser
+that exceeds the 2x threshold on its own, isolating the property this test exists to check).
+82/82 tests passing, `dotnet build`/`test` clean.
+
+**Still not done**: tee/branch *span* exclusion (a branch arm's own separate accumulation, rather
+than just keeping the tee node itself clear of placements — the node-degree detection is in place,
+the separate-accumulation half isn't), applying the SIF at a tee, the guide direction-cosine
+question (still open from a few rounds back — GUI direction cosines are still left at (0,0,0)),
+and the reactive-split companion-guide gap noted above. None of these blocked this round's three
+requested examples; queued behind "one thing at a time" as before.
+
+**Next step**: report back on the PR with this implementation, the three example results, and the
+PDF commit now being resolved. Await direction on tee/branch span accumulation, the guide
+direction-cosine question, or whichever of the remaining open items the user wants to tackle next.

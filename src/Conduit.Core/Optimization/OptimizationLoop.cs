@@ -24,9 +24,14 @@ public static class OptimizationLoop
         var notes = new List<string>();
 
         var placements = SupportPlacer.PlaceSupports(file);
-        foreach (var support in placements)
+        // SupportPlacer can emit more than one PlacedSupport at the same node (e.g. a rest and
+        // its co-located guide) — these belong in one #$ RESTRANT record with several DOF slots,
+        // not several separate records, matching how real files pack multi-DOF supports (see
+        // Restraint.CreateMultiDof's doc comment).
+        foreach (var group in placements.GroupBy(p => p.Node))
         {
-            file.AddRestraint(Restraint.CreateSingleDof(support.Node, support.RestraintType, file.Units.RigidRestraintStiffness));
+            var types = group.Select(p => p.RestraintType).Distinct().ToList();
+            file.AddRestraint(Restraint.CreateMultiDof(group.Key, types, file.Units.RigidRestraintStiffness));
         }
         notes.Add($"Placed {placements.Count} initial support(s):");
         foreach (var support in placements)

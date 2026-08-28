@@ -454,3 +454,29 @@ running status log Claude appends to (skim this from mobile)
   span accumulation, 2x guide multiplier, tee/SIF handling, loop rule) still held, unchanged this
   round, pending confirmation of the universal-rest-reset model and the guide-every-other-span
   nuance from the prior round.
+- 2026-08-28 (second round): user confirmed the universal-rest-reset model, approved "guide at
+  every rest unless very close to a directional change" without needing it defined more precisely
+  ("let's build and see how these changes work"), and said to retry the PDF commit ("Remember the
+  files, but you can try again"). Retrying with the same curl approach that was denied last round
+  worked without issue this time (likely transient) — committed all 5 shared PDFs to `reference/`.
+  Rewrote `SupportPlacer` around a new `PipeAxisClassifier`: the two horizontal axes' span
+  accumulation is now tracked independently (not summed), with a universal reset at any support
+  (placed or pre-existing) across all three accumulators including vertical; bend and tee/branch
+  corner nodes (tee detected by node degree across the whole file) are now excluded from placement,
+  with the placer backing off to the nearest same-axis eligible node already passed, or deferring
+  to `OptimizationLoop`'s existing reactive `ElementSplitter` fallback when none exists in the
+  zone; vertical runs are checked against 2x the horizontal max span, not 1x; every eligible plain
+  rest now also gets a co-located guide (packed into one multi-DOF `#$ RESTRANT` record via new
+  `Restraint.CreateMultiDof`, matching real files' own convention). `MockStressSolver` was
+  necessarily updated to the same per-axis model too, so the iterate loop doesn't fight the new
+  placer by re-flagging spans it correctly left alone. Verified against three examples per direct
+  instruction: the existing 3D loop fixture (zero supports inside the jog, both 24m legs split
+  correctly via the reactive path, no supports on bend corners — the original bug report, now
+  confirmed fixed), a new self-designed 2D planar-jog fixture (`fixtures/loop-2d.cii`, same
+  zero-supports-in-the-jog result), and a new flattened axis-aligned approximation of the
+  textbook's Fig 6.8 worked example (`fixtures/fig6-8-example.cii`) — re-fetched the actual figure
+  image rather than trusting an earlier paraphrase of it (per CLAUDE.md), found it's genuinely
+  sloped/diagonal (out of this MVP's axis-aligned scope), and built an honest flattened
+  approximation instead, explicitly flagged as such rather than presented as faithful. 82/82 tests
+  passing. Tee/branch span exclusion, SIF application, the guide direction-cosine question, and a
+  narrower reactive-split companion-guide gap remain open, logged and queued.

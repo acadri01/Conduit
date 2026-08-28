@@ -45,6 +45,32 @@ public sealed class Restraint
         return restraint;
     }
 
+    /// <summary>
+    /// Creates one restraint record carrying several DOF types at the same node — e.g. a rest and
+    /// a guide together, matching how real files pack multiple restraint types into a single
+    /// record at one node rather than several separate records (confirmed against
+    /// <c>fixtures/real-samples/44002.cii</c>, e.g. node 175's <c>Y, Lim, Gui</c> all in one
+    /// record). <paramref name="types"/> must have at most <see cref="DofsPerRestraint"/> entries.
+    /// </summary>
+    public static Restraint CreateMultiDof(int node, IReadOnlyList<RestraintType> types, double rigidStiffness)
+    {
+        if (types.Count == 1)
+        {
+            return CreateSingleDof(node, types[0], rigidStiffness);
+        }
+
+        var restraint = CreateEmpty();
+        for (var i = 0; i < types.Count; i++)
+        {
+            var dof = restraint.Dofs[i];
+            dof.Node = node;
+            dof.RawTypeCode = (int)types[i];
+            dof.Stiffness = rigidStiffness;
+            (dof.DirectionCosineX, dof.DirectionCosineY, dof.DirectionCosineZ) = DirectionCosineFor(types[i]);
+        }
+        return restraint;
+    }
+
     private static (double X, double Y, double Z) DirectionCosineFor(RestraintType type) => type switch
     {
         RestraintType.X or RestraintType.PlusX or RestraintType.MinusX
