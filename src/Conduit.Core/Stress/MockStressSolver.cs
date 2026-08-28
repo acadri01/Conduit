@@ -43,9 +43,9 @@ public sealed class MockStressSolver : IStressSolver
             }
 
             var tightestSpan = elementsSinceReset.Min(e => SpanLimitCalculator.ComputeMaxSpan(file, e));
-            AddFindingIfUsed(findings, resetNode, atNode, "horizontal-A", cumA - baseA, tightestSpan);
-            AddFindingIfUsed(findings, resetNode, atNode, "horizontal-B", cumB - baseB, tightestSpan);
-            AddFindingIfUsed(findings, resetNode, atNode, "vertical", cumVertical - baseVertical, tightestSpan * SupportPlacer.VerticalSpanMultiplier);
+            AddFindingIfUsed(findings, resetNode, atNode, PipeAxis.HorizontalA, cumA - baseA, tightestSpan);
+            AddFindingIfUsed(findings, resetNode, atNode, PipeAxis.HorizontalB, cumB - baseB, tightestSpan);
+            AddFindingIfUsed(findings, resetNode, atNode, PipeAxis.Vertical, cumVertical - baseVertical, tightestSpan * SupportPlacer.VerticalSpanMultiplier);
 
             baseA = cumA;
             baseB = cumB;
@@ -75,18 +75,24 @@ public sealed class MockStressSolver : IStressSolver
         return StressResult.FromFindings(findings);
     }
 
-    private static void AddFindingIfUsed(List<StressFinding> findings, int fromNode, int toNode, string axisLabel, double actualSpan, double allowableSpan)
+    private static void AddFindingIfUsed(List<StressFinding> findings, int fromNode, int toNode, PipeAxis axis, double actualSpan, double allowableSpan)
     {
         if (actualSpan <= 0)
         {
             return; // this axis wasn't exercised in this stretch at all — nothing to report
         }
 
+        var axisLabel = axis switch
+        {
+            PipeAxis.Vertical => "vertical",
+            PipeAxis.HorizontalA => "horizontal-A",
+            _ => "horizontal-B",
+        };
         var passed = allowableSpan <= 0 || actualSpan <= allowableSpan;
         var message = passed
             ? $"Span {fromNode}->{toNode} ({axisLabel}-axis, {actualSpan:F2} mm) is within the allowable span ({allowableSpan:F2} mm)."
             : $"Span {fromNode}->{toNode} ({axisLabel}-axis, {actualSpan:F2} mm) exceeds the allowable span ({allowableSpan:F2} mm).";
 
-        findings.Add(new StressFinding(fromNode, toNode, actualSpan, allowableSpan, message));
+        findings.Add(new StressFinding(fromNode, toNode, axis, actualSpan, allowableSpan, message));
     }
 }

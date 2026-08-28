@@ -147,4 +147,37 @@ public class OptimizationLoopTests
         Assert.True(result.Passed);
         Assert.DoesNotContain(file.Restraints, r => r.Node == 20);
     }
+
+    /// <summary>
+    /// Regression test for a real report against <c>fixtures/loop-2d.cii</c> and
+    /// <c>fixtures/loop-50m-3d.cii</c>: once each 24 m leg overflows and needs reactive splitting
+    /// (<see cref="OptimizationLoop"/>'s <c>Adjust</c>/<c>TrySplit</c> path, not
+    /// <see cref="SupportPlacer"/>'s own initial pass), the *second* split — landing past the
+    /// jog, with part of its axis budget already spent by the jog's own short legs — used to
+    /// chunk the still-overlong leg from its own start rather than from the zone's true last
+    /// reset point, producing a new node whose cumulative span (jog + first chunk) still
+    /// overflowed and had nowhere left to go, which was visually confirmed in CAESAR II as a
+    /// support sitting directly on a bend corner. Fixed by making the reactive split
+    /// budget-aware (<c>TrySplitAtFirstOverflow</c>) and bend/tee-aware
+    /// (<c>TryPickMidpointNode</c>).
+    /// </summary>
+    [Fact]
+    public void PlanarJogWithOverlongLegs_ReactiveSplitting_NeverRestrainsABendNode()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            Seg(10, 20, 24000, 0, 0),
+            Seg(20, 30, 0, 0, 2000),
+            Seg(30, 40, 2000, 0, 0),
+            Seg(40, 50, 0, 0, -2000),
+            Seg(50, 60, 24000, 0, 0),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 60], izup: 0, bendNodes: [20, 30, 40, 50]);
+        var bendNodes = new HashSet<int> { 20, 30, 40, 50 };
+
+        var result = OptimizationLoop.Run(file, new MockStressSolver());
+
+        Assert.True(result.Passed);
+        Assert.DoesNotContain(file.Restraints, r => bendNodes.Contains(r.Node));
+    }
 }

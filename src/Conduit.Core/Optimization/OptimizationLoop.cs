@@ -65,40 +65,106 @@ public static class OptimizationLoop
     {
         var segment = GetSegmentElements(file.Elements, finding.FromNode, finding.ToNode);
 
-        var midpointNode = TryPickMidpointNode(segment);
+        var midpointNode = TryPickMidpointNode(file, segment);
         if (midpointNode is { } node)
         {
-            var restraintType = RestraintTypeMapper.Map(SupportType.Rest, file.Control.Izup);
-            file.AddRestraint(Restraint.CreateSingleDof(node, restraintType, file.Units.RigidRestraintStiffness));
+            AddSupport(file, node, SupportType.Rest, file.Control.Izup);
             return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) — " +
                    $"added an intermediate rest support at node {node}.";
         }
 
-        if (segment.Count == 1)
+        // No existing node in the whole zone is a safe place for a support (every interior node
+        // is a bend/tee, or too close to one) — split whichever element is the *first* (in file
+        // order, from the zone's own start) to push finding.Axis's accumulated span past the
+        // allowable. Walking in order, not just picking the longest element, matters once a zone
+        // spans several elements: an earlier element may already have used up part of the budget
+        // (e.g. a short pre-bend remainder plus a short cross-axis jog leg), so the element that
+        // actually needs splitting isn't necessarily the longest one, and the split has to respect
+        // however much of the allowable span is already spent before it, not the full amount.
+        var splitNote = TrySplitAtFirstOverflow(file, segment, finding);
+        if (splitNote is not null)
         {
-            var splitNote = TrySplit(file, segment[0], finding);
-            if (splitNote is not null)
-            {
-                return splitNote;
-            }
+            return splitNote;
         }
 
         return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) has no room " +
                "for an intermediate support — left as a reported failure.";
     }
 
+    private static string? TrySplitAtFirstOverflow(NeutralFile file, List<Element> segment, StressFinding finding)
+    {
+        var izup = file.Control.Izup;
+        var toMillimetres = file.Units.LengthToMillimetres;
+        var cumulativeOnAxis = 0.0;
+
+        foreach (var element in segment)
+        {
+            var axis = PipeAxisClassifier.Determine(element, izup);
+            if (axis != finding.Axis)
+            {
+                continue; // doesn't contribute to the axis this finding is about
+            }
+
+            var before = cumulativeOnAxis;
+            cumulativeOnAxis += element.Length * toMillimetres;
+            if (cumulativeOnAxis <= finding.AllowableSpan)
+            {
+                continue; // still within budget after this element — not the offender
+            }
+
+            var remainingBudget = finding.AllowableSpan - before;
+            if (remainingBudget <= 0)
+            {
+                continue; // budget was already gone before this element even started
+            }
+
+            var splitNote = TrySplit(file, element, finding, remainingBudget);
+            if (splitNote is not null)
+            {
+                return splitNote;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>
-    /// Splits a single-element span with no existing intermediate node into evenly-spaced chunks,
+    /// Adds a restraint for <paramref name="type"/> at <paramref name="node"/>, packing in a
+    /// co-located guide too when it's a plain rest — matching <see cref="SupportPlacer"/>'s own
+    /// "guide at every eligible rest" rule, so a support added reactively here isn't missing the
+    /// guide an equivalent one from the initial pass would have gotten.
+    /// </summary>
+    private static void AddSupport(NeutralFile file, int node, SupportType type, int izup)
+    {
+        var types = new List<RestraintType> { RestraintTypeMapper.Map(type, izup) };
+        if (type == SupportType.Rest)
+        {
+            types.Add(RestraintType.Gui);
+        }
+        file.AddRestraint(Restraint.CreateMultiDof(node, types, file.Units.RigidRestraintStiffness));
+    }
+
+    /// <summary>
+    /// Splits an overlong element (with no existing intermediate node) into evenly-spaced chunks,
     /// adding a support at each new interior node. Returns null (falls through to the "no room"
     /// report) when the max allowable span rounds down to under
     /// <see cref="ElementSplitter.ChunkRoundingIncrementMillimetres"/> — a pipe too small for even
     /// a 1 m chunk, which splitting can't meaningfully fix.
     /// </summary>
-    private static string? TrySplit(NeutralFile file, Element element, StressFinding finding)
+    /// <param name="remainingBudgetMillimetres">
+    /// How much of the finding's allowable span is still unspent by the time this element starts
+    /// (see <see cref="TrySplitAtFirstOverflow"/>) — capped against the pipe's own true max span
+    /// and used as the chunk size, so every resulting chunk (not just the first) stays within
+    /// budget. This is deliberately conservative rather than span-optimal: a two-tier scheme (a
+    /// short first chunk using up just the remaining budget, then full-length chunks after that,
+    /// since the new support resets the budget) would need fewer new supports in this specific
+    /// case, but isn't implemented yet — logged in QUESTIONS.md rather than built now.
+    /// </param>
+    private static string? TrySplit(NeutralFile file, Element element, StressFinding finding, double remainingBudgetMillimetres)
     {
         var toMillimetres = file.Units.LengthToMillimetres;
         var elementLengthMillimetres = element.Length * toMillimetres;
-        var maxAllowableSpanMillimetres = SpanLimitCalculator.ComputeMaxSpan(file, element);
+        var maxAllowableSpanMillimetres = Math.Min(SpanLimitCalculator.ComputeMaxSpan(file, element), remainingBudgetMillimetres);
 
         var outsideDiameterMillimetres = element.OutsideDiameter * toMillimetres;
         var nextNode = file.Elements.SelectMany(e => new[] { e.FromNode, e.ToNode }).DefaultIfEmpty(0).Max() + 10;
@@ -129,10 +195,9 @@ public static class OptimizationLoop
 
         var izup = file.Control.Izup;
         var supportType = SupportPlacer.IsVertical(element, izup) ? SupportType.Guide : SupportType.Rest;
-        var restraintType = RestraintTypeMapper.Map(supportType, izup);
         foreach (var interiorNode in plan.NewInteriorNodes)
         {
-            file.AddRestraint(Restraint.CreateSingleDof(interiorNode, restraintType, file.Units.RigidRestraintStiffness));
+            AddSupport(file, interiorNode, supportType, izup);
         }
 
         return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) — " +
@@ -162,32 +227,70 @@ public static class OptimizationLoop
         return segment;
     }
 
-    /// <summary>Picks the node closest to the segment's midpoint, excluding the segment's own bounding nodes.</summary>
-    private static int? TryPickMidpointNode(List<Element> segment)
+    /// <summary>
+    /// Picks the node closest to the segment's midpoint, excluding the segment's own bounding
+    /// nodes and — per direct instruction ("Any element with a bend pointer shouldn't have a
+    /// restraint"), after a real report of exactly this happening — any bend or tee/branch node
+    /// (node degree over 2, across the whole file, not just this segment), plus the same
+    /// bend-clearance buffer <see cref="ElementSplitter"/> and <see cref="SupportPlacer"/> already
+    /// use. This mirrors <see cref="SupportPlacer"/>'s own exclusion rule so a support added
+    /// reactively here can't land somewhere the initial pass would have refused to.
+    /// </summary>
+    private static int? TryPickMidpointNode(NeutralFile file, List<Element> segment)
     {
         if (segment.Count < 2)
         {
             return null; // a single element has no intermediate node to place a support at
         }
 
-        var half = segment.Sum(e => e.Length) / 2.0;
-        var cumulative = 0.0;
-        int? bestNode = null;
-        var bestDiff = double.MaxValue;
-        var lastNode = segment[^1].ToNode;
+        var toMillimetres = file.Units.LengthToMillimetres;
+        var nodeDegree = new Dictionary<int, int>();
+        foreach (var element in file.Elements)
+        {
+            nodeDegree[element.FromNode] = nodeDegree.GetValueOrDefault(element.FromNode) + 1;
+            nodeDegree[element.ToNode] = nodeDegree.GetValueOrDefault(element.ToNode) + 1;
+        }
 
+        var alongPath = 0.0;
+        var positions = new List<(int Node, Element Element, double AlongPath)>();
         foreach (var element in segment)
         {
-            cumulative += element.Length;
-            if (element.ToNode == lastNode)
+            alongPath += element.Length * toMillimetres;
+            positions.Add((element.ToNode, element, alongPath));
+        }
+
+        var exclusionZones = positions
+            .Where(p => p.Element.AuxiliaryPointers[0] != 0 || nodeDegree.GetValueOrDefault(p.Node) > 2)
+            .Select(p => p.AlongPath)
+            .ToList();
+
+        bool IsExcluded((int Node, Element Element, double AlongPath) p)
+        {
+            if (p.Element.AuxiliaryPointers[0] != 0 || nodeDegree.GetValueOrDefault(p.Node) > 2)
             {
-                continue; // the far bounding node — already supported, not a valid placement
+                return true;
             }
-            var diff = Math.Abs(cumulative - half);
+            var outsideDiameterMillimetres = p.Element.OutsideDiameter * toMillimetres;
+            var clearance = ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres(outsideDiameterMillimetres);
+            return exclusionZones.Any(z => Math.Abs(p.AlongPath - z) < clearance);
+        }
+
+        var half = alongPath / 2.0;
+        var lastNode = segment[^1].ToNode;
+        int? bestNode = null;
+        var bestDiff = double.MaxValue;
+
+        foreach (var p in positions)
+        {
+            if (p.Node == lastNode || IsExcluded(p))
+            {
+                continue; // the far bounding node, or a bend/tee (and its clearance zone) — not a valid placement
+            }
+            var diff = Math.Abs(p.AlongPath - half);
             if (diff < bestDiff)
             {
                 bestDiff = diff;
-                bestNode = element.ToNode;
+                bestNode = p.Node;
             }
         }
 

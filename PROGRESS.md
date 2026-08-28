@@ -480,3 +480,22 @@ running status log Claude appends to (skim this from mobile)
   approximation instead, explicitly flagged as such rather than presented as faithful. 82/82 tests
   passing. Tee/branch span exclusion, SIF application, the guide direction-cosine question, and a
   narrower reactive-split companion-guide gap remain open, logged and queued.
+- 2026-08-28 (third round): user reported (with screenshots) that both loop fixtures still showed
+  rest supports directly on bend corners after the rewrite. Traced it to code the rewrite hadn't
+  touched: `OptimizationLoop.Adjust`'s reactive fallback (`TryPickMidpointNode`/`TrySplit`, used
+  when the initial pass alone doesn't fully resolve a span) had no bend/tee awareness at all, and
+  once that was fixed, a second bug surfaced — the reactive split chunked an overlong element using
+  its pipe's full max span rather than accounting for how much of that span's budget the zone had
+  already spent on earlier elements, putting the resulting new node's cumulative span back over
+  threshold with nowhere left to fix it in that zone. Fixed both: `TryPickMidpointNode` now excludes
+  bend/tee nodes with the same clearance buffer `SupportPlacer` uses; the split fallback
+  (`TrySplitAtFirstOverflow`) walks the failing zone in order and splits the first element that
+  would exceed the *remaining* budget, not the full one (conservative — more new supports than
+  strictly optimal in this case, logged as a known tradeoff, not fixed further this round). Added
+  `PipeAxis` as a real field on `StressFinding` so the reactive path knows which axis actually
+  failed instead of guessing. Verified directly against the real committed fixtures via a fresh
+  `conduit optimize` run (not just unit-test geometry): zero restraints land on any bend node in
+  either output file. 83/83 tests passing. Also re-checked the Fig 6.8 fixture per the user's
+  catch that it's missing a Z component — the figure image itself doesn't show one as drawn, so
+  asked for the specific dimension rather than guess a second time; that one fixture stays as-is
+  until answered.

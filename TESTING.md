@@ -17,32 +17,32 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: please sanity-check the rewritten `SupportPlacer` against real CAESAR II, if you can.**
-This round implemented the bend-corner exclusion, per-axis span accumulation with universal reset,
-2x vertical guide multiplier, and guide-at-every-rest rules — the full placement-logic rewrite that
-was on hold for several rounds. The automated suite (82/82 passing) checks the *internal* logic
-(no supports on bend corners, spans stay under the allowable, etc.), but can't check whether the
-result actually looks right in CAESAR II's own GUI. Two new example files are the best way to see
-it: `fixtures/loop-2d.cii` (a self-designed planar jog) and `fixtures/fig6-8-example.cii` (a
-flattened, axis-aligned approximation of your Fig 6.8 example — see the caveat below). Both, plus
-the existing `fixtures/loop-50m-3d.cii`, are worth a look now that the placement logic behind them
-has actually changed. To test:
+**Status: please recheck `loop-2d.cii`/`loop-50m-3d.cii` in CAESAR II — the bend-corner bug you
+caught is fixed — and one question needed to fix Fig 6.8.**
+
+Your screenshots caught a real bug: the reactive splitting path (used when the initial placement
+pass alone can't fully resolve a span) had no bend/tee awareness at all, unlike the rewritten
+initial pass — so a support could still land on a bend corner once that path kicked in. Fixed both
+bugs behind it (see QUESTIONS.md's "Fixed: reactive splitting was still placing restraints on bend
+corners" entry for the full trace) and verified directly against the real committed fixtures — zero
+restraint nodes intersect the bend-node set for either file now, not just in a fresh unit test. To
+recheck:
 ```
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
-dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
 ```
-then, if you're able, run each `out-*.cii` through `iecho.exe` (converts cleanly, same as before)
-and open the result in CAESAR II's GUI to eyeball whether the rest/guide placements look
-reasonable to you — that's the check Conduit's own test suite can't perform. Report back anything
-that looks wrong (a guide where you wouldn't expect one, spacing that looks off, etc.).
+then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI —
+same check as last round, just confirming the fix actually landed. One thing to know going in: the
+fix is correct but not support-count-optimal in this specific case (it can add a few more supports
+than a human would place by hand when part of a leg's span budget was already spent by an earlier
+jog) — expect to see that, it's a known, logged tradeoff, not a new bug.
 
-**One caveat on Fig 6.8**: before building the fixture, I re-fetched the actual figure image you
-attached (rather than trusting my own earlier paraphrase of it) and found the real geometry is
-sloped/peaked — not axis-aligned, which this MVP's span model doesn't handle yet. I built an
-axis-aligned *flattened* approximation instead (same riser + your five support-to-support
-distances, at one elevation), so don't expect it to reproduce the book's own 3-support answer —
-it's a structural smoke test of the topology, not a check against the book's exact solution.
+**Fig 6.8 still needs one number from you.** You're right that the fixture only modeled X and Y —
+I went back to the actual figure image looking specifically for a Z offset and the drawing itself
+doesn't show one (it reads as a single-plane diagonal line as drawn), but a 2D projection like this
+can't rule it out, and you have context from the book I don't. Rather than guess again on the same
+fixture: what's the Z dimension, and which segment does it apply to? `fixtures/fig6-8-example.cii`
+is a quick, mechanical fix once that's known.
 
 Still open, not part of this round's ask: tee/branch span exclusion (a branch arm's own separate
 accumulation, not yet implemented — only the tee node itself is kept clear of placements), applying

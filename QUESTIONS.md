@@ -1690,3 +1690,64 @@ requested examples; queued behind "one thing at a time" as before.
 **Next step**: report back on the PR with this implementation, the three example results, and the
 PDF commit now being resolved. Await direction on tee/branch span accumulation, the guide
 direction-cosine question, or whichever of the remaining open items the user wants to tackle next.
+
+## Fixed: reactive splitting was still placing restraints on bend corners; Fig 6.8 needs a Z component (2026-08-28, third round)
+
+Real report, with screenshots, against both `loop-2d.cii` and `loop-50m-3d.cii`: CAESAR II showed
+rest supports sitting directly on bend corners — the exact bug this whole redesign started from,
+back again via a path I hadn't checked. **"Any element with a bend pointer shouldn't have a
+restraint."**
+
+**Root cause, traced not guessed**: `SupportPlacer`'s own initial pass is fully bend/tee-aware
+(confirmed via its own unit tests), but `OptimizationLoop.Adjust`'s *reactive* fallback path —
+`TryPickMidpointNode` and `TrySplit`, used when a span still fails after the initial pass — had
+never been updated with the same awareness; it's older code this round didn't touch. Two bugs, not
+one:
+1. `TryPickMidpointNode` picked whichever node was numerically closest to a failing zone's
+   midpoint, with zero bend/tee awareness. For the loops' 50000 mm zone (10→60/10→80), the geometric
+   midpoint by raw path length landed exactly on a jog bend node.
+2. Once that was fixed and `TryPickMidpointNode` correctly returned nothing (every interior node in
+   the jog is excluded), the fallback to `TrySplit` had its own bug: it chunked whichever element it
+   picked using the pipe's *full* max allowable span, oblivious to how much of that span's budget
+   the zone had already spent on earlier elements before reaching the one being split (e.g. the
+   short bend-clearance remainder plus the jog's own short legs, ~6000 mm already spent by the time
+   the second 24 m leg starts). The resulting new node was placed at "full span past this element's
+   own start," which put the *cumulative* span (already-spent budget + new chunk) back over the
+   threshold, with nowhere left in that zone to fix it — this is what surfaced as the visible
+   bend-corner placement in the screenshots (the loop kept iterating and failing at the same spot
+   until `MaxIterations` gave up, and whatever partial supports existed sat right at/near the jog).
+
+**Fixed both**: `TryPickMidpointNode` now excludes bend/tee nodes (and their clearance buffer),
+matching `SupportPlacer`'s own rule exactly — same node-degree/bend-pointer check, same
+`ElementSplitter` clearance constant. The split fallback (renamed `TrySplitAtFirstOverflow`) now
+walks the failing zone's elements *in order*, tracking how much of the finding's own axis (now a
+real field on `StressFinding`, not just embedded in its message string) has already accumulated,
+and splits the *first* element that would push it over — using the *remaining* budget (not the
+full span) as the chunk size, so every resulting chunk stays within the true, already-partially-
+spent allowance. This is deliberately conservative rather than span-optimal: it can produce more
+new supports than a human would place by hand in this specific case (observed: 5 new nodes on the
+second leg instead of a theoretical minimum of 2), since it chunks the *whole* remaining element at
+the shrunk size rather than using a short first chunk followed by full-length ones. Logging this as
+a known suboptimality, not fixing it this round — correctness (no bend-corner placement, always
+converges) mattered more than support-count optimality for this pass.
+
+Verified directly against the actual committed fixtures (not just fresh unit-test geometry): parsed
+`/tmp/out-loop2d.cii` and `/tmp/out-loop3d.cii` after a real `conduit optimize` run and confirmed
+zero restraint nodes intersect the bend-node set for either file. Added a permanent regression test,
+`OptimizationLoopTests.PlanarJogWithOverlongLegs_ReactiveSplitting_NeverRestrainsABendNode`, running
+the *full* `OptimizationLoop` (not just `SupportPlacer` in isolation, which the earlier round's
+tests already covered but which didn't exercise this reactive path) against the same 2D-jog
+geometry. 83/83 tests passing.
+
+**Fig 6.8 — flagged, not yet fixed.** The user also caught that my flattened approximation only
+modeled X and Y components, when the real example has a Z component too. I went back to the actual
+figure image (not just my memory of it) specifically looking for this — the drawing itself doesn't
+show any visible Z-axis offset in the pipe route as drawn (it reads as a single-plane diagonal line
+in the sheet plane, base→peak→tower), but a 2D projection like this is inherently ambiguous about
+depth, and the user has the actual book text/context I don't. Rather than guess a second time on
+this same fixture, **asking directly**: what's the Z dimension (magnitude and which segment it
+applies to)? Once known, `fixtures/fig6-8-example.cii` and its test get corrected — this is a small,
+mechanical fixture update once the missing number is in hand, not blocked on anything else.
+
+**Next step**: report the bend-corner fix (with the actual verified output) on the PR, and ask for
+the Fig 6.8 Z-component detail needed to correct that one fixture.

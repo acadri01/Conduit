@@ -677,6 +677,18 @@ decisions"). This locator only answers "where," not "how to read what's there."
   guide direction-cosine question (still `(0,0,0)`, unresolved from a few rounds back), and a
   reactive-split rest not getting the same companion guide an initial-pass one does. See
   QUESTIONS.md's "Implemented: the `SupportPlacer` rewrite" entry for the full derivation.
+- **Resolved (2026-08-28, third round):** a real report (with CAESAR II screenshots) showed the
+  bend-corner bug still happening after the rewrite above — traced to `OptimizationLoop.Adjust`'s
+  reactive fallback path (`TryPickMidpointNode`/`TrySplit`, used when the initial pass alone can't
+  fully resolve a span), which the rewrite hadn't touched and had no bend/tee awareness at all.
+  Fixed: `TryPickMidpointNode` now excludes bend/tee nodes with the same clearance
+  `SupportPlacer` uses; the split fallback (renamed `TrySplitAtFirstOverflow`) walks a failing
+  zone's elements in file order and splits the first one that would push its axis (now a real
+  `PipeAxis` field on `StressFinding`, not embedded only in its message) past the *remaining*
+  budget, not the pipe's full max span — accounting for however much of that axis's allowance
+  earlier elements in the same zone already spent. This is conservative rather than span-optimal
+  (can add more supports than a human would place by hand in the same spot) but always converges
+  without landing on an excluded node — logged as a known follow-up, not fixed further this round.
 - **Resolved (2026-08-21):** the database-for-iteration-tracking question above is answered — not
   needed yet ("the first step of this program is to have a fully functioning support placement
   program"), so SPEC.md's "Storage: none... No database" constraint stands unchanged for v1. It
