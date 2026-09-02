@@ -658,6 +658,22 @@ milestone.
     "loop" concept; the underlying over-restraint concern can still occur for a standalone riser,
     but there's no obvious general rule without reasoning about what's adjacent to it. Proposed:
     keep `(0,0,0)` as the standing default until a real case shows it's a problem.
+  - **Update (2026-09-01)**: the user pushed back on treating hold-down/guide-spacing as simple
+    heuristics — both are "highly dependent on the expansion of the pipe," needing temperature and
+    material properties, and the real approach "should closely mimic the beam theory calculations
+    CAESAR uses... just beam theory and SIF for the non-beam elements." Investigated what's actually
+    available: `#$ ELEMENTS` already carries real per-element, per-load-case temperature data
+    (confirmed against all 4 real samples — Conduit just doesn't expose it via a named property
+    yet), but not the thermal expansion coefficient itself (every real sample's Elastic Modulus/
+    Poisson's Ratio/Density fields are `0.0`, relying entirely on the material database, same
+    situation as `#$ ALLOWBLS` before it was fixed). A genuine (if simplified) thermal-growth model
+    — `ΔL = α × ΔT × L` per element/run, using a fallback `α` sourced the same way the existing A106
+    Grade B constants were (the user's own UMAT1 printout has a populated thermal-expansion-
+    coefficient column; material #107's specific value just wasn't extracted last time it was
+    reviewed) — is more buildable than first assumed, but is real new engineering scope, not a
+    quick heuristic. See QUESTIONS.md's "Investigated: does the neutral file actually carry
+    temperature/material data..." entry for the full derivation; posted on the PR, not yet
+    confirmed whether this becomes MVP scope now or its own milestone.
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means

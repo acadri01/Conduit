@@ -1959,3 +1959,70 @@ rest right at the node) before confirming it passes with the fix. 95/95 tests pa
 
 **Next step**: none — this was a direct instruction with a concrete test case, not a question.
 Reported the fix on the PR along with the requested MVP-vision restatement.
+
+## Investigated: does the neutral file actually carry temperature/material data for hold-down/guide-cosine heuristics? (2026-09-01)
+
+User's follow-up on the M2 proposals: "we are dependent on the temperatures and process parameters
+in the CII file. Hold-down and guide spacing are highly dependent on the expansion of the pipe, so
+we will need the material properties as well... it is just beam theory and SIF for the non-beam
+elements." Rather than take this as purely a scoping statement, checked what's actually already
+sitting in the parsed data.
+
+**Good news: temperature is already parsed, just not exposed.** `#$ ELEMENTS`' 53-item real-value
+block (`Element.RealValues`, already fully parsed) includes, per `NeutralFile-v15.pdf`: items 10-18
+"Thermal Expansion Coefficient #N (or Temperature #N)" for N=1..9 (indices 9-17, 0-based) — one per
+load case, matching B31.3's `T1`/`T2`/etc. temperature-case notation already documented in SPEC.md's
+"Real load cases" section — and items 19-27 "Pressure #N" (indices 18-26) alongside them. Checked
+real values across all 4 real samples (`44002.cii`, `TESTv15.cii`, `NEWTEST.cii`): every element
+populates Temperature #1 with a plausible operating value (100/130/70 — presumably °F given the
+files' apparent US convention) and Temperature #2 with a large negative value (-45/-101/-22.4) —
+readable as an installation/reference-case temperature rather than the coefficient interpretation
+(a real steel thermal expansion coefficient is on the order of 1e-5, not -22 to -101).
+
+**The gap the user flagged is real, though**: Elastic Modulus (item 28), Poisson's Ratio (item 29),
+and Pipe Density (item 30) are all `0.0` in every element checked across all 4 real samples — real
+files rely entirely on the material database (`RRMAT` → external `.UMD` lookup)
+for these, exactly like the already-known `#$ ALLOWBLS` situation. **No field in `#$ ELEMENTS`
+carries the thermal expansion coefficient itself** — item 10-18 is confirmed (by the data, not just
+the doc's "or") to hold *temperature*, not the coefficient, in every real file checked. Getting
+actual pipe growth (`ΔL = α × ΔT × L`) needs `α` from somewhere Conduit doesn't currently reach —
+same material-database gap already logged for allowable stress/EM/density, resolved there via a
+documented A106 Grade B fallback constant (SPEC.md's "Resolved (2026-08-28)" entry) that has **no
+thermal-expansion-coefficient counterpart yet**.
+
+**Concrete proposal, grounded in what's actually available**: a genuine (if simplified) thermal-
+growth model is more buildable than I'd assumed — not gated on parsing the `.UMD` database format
+at all, just on picking a fallback `α` the same way the existing A106 Grade B constants were sourced
+(a real, documented value for carbon steel, e.g. from the same Pipe Stress Engineering reference
+already used for the span formula). Then: per element/run, `ΔL = α × (T1 - installation/ambient
+temperature) × L` gives expected thermal growth; a guide's restrained direction should avoid
+whichever direction a *downstream* run needs to grow into (the concern from the original loop-
+specific discussion, generalized); a hold-down is needed where something (that same growth,
+bowing between supports, etc.) could lift the pipe off a rest. This is real beam-theory-adjacent
+work — closer to "the beginning of a simplified expansion-stress model" than a quick heuristic —
+matching the user's own framing ("just beam theory and SIF for the non-beam elements").
+
+**Question this raises, not yet answered**: is this now worth building as MVP scope, given the
+data turns out to be more available than feared — or does building even a simplified thermal-growth
+model belong in its own milestone (feeding M2's hold-down/guide-cosine items, rather than being
+folded into the "quick starting proposal" framing M2 currently has)? SPEC.md's existing "Explicitly
+OUT of scope" section already draws a boundary at "code-compliant... sustained/occasional/expansion
+stress calculations" as future work — this proposal is narrower (growth/displacement only, not a
+full code-compliance stress check) but is a real step in that direction, worth confirming explicitly
+rather than assuming it's still "out of scope" or newly "in scope" either way.
+
+**One more thing worth reusing rather than re-deriving**: the user's own UMAT1 material-database
+printout (shared 2026-08-28, the source of the existing A106 Grade B allowable/yield/density/modulus
+constants — see "Implemented: real A106 Grade B material..." above) was already confirmed, in that
+same round, to carry a populated "thermal expansion coefficient" column generally — it just wasn't
+extracted for material #107 specifically since that round only needed allowable/yield/density/
+modulus. That PDF wasn't committed (not needed once the four values were extracted) and its
+temporary attachment URL has long since expired, so re-extracting #107's actual α value needs either
+a fresh copy of that printout or the user quoting the one field directly — cheaper than sourcing a
+new constant from scratch.
+
+**Next step**: posted this finding + proposal on the PR, asking directly whether to proceed with the
+fallback-α approach now (material #107's α, re-obtained from the user rather than guessed) or to
+formalize this as its own milestone first. Not implementing beam-theory/thermal-growth code until
+this is confirmed, per CLAUDE.md's support-placement-logic consultation rule — this is squarely
+"what makes a location need a hold-down/guide, and where."

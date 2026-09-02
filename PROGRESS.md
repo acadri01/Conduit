@@ -555,3 +555,15 @@ running status log Claude appends to (skim this from mobile)
   it, keeping node degree only for the separate branch-run-recognition concern. Verified the new
   regression tests actually fail without the fix. 95/95 tests passing (10 new). Also restated the
   MVP vision on the PR per the user's request to realign.
+- 2026-09-01 (continued): user pushed back on the M2 hold-down/guide-cosine proposals — both
+  genuinely need pipe thermal expansion (temperature + material properties), and the real model
+  should mirror CAESAR's own beam-theory calculations, not ad-hoc heuristics. Investigated rather
+  than assumed: `#$ ELEMENTS` already carries real per-element, per-load-case temperature data
+  (confirmed against all 4 real samples, just not exposed via a named property yet), but not the
+  thermal expansion coefficient itself — every real sample relies entirely on the material database
+  for that, same gap already known for allowable stress/EM/density. A simplified thermal-growth
+  model (ΔL = α·ΔT·L, fallback α sourced the same way as the existing A106 Grade B constants) is
+  more buildable than assumed, but is real new scope, not a quick fix. Posted the finding + a
+  concrete proposal on the PR; not implementing until confirmed whether this is MVP scope now or
+  its own milestone, per CLAUDE.md's support-placement-logic consultation rule. No code changes
+  this round — pure investigation and documentation, build/test unaffected (95/95 passing).
