@@ -642,6 +642,15 @@ milestone.
     fixtures (`loop-2d.cii`, `loop-50m-3d.cii`, `fig6-8-example.cii`): each now `PASS`es in a single
     iteration instead of 2-3, with identical final placements to before. `OptimizationLoop`'s
     reactive path stays in place as a safety net for whatever the initial pass still misses.
+  - **Fixed (2026-09-02):** `SpanLimitCalculator`'s weight-per-length formula read an element's
+    insulation/fluid density fields with no guard against CAESAR's `-1.01` null-value sentinel (per
+    direct instruction — see the M2 section's UMAT1 corrections above), unlike pipe
+    density/elastic modulus which already had one. A file carrying that sentinel there would have
+    had it multiply through as a real negative density, silently *reducing* the computed weight per
+    length and inflating the max allowable span — the unsafe direction. Not observed in the 4 real
+    `.cii` samples on hand (they use real positive values there), but hardened regardless since the
+    convention is general, not tied to what these particular files happen to contain. Both fields
+    now clamp to zero. Regression test added, verified to fail against the pre-fix code.
 - **M2 — Remaining support-type criteria (consult).** v1's classifier only ever produces rest,
   guide, or anchor; hold-down and line-stop have no placement criteria yet. Per CLAUDE.md, each is
   defined one at a time with the user before implementation. Concrete starting proposals for all

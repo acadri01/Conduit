@@ -2294,6 +2294,57 @@ started — flagged here rather than in a fresh entry since it's a direct contin
 Also still open: which specific materials/RRMAT IDs matter most for the user's real projects, in
 case that should prioritize which get the Table A-1 join first once it's built.
 
+## Corrected: -1.01 is CAESAR's general null-value sentinel, not just an odd UMAT1 entry (2026-09-02)
+
+Direct instruction, in response to the previous entry describing materials #9/#12's `-1.01` cold
+modulus as "an obviously invalid sentinel": "Actually the -1.01 in Caesar is the Caesar null value.
+This is always the case for the neutral file." Two things followed from this:
+
+1. **Confirmed my handling was already right, for the wrong stated reason.** Setting
+   `ElasticModulusMpa` to `null` for materials #9/#12 was correct — now documented precisely as
+   "CAESAR's own null convention" rather than "an obviously invalid value I happened to notice."
+   Updated `MaterialLibrary`'s class doc comment accordingly.
+2. **Checked whether the same literal sentinel appears anywhere Conduit already reads real-value
+   fields from an actual `.cii` neutral file** (not just the UMAT1 printout) — since the user's
+   statement is general ("always the case for the neutral file"), not UMAT1-specific. Wrote a
+   small throwaway probe (`NeutralFileReader` against all 3 real `.cii` fixtures, printing
+   `RealValues[27]` through `[31]` — elastic modulus, Poisson's ratio, pipe/insulation/fluid
+   density) and grepped all 4 real `.cii` samples' raw text for the literal pattern
+   `-1.010000E+00` (the fixed-width rendering `-1.01` would take in that format). Neither found it:
+   the real fixtures use `0.0` for an unset elastic modulus/pipe density (already correctly
+   guarded by `SpanLimitCalculator`'s existing `is > 0` checks), and their insulation/fluid density
+   fields carry real positive values (184.21 kg/m³ default insulation density even with zero
+   insulation thickness, since the area term is zero either way; 1000/1050/100 kg/m³ for fluid
+   density — water/brine/steam-condensate-plausible values, nothing resembling a sentinel).
+
+**Found a real, if latent, gap while checking this — fixed defensively.**
+`SpanLimitCalculator.ComputeWeightPerLengthNewtonsPerMillimetre` read `RealValues[30]`
+(insulation density) and `RealValues[31]` (fluid density) directly, with no guard at all — unlike
+pipe density and elastic modulus, which already have an `is > 0` fallback. Had a file ever carried
+the `-1.01` sentinel there, the formula would have silently *subtracted* weight (a negative density
+times a positive area), producing a smaller computed weight per length and therefore a *larger*
+(unconservative, unsafe) allowable span. Not observed in any of the 4 real fixtures on hand, but
+the user's statement is that this convention is general, not tied to what happens to be in these 4
+files — so hardened it regardless: both fields now clamp to zero (`Math.Max(x, 0)`) rather than
+trusting a negative value. Zero is itself a legitimate real value for these two specific fields (no
+insulation; an empty/gas-filled bore), unlike pipe density/elastic modulus which are never
+legitimately zero for a real steel pipe — so the fix is "treat a negative reading as no
+contribution," not "substitute a material default," matching the different physical meaning of
+these fields. Added a regression test
+(`ComputeMaxSpan_TreatsNegativeInsulationOrFluidDensityAsZero_NotANegativeContribution`) — verified
+it fails against the pre-fix code (10837.51 mm vs. the correct 10835.70 mm, i.e. the sentinel was
+silently inflating the computed max span) and passes after. Documented the general `-1.01`
+convention in `docs/neutral-file/WALKTHROUGH.md`'s "File-level rules" section so future work
+parsing a new real-value field for the first time checks for it up front, rather than this being
+tribal knowledge that only lives in one class's doc comment.
+
+103/103 tests passing.
+
+**Next step**: none blocking. Worth keeping in mind for future neutral-file parsing work
+(`#$ FORCMNT`, `#$ DISPLMNT`, and the still-opaque `#$ SIF&TEES` stress-magnitude fields, when any
+of those get parsed) — check any newly-consumed real-value field against this convention rather
+than assuming a real file always populates every column.
+
 ## Evaluated: the colleague's CAESAR II 15.1 result-database approach (2026-09-02)
 
 M4's first bullet ("document and evaluate the colleague's GUI-automation approach... as an

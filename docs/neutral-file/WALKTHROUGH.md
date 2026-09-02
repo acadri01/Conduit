@@ -44,6 +44,18 @@ all — see the `#$ RESTRANT` section below. This walkthrough and the regression
   RESTRANT, DISPLMNT, FORCMNT, UNIFORM, WIND, OFFSETS, ALLOWBLS, SIF&TEES, REDUCERS, FLANGES,
   EQUIPMNT, MISCEL_1, UNITS, COORDS`. Each starts with a `#$ <NAME>` header line. An empty section
   is still present as a bare header with zero data lines — never omit a header.
+- **`-1.01` is CAESAR's own "field not populated" sentinel** for a numeric value, per direct
+  instruction (2026-09-02): "the -1.01 in Caesar is the Caesar null value. This is always the case
+  for the neutral file." Confirmed present in the user's UMAT1 material database printout (two
+  materials' `COLD MODULUS` field). Checked the four real `.cii` samples' own `#$ ELEMENTS` fields
+  for this literal value — not found there; those files use `0.0` for an unset numeric field
+  instead (already handled by `SpanLimitCalculator`'s existing per-element fallback checks). Since
+  the convention may still appear in a `.cii` this codebase hasn't seen, **any new code reading a
+  real-value field for the first time should treat a value of exactly `-1.01` (in that field's own
+  unit) as "not populated," not a literal negative measurement** — see `MaterialLibrary`'s class
+  doc comment and `SpanLimitCalculator`'s insulation/fluid-density handling for the pattern
+  (clamped/nulled rather than trusted, since a negative value there would silently understate
+  computed weight and overestimate the max span — the unsafe direction).
 
 ## `#$ VERSION`
 

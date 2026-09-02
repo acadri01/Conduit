@@ -611,3 +611,12 @@ running status log Claude appends to (skim this from mobile)
   for anything without its own. Allowable stress stays null for 397 of 399 materials (a genuine
   code-table cross-reference, not attempted at this scale yet — flagged as real follow-up work).
   102/102 tests passing, all three real fixtures byte-identical.
+- 2026-09-02: user corrected that -1.01 is CAESAR's general "field not populated" null convention,
+  not just an odd UMAT1 entry — confirmed my #9/#12 elastic-modulus null handling was right, for
+  the wrong stated reason. Checked all 4 real .cii samples' own real-value fields for this literal
+  sentinel (not found; they use 0.0 instead) but found a real, unguarded gap along the way:
+  SpanLimitCalculator's insulation/fluid density read RealValues[30]/[31] with no guard at all,
+  unlike pipe density/elastic modulus — a -1.01 there would have silently subtracted weight and
+  inflated the max span (unsafe direction). Hardened both to clamp to zero. Documented the general
+  convention in docs/neutral-file/WALKTHROUGH.md for future field-parsing work. 103/103 tests
+  passing (1 new, verified to fail pre-fix).

@@ -33,12 +33,22 @@ namespace Conduit.Core.Heuristics;
 /// </list>
 /// </para>
 ///
-/// <para><b>Two real data-quality issues found in the source printout itself</b> (not extraction
-/// bugs — verified against the raw text): materials <b>#9 (WROUGHT IRON)</b> and <b>#12
-/// (K-MONEL)</b> both list <c>COLD MODULUS MPa: -0.1010E+01</c> (i.e. -1.01 MPa) — an obviously
-/// invalid sentinel CAESAR's own database uses for "not populated," not a real elastic modulus.
-/// <see cref="MaterialProperties.ElasticModulusMpa"/> is <c>null</c> for these two rather than a
-/// physically-impossible negative value.</para>
+/// <para><b>Two materials hit CAESAR's own "field not populated" sentinel</b> (confirmed by direct
+/// instruction, 2026-09-02: "the -1.01 in Caesar is the Caesar null value. This is always the case
+/// for the neutral file" — i.e. this isn't specific to UMAT1 or to elastic modulus; -1.01 is
+/// CAESAR's general convention for an unset numeric field, wherever it appears). Materials
+/// <b>#9 (WROUGHT IRON)</b> and <b>#12 (K-MONEL)</b> both list <c>COLD MODULUS MPa: -0.1010E+01</c>
+/// (-1.01 MPa, verified against the raw printout text) instead of a real cold modulus.
+/// <see cref="MaterialProperties.ElasticModulusMpa"/> is <c>null</c> for these two rather than that
+/// sentinel value. Checked whether the same literal sentinel appears anywhere in the four real
+/// <c>.cii</c> neutral-file samples' own <c>#$ ELEMENTS</c> real-value fields (pipe density,
+/// elastic modulus, Poisson's ratio, insulation/fluid density) — it doesn't; those files use
+/// <c>0.0</c> for "unset" instead, which <see cref="SpanLimitCalculator"/>'s existing per-element
+/// fallback checks already handle correctly. <see cref="SpanLimitCalculator"/>'s insulation/fluid
+/// density handling was still hardened to clamp any negative value (the sentinel or otherwise) to
+/// zero rather than trust it, since the general convention could appear in a file this codebase
+/// hasn't seen yet, and trusting a negative density there would silently understate the computed
+/// weight per length — the unsafe direction for a support-spacing calculation.</para>
 ///
 /// <para><b>What's still deliberately not attempted: allowable stress for 397 of the 399
 /// materials.</b> An allowable stress is inherently a design-code limit, not a material physical

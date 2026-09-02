@@ -208,8 +208,14 @@ public static class SpanLimitCalculator
 
         var defaultPipeDensity = units.IsMetric ? material.DensityKgPerM3 : material.DensityKgPerM3 / KgPerM3PerLbPerIn3;
         var pipeDensity = element.RealValues[29] is > 0 ? element.RealValues[29] : defaultPipeDensity;
-        var insulationDensity = element.RealValues[30];
-        var fluidDensity = element.RealValues[31];
+        // Clamped to zero rather than trusted as-is: CAESAR uses -1.01 as its own "field not
+        // populated" sentinel throughout its data (confirmed by direct user instruction, and seen
+        // in the UMAT1 printout's COLD MODULUS field for materials #9/#12 — see MaterialLibrary's
+        // class doc comment). Unlike pipe density/elastic modulus above, zero is itself a
+        // legitimate real value here (no insulation; an empty/gas-filled bore), so the fallback
+        // isn't "substitute a material default" but "treat the sentinel as no contribution."
+        var insulationDensity = Math.Max(element.RealValues[30], 0);
+        var fluidDensity = Math.Max(element.RealValues[31], 0);
 
         var insideDiameter = Math.Max(outsideDiameter - (2 * wallThickness), 0);
         var insulatedOutsideDiameter = outsideDiameter + (2 * insulationThickness);
