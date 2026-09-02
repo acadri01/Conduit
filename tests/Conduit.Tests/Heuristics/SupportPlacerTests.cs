@@ -175,6 +175,36 @@ public class SupportPlacerTests
     /// the short 2000 mm Z-axis offset in the middle never needs — and never gets — a support of
     /// its own.
     /// </summary>
+    /// <summary>
+    /// Per direct instruction (2026-09-01): a branch arm starting at a tee node (rather than an
+    /// anchor) should get its own, independent span accumulator — not be silently dropped, and not
+    /// inherit whatever the header run had already accumulated by the time it reaches the tee.
+    /// Header: anchor 10 -&gt; tee 20 (8 m, comfortably under the ~10.8 m max span alone) -&gt; anchor
+    /// 30 (2 m). Branch: tee 20 -&gt; anchor 100 (12 m, over the max span on its own, with no
+    /// interior node) — long enough that it needs a support (in fact a split, since it has no
+    /// existing intermediate node), which only happens if the branch is recognized as a run and
+    /// walked at all.
+    /// </summary>
+    [Fact]
+    public void BranchArmStartingAtATeeNode_GetsItsOwnIndependentSpanAccumulator()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            Seg(10, 20, 8000, 0, 0),
+            Seg(20, 30, 0, 0, 2000),
+            Seg(20, 100, 12000, 0, 0), // the branch — diverges from the tee at node 20
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 30, 100], izup: 0);
+
+        var placed = SupportPlacer.PlaceSupports(file);
+
+        // The branch's own 12 m leg needed splitting to get a support at all — proves it was
+        // recognized as its own run and walked, not silently dropped.
+        Assert.Contains(placed, p => p.Node is > 100 && p.Type == SupportType.Rest);
+        // Never on the tee itself, and never on either anchor.
+        Assert.DoesNotContain(placed, p => p.Node is 10 or 20 or 30 or 100);
+    }
+
     [Fact]
     public void PlanarJog_GetsNoSupportsInsideTheJogItself()
     {

@@ -612,10 +612,17 @@ milestone.
     gives every plain rest~~ — already done (`OptimizationLoop.AddSupport`, landed with the round-4
     clustering fix but never explicitly logged as closing this; see QUESTIONS.md's 2026-09-01
     correction entry).
-  - Extend tee/branch handling from point-exclusion (the tee node itself is kept clear) to a real
-    separate span accumulator for the branch arm. **Still open** — genuine topology-handling
-    complexity (how a branch's own accumulator should interact with its header run's) with no
-    concrete failing case driving it yet, unlike the other M1 items; left for the next round.
+  - ~~Extend tee/branch handling from point-exclusion (the tee node itself is kept clear) to a real
+    separate span accumulator for the branch arm.~~ — **done (2026-09-01)**. Turned out to be a
+    real bug, not just a missing feature: `SupportPlacer.SplitIntoRuns` only recognized a run whose
+    *first* element's `FromNode` was itself an anchor — a branch arm starting at a tee (not an
+    anchor) was silently **dropped entirely**, never walked, never supported, despite the class doc
+    comment already (incorrectly) claiming it was "walked as its own separate run." Fixed by also
+    accepting a tee/branch node (degree > 2) as a valid run start; the reset trigger that ends a run
+    is unchanged (anchor-only), so a run that merely passes *through* a tee still accumulates
+    uninterrupted across it, same as before — only a genuinely separate arm gets its own fresh
+    accumulator. Verified with a regression test that fails against the pre-fix code (empty
+    placement list) and passes after.
   - ~~Fold `OptimizationLoop`'s reactive element-splitting into `SupportPlacer`'s own initial-pass
     walk~~ — **done (2026-09-01)**, per the user's same-day PR comment: "I would not like the
     placement to be done during a walk. It would be better if the initial pass identified the same

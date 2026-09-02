@@ -535,3 +535,12 @@ running status log Claude appends to (skim this from mobile)
   reactive-only behavior, and added direct SupportPlacer-level coverage for the split. 84/84 tests
   passing (1 new). Tee/branch span accumulator remains open for the next round — genuine topology
   complexity with no concrete failing case driving it yet, unlike this item.
+- 2026-09-01 (continued, same round): finished M1 — the tee/branch span accumulator. Turned out to
+  be a real bug on inspection, not just a missing feature: `SupportPlacer.SplitIntoRuns` only ever
+  recognized a run whose first element started at an anchor, so a branch arm starting at a tee node
+  was silently dropped — never walked, never supported at all — contradicting the class doc
+  comment's existing (wrong) claim that branches were "walked as their own separate run." Fixed by
+  also accepting a tee/branch node as a valid run start (the reset trigger stays anchor-only, so a
+  run passing *through* a tee still accumulates uninterrupted, unaffected). Verified the fix is
+  real by confirming the new regression test fails against the pre-fix code (empty placement list —
+  the branch was dropped) and passes after. 85/85 tests passing (1 new). M1 is now fully done.

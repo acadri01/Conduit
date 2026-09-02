@@ -44,12 +44,14 @@ public sealed record PlacedSupport(int Node, SupportType Type, RestraintType Res
 /// close to a directional change" falls out of that same clearance check for free — no separate
 /// threshold was introduced. A vertical segment's own guide (already a guide, not a rest, since a
 /// rest can't restrain gravity along its own axis) doesn't get a second, redundant one.</item>
-/// <item>Tee/branch <i>span exclusion</i> (the branch arm getting its own, separate span
-/// accumulation rather than folding into the header's) is <b>not yet implemented</b> — this round
-/// only keeps a tee node itself clear of placements, per "let's take one thing at a time." A run's
-/// own topology is still a simple element-order chain (see <see cref="SplitIntoRuns"/>); a branch
-/// element diverging from a run is walked as its own separate run wherever it appears in file
-/// order, unaffected by (and not affecting) the header run's accumulators.</item>
+/// <item>Tee/branch <i>span exclusion</i>: a branch arm starting at a tee node (rather than an
+/// anchor) is recognized as its own run (<see cref="SplitIntoRuns"/>) with its own independent
+/// span accumulators, starting fresh at the tee rather than inheriting whatever the header run had
+/// already accumulated by that point — since the branch's own unsupported span genuinely does
+/// start there. The header run's own walk is unaffected: it still accumulates straight through the
+/// tee (excluded only as a placement location, not as a reset point), matching how a bend is
+/// handled. A branch that itself ends at something other than an anchor (e.g. a second tee) isn't
+/// recognized yet — narrower than the fully general case, per "one thing at a time."</item>
 /// <item><b>Splits during the initial pass, not reactively (per direct instruction, 2026-09-01:
 /// "I would not like the placement to be done during a walk. It would be better if the initial
 /// pass identified the same placements as we currently have").</b> When an overflow is detected
@@ -82,7 +84,7 @@ public static class SupportPlacer
         var nozzleNodePositions = GetNozzleNodePositions(file);
         var nodeDegree = ComputeNodeDegree(file.Elements);
 
-        foreach (var run in SplitIntoRuns(file.Elements, fixedNodes))
+        foreach (var run in SplitIntoRuns(file.Elements, fixedNodes, nodeDegree))
         {
             PlaceSupportsForRun(file, run, alreadySupported, nozzleNodePositions, nodeDegree, placed);
         }
@@ -129,18 +131,32 @@ public static class SupportPlacer
         return degree;
     }
 
-    /// <summary>Splits the element chain into contiguous runs between two anchor nodes.</summary>
-    private static List<List<Element>> SplitIntoRuns(IReadOnlyList<Element> elements, HashSet<int> fixedNodes)
+    /// <summary>
+    /// Splits the element chain into contiguous runs between two anchor nodes — plus, per direct
+    /// instruction (2026-09-01), a branch arm that starts at a tee/branch node (node degree > 2)
+    /// rather than an anchor is now also recognized as its own run, so it gets its own independent
+    /// span accumulator instead of being silently dropped. Only the <i>starting</i> condition is
+    /// relaxed this way — the reset trigger below still fires on an anchor `ToNode` only, so a run
+    /// that simply passes <i>through</i> a tee (the header continuing past its own branch point)
+    /// still accumulates uninterrupted across it, exactly as before: a tee alone doesn't relieve
+    /// gravity sag any more than a bend does, so it must not act as a false reset point for the
+    /// run it's actually part of. A branch that itself ends at something other than an anchor (a
+    /// second tee, say) is still not recognized — deliberately narrower than the general case, per
+    /// "one thing at a time," matching the one concrete scenario this fixes.
+    /// </summary>
+    private static List<List<Element>> SplitIntoRuns(IReadOnlyList<Element> elements, HashSet<int> fixedNodes, Dictionary<int, int> nodeDegree)
     {
         var runs = new List<List<Element>>();
         var current = new List<Element>();
+
+        bool CanStartARun(int node) => fixedNodes.Contains(node) || nodeDegree.GetValueOrDefault(node) > 2;
 
         foreach (var element in elements)
         {
             current.Add(element);
             if (fixedNodes.Contains(element.ToNode))
             {
-                if (fixedNodes.Contains(current[0].FromNode))
+                if (CanStartARun(current[0].FromNode))
                 {
                     runs.Add(current);
                 }

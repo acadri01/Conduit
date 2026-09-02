@@ -36,11 +36,12 @@ dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out
 then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI. Not
 blocking further work either way — logged as optional confirmation, not a known issue.
 
-Still open, not part of this round's ask: tee/branch span exclusion (a branch arm's own separate
-accumulation, not yet implemented — only the tee node itself is kept clear of placements), applying
-the SIF at a tee, and the guide direction-cosine question (still open from a few rounds back) — see
-SPEC.md's "## Milestones" section (M2) for these, now batched as consult items rather than scattered
-across rounds.
+Tee/branch span exclusion is now done (M1) — a branch arm starting at a tee gets its own
+independent span accumulator, and turned out to fix a real bug where such a branch was silently
+dropped entirely rather than just under-supported. Still open, not part of this round's ask:
+applying the SIF at a tee, and the guide direction-cosine question (still open from a few rounds
+back) — see SPEC.md's "## Milestones" section (M2) for these, now batched as consult items rather
+than scattered across rounds.
 
 # Step-by-step: test Conduit on your own machine
 
