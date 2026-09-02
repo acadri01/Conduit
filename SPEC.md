@@ -674,6 +674,20 @@ milestone.
     quick heuristic. See QUESTIONS.md's "Investigated: does the neutral file actually carry
     temperature/material data..." entry for the full derivation; posted on the PR, not yet
     confirmed whether this becomes MVP scope now or its own milestone.
+  - **Update (2026-09-01, continued)**: the user confirmed real material-specific constants are a
+    hard requirement, not optional — "no point in creating an MVP that only handles a single type
+    of material" — and mentioned (without wanting to chase down details) that a colleague hit the
+    same undocumented-`UMAT1.UMD` wall and had to reverse-engineer it from other data. Found a
+    better path instead of reverse-engineering anything: `reference/B31.3-2024.pdf` (already
+    committed) has its own Appendix C (Table C-1, thermal expansion by material group,
+    -200°C to 825°C) and Appendix A (Table A-1, basic allowable stress by ASTM specification) — a
+    real, public, code-authoritative material-property source covering many material groups, which
+    replaces the need for `UMAT1.UMD` entirely (for both this thermal-growth work and, properly,
+    the existing single-material A106 Grade B fallback). The one remaining gap: mapping CAESAR's
+    numeric `RRMAT` material ID to a real material name/group — the only such mapping known so far
+    is the single one already extracted ("material #107 = A106 Grade B"). See QUESTIONS.md's
+    "Found: B31.3-2024's own Appendix A/C tables..." entry; waiting on which materials/IDs to
+    support before building the table-driven system.
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means

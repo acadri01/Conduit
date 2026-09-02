@@ -2026,3 +2026,46 @@ fallback-α approach now (material #107's α, re-obtained from the user rather t
 formalize this as its own milestone first. Not implementing beam-theory/thermal-growth code until
 this is confirmed, per CLAUDE.md's support-placement-logic consultation rule — this is squarely
 "what makes a location need a hold-down/guide, and where."
+
+## Found: B31.3-2024's own Appendix A/C tables can replace the single-material fallback entirely (2026-09-01)
+
+User's reply to the above: real material-specific constants are a hard requirement — "no point in
+creating an MVP that only handles a single type of material" — and mentioned a colleague hit the
+same `UMAT1.UMD` wall and apparently reverse-engineered it from "some other data," details unknown,
+not something the user wants to chase down by asking him.
+
+**Didn't reverse-engineer anything — checked what's already sitting in `reference/` instead.**
+`B31.3-2024.pdf` (already committed, confirmed non-proprietary) has two appendices that make the
+whole `UMAT1.UMD` problem avoidable:
+- **Appendix C, Table C-1**: "Thermal Expansion Data" — mean coefficient of thermal expansion,
+  temperature range -200°C to 825°C, for a genuinely wide roster of material groups (Group 1 carbon/
+  low-alloy steel, Group 2 other alloy steels, 5Cr-1Mo, 9Cr-1Mo, 12/13Cr, 15/17Cr, 27Cr, Group 3/4
+  austenitic stainless, gray/ductile cast iron, several nickel alloys, and more) — organized by
+  material *group*, keyed to real UNS numbers/spec families, not a proprietary numeric ID.
+- **Appendix A, Table A-1**: "Basic Allowable Stresses in Tension for Metals" — same idea, organized
+  by ASTM specification, with a "Specification Index" cross-reference.
+
+Together these are a real, public, code-authoritative source for **exactly** the material-specific
+data the thermal-growth model (and, properly, the existing allowable-stress fallback too) needs —
+already temperature-dependent, matching the per-element temperature data already confirmed available
+in `#$ ELEMENTS`. This sidesteps `UMAT1.UMD`'s undocumented format entirely; no reverse-engineering,
+no need to trouble the colleague.
+
+**The one piece still needed**: B31.3's tables are keyed by material *specification* (e.g. "A106
+Grade B") or *group*, not CAESAR's internal numeric `RRMAT` material ID. The only mapping from
+CAESAR's numeric ID to a real material name Conduit has seen so far is the single one already
+extracted ("material #107 = A106 Grade B", from the user's UMAT1 printout a few rounds back). To
+support more than one material, Conduit needs that same ID→name mapping for whichever materials the
+user's real files actually use — either more of that printout (just the ID/name listing this time,
+not the property columns, since those now come from B31.3 instead), or the user naming the specific
+materials/RRMAT IDs that matter for their real work.
+
+**Scope honesty**: this is a real, meaningfully-sized piece of engineering — parsing/embedding
+B31.3's own tables (large, temperature-interpolated), building the material-group classification,
+and wiring it through `SpanLimitCalculator`/the new thermal-growth model — not a quick fix, but a
+concrete, buildable one now that the data source is known and public.
+
+**Next step**: posted this on the PR. Waiting on which materials/RRMAT IDs to support (or a fresh
+ID/name listing from the UMAT1 printout) before building the table-driven material system — the
+table *extraction and structure* work itself could start once that's confirmed, without needing
+anything further from the user.

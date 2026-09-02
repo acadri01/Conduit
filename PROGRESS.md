@@ -567,3 +567,13 @@ running status log Claude appends to (skim this from mobile)
   concrete proposal on the PR; not implementing until confirmed whether this is MVP scope now or
   its own milestone, per CLAUDE.md's support-placement-logic consultation rule. No code changes
   this round — pure investigation and documentation, build/test unaffected (95/95 passing).
+- 2026-09-01 (continued): user confirmed real material-specific constants are a hard MVP
+  requirement, not a nice-to-have, and mentioned a colleague independently hit the same
+  undocumented-UMAT1.UMD wall. Found a better path than reverse-engineering: B31.3-2024.pdf
+  (already in reference/) has its own Appendix A (basic allowable stress by ASTM spec) and
+  Appendix C (thermal expansion by material group, -200 to 825°C) tables — real, public,
+  code-authoritative, covering many material groups, replacing the need to ever parse UMAT1.UMD.
+  One gap remains: mapping RRMAT's numeric material ID to a real name/group (only "material #107 =
+  A106 Grade B" is known so far). Posted the finding on the PR; waiting on which materials to
+  support before building the table-driven lookup. No code changes — pure research, build/test
+  unaffected (95/95 passing).
