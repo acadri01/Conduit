@@ -281,13 +281,61 @@ Assessed as extremely unlikely given Conduit's current placement patterns (verif
 actual `loop-50m-3d.cii` optimize run: 11 restraints, all correctly and distinctly wired); not
 fixed further, just documented here and in the method's own doc comment.
 
+## `#$ SIF&TEES`
+
+Defines stress-intensification-factor and intersection (tee) data. One record per tee node, laid
+out as a flat 42-value array (7 lines × 6 values, `(2X, 6G13.6)`) — items don't reset at each
+line, so item *N* sits at absolute position *N* (1-based: line `ceil(N/6)`, column
+`((N-1) mod 6) + 1`). Confirmed against `fixtures/real-samples/NEWTEST.cii` (a real file the user
+shared specifically "to check tees", 2026-09-01), which has exactly 4 such records:
+
+- **Item 1 — Node**: the intersection node number. This is the field that matters for placement —
+  everything else in the record is SIF/fitting-geometry data Conduit doesn't currently model.
+- **Item 2 — Type**: the intersection type code.
+- Items 3-22 cover in/out-of-plane SIFs, weld mismatch, fillet/pad/fitting dimensions, weld ID,
+  code-specific B1/B2 values, SIF indices, axial/torsion/pressure SIFs and their indices; items
+  19-22 unused.
+- **Items 23-24**: "code-related note" checkboxes — `1`/`0` when set, or the sentinel `9999.99`
+  when not specified. `NEWTEST.cii`'s records all show `9999.99, 9999.99` here.
+- Items 25 onward (Axial/Torsion Index, then a long run of B31J-specific fields) — all confirmed
+  `0.0` in this file except item 27 ("Surface Node (B31J)"), non-zero on the *first* of the 4
+  records only — a B31J companion node reference, not a second tee node.
+- **"Each element has two tee nodes, so specify 14 lines total"** (per the vendor doc): the second
+  7-line/42-value block is a second tee-node sub-record for the *same* intersection element — in
+  `NEWTEST.cii` this second block is always entirely zero (item 1 = 0, i.e. unused) for all 4
+  records, so this file only ever populates the first of the pair. Not yet exercised against a file
+  that populates both.
+
+**The confirmed, load-bearing fact for Conduit**: the element whose `ToNode` is the tee carries a
+1-based pointer to its `#$ SIF&TEES` record in `AuxiliaryPointers[10]` (the vendor doc's "Pointer
+to Intersection Auxiliary field", item 11 of the 15-item `IEL` pointer array) — the same mechanism
+as the bend pointer at index 0. Confirmed against all 4 of `NEWTEST.cii`'s real intersections: the
+elements ending at nodes 160, 1120, 1007, 895 carry pointers 1, 2, 3, 4 respectively, each matching
+that record's position (in file order) within `#$ SIF&TEES`.
+
+**Why this matters more than it might look**: per direct instruction, "determine a tee by its
+tee/sif pointer, not by the actual geometry." `NEWTEST.cii` demonstrates exactly why — 3 of its 4
+real intersections (160, 1007, 1120) have perfectly ordinary two-element (degree-2) geometry with
+no branch pipe modeled in this file at all; only node 895 also happens to have real branch geometry
+(a third element, 895→1270). A node-degree-based guess would have missed 160/1007/1120 entirely.
+`Element.IntersectionPointer` (`Element.cs`) exposes `AuxiliaryPointers[10]` for exactly this;
+`SupportPlacer`/`OptimizationLoop` now use it (not node degree) to exclude tee/intersection nodes
+from placement — see `SupportPlacer`'s class doc comment. Node degree is still used, separately, for
+recognizing a genuine topological branch *run* to walk (`SupportPlacer.SplitIntoRuns`) — a different
+question from "should a support avoid this specific node," where degree remains the right signal
+since a real branch needs its own span accumulator whether or not it happens to carry SIF data.
+
+Conduit still doesn't parse or model the record's own SIF-magnitude/fitting-geometry content
+(items 2-42) — only "is this node an intersection, and which node is it" is used.
+
 ## Sections not yet used by Conduit's logic
 
 `#$ AUX_DATA`, `#$ BEND`, `#$ RIGID`, `#$ EXPJT`, `#$ DISPLMNT`, `#$ FORCMNT`, `#$ UNIFORM`,
-`#$ OFFSETS`, `#$ SIF&TEES`, `#$ REDUCERS`, `#$ FLANGES` — Conduit reads these as opaque raw lines
+`#$ OFFSETS`, `#$ REDUCERS`, `#$ FLANGES` — Conduit reads these as opaque raw lines
 and writes them back verbatim (never regenerates or interprets them). `#$ RESTRANT`,
-`#$ ALLOWBLS`, `#$ EQUIPMNT`, and `#$ MISCEL_1`'s RRMAT array are the only auxiliary sections
-Conduit's own model parses — see their respective `NeutralFiles/*.cs` classes.
+`#$ ALLOWBLS`, `#$ EQUIPMNT`, `#$ MISCEL_1`'s RRMAT array, and `#$ SIF&TEES`'s node/pointer
+identity (not its SIF content) are the only auxiliary data Conduit's own model parses — see their
+respective `NeutralFiles/*.cs` classes.
 
 ## Known open items (not yet built)
 

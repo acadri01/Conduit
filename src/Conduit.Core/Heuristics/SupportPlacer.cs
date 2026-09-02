@@ -28,10 +28,16 @@ public sealed record PlacedSupport(int Node, SupportType Type, RestraintType Res
 /// (guides not resetting horizontal accumulators, or vice versa) seemed like an arbitrary
 /// asymmetry with no stated reason to prefer it.</item>
 /// <item><b>Bend/tee corner exclusion.</b> A support is never placed directly on a bend corner
-/// (<c>#$ ELEMENTS</c>' own bend pointer) or a tee/branch node (any node where a third element —
-/// beyond the run's own incoming/outgoing pair — also connects, detected by node degree across
-/// the whole file, not just this run), nor within <see cref="ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres"/>
-/// of one. When an overflow is detected at an excluded node, the placer backs off to the nearest
+/// (<c>#$ ELEMENTS</c>' own bend pointer) or a tee/intersection node — per direct instruction
+/// (2026-09-01, "determine a tee by its tee/sif pointer, not by the actual geometry"), this is the
+/// real <c>#$ SIF&amp;TEES</c> pointer (<see cref="Element.IntersectionPointer"/>), not node degree:
+/// a real user-supplied sample showed 3 of 4 actual intersections have no branch geometry at all
+/// (a fitting needing SIF treatment with no modeled branch pipe in this file), which a
+/// degree-based guess would have missed. (Node degree is still used, separately, by
+/// <see cref="SplitIntoRuns"/> to recognize a genuine topological branch run — a different
+/// question from "should a support avoid this specific node.") Also excluded: within
+/// <see cref="ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres"/>
+/// of a bend/tee. When an overflow is detected at an excluded node, the placer backs off to the nearest
 /// eligible node already passed since the last reset, if any; if none exists in the zone (e.g. a
 /// single overlong element ending right at a bend, with no interior node at all), no support is
 /// placed there — left as an unresolved failure for <see cref="Optimization.OptimizationLoop"/>'s
@@ -86,7 +92,7 @@ public static class SupportPlacer
 
         foreach (var run in SplitIntoRuns(file.Elements, fixedNodes, nodeDegree))
         {
-            PlaceSupportsForRun(file, run, alreadySupported, nozzleNodePositions, nodeDegree, placed);
+            PlaceSupportsForRun(file, run, alreadySupported, nozzleNodePositions, placed);
         }
 
         return placed;
@@ -184,7 +190,6 @@ public static class SupportPlacer
         List<Element> run,
         HashSet<int> alreadySupported,
         List<(double X, double Y, double Z)> nozzleNodePositions,
-        Dictionary<int, int> nodeDegree,
         List<PlacedSupport> placed)
     {
         var izup = file.Control.Izup;
@@ -196,7 +201,7 @@ public static class SupportPlacer
         var outsideDiameterMillimetres = run[0].OutsideDiameter * toMillimetres;
         var clearance = ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres(outsideDiameterMillimetres);
 
-        var nodes = BuildRunNodes(run, izup, toMillimetres, nodeDegree);
+        var nodes = BuildRunNodes(run, izup, toMillimetres);
         var exclusionZones = nodes.Where(n => n.IsBend || n.IsTee).Select(n => n.AlongPath).ToList();
 
         bool IsEligible(RunNode n) =>
@@ -461,7 +466,7 @@ public static class SupportPlacer
         }
     }
 
-    private static List<RunNode> BuildRunNodes(List<Element> run, int izup, double toMillimetres, Dictionary<int, int> nodeDegree)
+    private static List<RunNode> BuildRunNodes(List<Element> run, int izup, double toMillimetres)
     {
         var nodes = new List<RunNode>(run.Count);
         double cumA = 0, cumB = 0, cumVertical = 0, alongPath = 0;
@@ -479,7 +484,12 @@ public static class SupportPlacer
             alongPath += length;
 
             var isBend = element.AuxiliaryPointers[0] != 0;
-            var isTee = nodeDegree.GetValueOrDefault(element.ToNode) > 2;
+            // Per direct instruction (2026-09-01), a tee/intersection is determined by the real
+            // #$ SIF&TEES pointer, not inferred from node degree — a real user-supplied sample
+            // showed 3 of 4 actual intersections have no branch geometry at all (degree 2, a
+            // fitting needing SIF treatment without a modeled branch pipe), which node degree
+            // alone would have missed entirely.
+            var isTee = element.IntersectionPointer != 0;
             nodes.Add(new RunNode(element.ToNode, element, axis, cumA, cumB, cumVertical, alongPath, isBend, isTee));
         }
 

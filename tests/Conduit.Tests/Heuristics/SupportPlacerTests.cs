@@ -205,6 +205,35 @@ public class SupportPlacerTests
         Assert.DoesNotContain(placed, p => p.Node is 10 or 20 or 30 or 100);
     }
 
+    /// <summary>
+    /// Per direct instruction (2026-09-01, after a real user-supplied sample showed node degree
+    /// alone misses most real intersections): a tee/intersection is excluded from placement by its
+    /// real <c>#$ SIF&amp;TEES</c> pointer (<see cref="Element.IntersectionPointer"/>), not by node
+    /// degree or a synthetic <c>bendNodes</c> marker. This test sets that pointer directly (no bend
+    /// pointer, no branch geometry — an otherwise perfectly ordinary two-element chain) and confirms
+    /// <see cref="SupportPlacer"/> still refuses to place anything there.
+    /// </summary>
+    [Fact]
+    public void NeverPlacesASupportDirectlyOnANodeWithAnIntersectionPointer_EvenWithoutBranchGeometryOrABendMarker()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            Seg(10, 20, 24000, 0, 0),
+            Seg(20, 30, 2000, 0, 0),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 30], izup: 0);
+
+        var original = file.Elements.Single(e => e.FromNode == 10 && e.ToNode == 20);
+        var pointers = original.AuxiliaryPointers.ToArray();
+        pointers[10] = 1; // the intersection pointer — arbitrary non-zero value, no #$ SIF&TEES record needed for this test
+        var withIntersection = new Element { RealValues = original.RealValues, Name = original.Name, LineNumber = original.LineNumber, AuxiliaryPointers = pointers };
+        file.Elements[file.Elements.IndexOf(original)] = withIntersection;
+
+        var placed = SupportPlacer.PlaceSupports(file);
+
+        Assert.DoesNotContain(placed, p => p.Node == 20);
+    }
+
     [Fact]
     public void PlanarJog_GetsNoSupportsInsideTheJogItself()
     {

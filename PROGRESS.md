@@ -544,3 +544,14 @@ running status log Claude appends to (skim this from mobile)
   run passing *through* a tee still accumulates uninterrupted, unaffected). Verified the fix is
   real by confirming the new regression test fails against the pre-fix code (empty placement list —
   the branch was dropped) and passes after. 85/85 tests passing (1 new). M1 is now fully done.
+- 2026-09-01 (continued): user attached a real test file specifically "to check tees" and gave a
+  direct correction: determine a tee by its real SIF/intersection pointer, not node degree.
+  Investigated `#$ SIF&TEES`'s actual layout in the vendor PDF, confirmed it byte-for-byte against
+  the attached file (committed as `fixtures/real-samples/NEWTEST.cii`), and found the user was
+  concretely right: 3 of the file's 4 real intersections (160, 1007, 1120) have no branch geometry
+  at all (ordinary degree-2 chains) — only node 895 also happens to have a real branch. Node degree
+  would have missed 75% of the real cases. Added `Element.IntersectionPointer`
+  (`AuxiliaryPointers[10]`) and switched `SupportPlacer`/`OptimizationLoop`'s tee exclusion to use
+  it, keeping node degree only for the separate branch-run-recognition concern. Verified the new
+  regression tests actually fail without the fix. 95/95 tests passing (10 new). Also restated the
+  MVP vision on the PR per the user's request to realign.

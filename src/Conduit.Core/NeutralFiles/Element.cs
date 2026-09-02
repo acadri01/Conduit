@@ -48,6 +48,17 @@ public sealed class Element
     /// <summary>1-based pointer into <c>#$ ALLOWBLS</c> (0 = none).</summary>
     public int AllowableStressPointer => AuxiliaryPointers[9];
 
+    /// <summary>
+    /// 1-based pointer into <c>#$ SIF&amp;TEES</c> (0 = none) — the vendor doc's "Pointer to
+    /// Intersection Auxiliary field". Set on the element whose <see cref="ToNode"/> is the
+    /// tee/intersection node, the same convention as the bend pointer. Confirmed against a real
+    /// user-supplied sample: a node can carry this pointer (needing SIF/tee treatment) without
+    /// having branch geometry (node degree 2, no third element) — CAESAR marks some fittings as
+    /// intersections independent of whether a branch pipe is modeled in the same file — so this is
+    /// the correct signal for "is this a tee" (per direct instruction), not node degree.
+    /// </summary>
+    public int IntersectionPointer => AuxiliaryPointers[10];
+
     /// <summary>1-based pointer into <c>#$ EQUIPMNT</c> (0 = none).</summary>
     public int EquipmentCheckPointer => AuxiliaryPointers[14];
 

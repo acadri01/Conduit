@@ -230,11 +230,14 @@ public static class OptimizationLoop
     /// <summary>
     /// Picks the node closest to the segment's midpoint, excluding the segment's own bounding
     /// nodes and — per direct instruction ("Any element with a bend pointer shouldn't have a
-    /// restraint"), after a real report of exactly this happening — any bend or tee/branch node
-    /// (node degree over 2, across the whole file, not just this segment), plus the same
-    /// bend-clearance buffer <see cref="ElementSplitter"/> and <see cref="SupportPlacer"/> already
-    /// use. This mirrors <see cref="SupportPlacer"/>'s own exclusion rule so a support added
-    /// reactively here can't land somewhere the initial pass would have refused to.
+    /// restraint"), after a real report of exactly this happening — any bend or tee/intersection
+    /// node, plus the same bend-clearance buffer <see cref="ElementSplitter"/> and
+    /// <see cref="SupportPlacer"/> already use. Tee detection uses the real
+    /// <c>#$ SIF&amp;TEES</c> pointer (<see cref="Element.IntersectionPointer"/>), not node degree —
+    /// per direct instruction (2026-09-01), matching <see cref="SupportPlacer"/>'s own switch (see
+    /// its class doc comment for why node degree alone isn't reliable). This mirrors
+    /// <see cref="SupportPlacer"/>'s own exclusion rule so a support added reactively here can't
+    /// land somewhere the initial pass would have refused to.
     /// </summary>
     private static int? TryPickMidpointNode(NeutralFile file, List<Element> segment)
     {
@@ -244,12 +247,6 @@ public static class OptimizationLoop
         }
 
         var toMillimetres = file.Units.LengthToMillimetres;
-        var nodeDegree = new Dictionary<int, int>();
-        foreach (var element in file.Elements)
-        {
-            nodeDegree[element.FromNode] = nodeDegree.GetValueOrDefault(element.FromNode) + 1;
-            nodeDegree[element.ToNode] = nodeDegree.GetValueOrDefault(element.ToNode) + 1;
-        }
 
         var alongPath = 0.0;
         var positions = new List<(int Node, Element Element, double AlongPath)>();
@@ -260,13 +257,13 @@ public static class OptimizationLoop
         }
 
         var exclusionZones = positions
-            .Where(p => p.Element.AuxiliaryPointers[0] != 0 || nodeDegree.GetValueOrDefault(p.Node) > 2)
+            .Where(p => p.Element.AuxiliaryPointers[0] != 0 || p.Element.IntersectionPointer != 0)
             .Select(p => p.AlongPath)
             .ToList();
 
         bool IsExcluded((int Node, Element Element, double AlongPath) p)
         {
-            if (p.Element.AuxiliaryPointers[0] != 0 || nodeDegree.GetValueOrDefault(p.Node) > 2)
+            if (p.Element.AuxiliaryPointers[0] != 0 || p.Element.IntersectionPointer != 0)
             {
                 return true;
             }

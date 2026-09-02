@@ -243,7 +243,14 @@ directions are symmetric.
   chunk keeps the pointer, not every interior one — but this is pointer *bookkeeping* during a
   split, not interpreting `#$ BEND`'s own contents; Conduit.Core still never reads or reasons
   about a bend record itself. `#$ MISCEL_1` is a partial exception — its leading `RRMAT` (material ID) array is now
-  parsed and exposed, but the rest of that section's content is still opaque. Interpreting the
+  parsed and exposed, but the rest of that section's content is still opaque. `#$ SIF&TEES` is
+  now a similar partial exception, per direct instruction (2026-09-01): `Element.IntersectionPointer`
+  (`AuxiliaryPointers[10]`, the vendor doc's "Pointer to Intersection Auxiliary field") is exposed
+  so `SupportPlacer`/`OptimizationLoop` can identify a tee/intersection node reliably — a real
+  user-supplied sample confirmed node degree alone is unreliable, missing 3 of 4 real intersections
+  that have no branch geometry modeled — but `#$ SIF&TEES`'s own SIF-magnitude data (in-plane/
+  out-plane SIF, weld/fillet/pad dimensions, B31J fields, etc.) is still opaque; only "is this node
+  an intersection" is modeled, not the record's own content. Interpreting the
   remaining sections is future work as later stages need them (e.g. `UNITS` for cross-unit-system
   correctness) — per review direction, the goal is to have as much of the neutral file's data
   available now as is practical, but this remains a real scope boundary, not something this pass
@@ -277,10 +284,12 @@ v15 interface) — public vendor documentation, not proprietary material. The us
 several real `.cii` files over the course of this project. Most were used as demonstration/example
 files rather than client project data — reviewed locally to confirm the real-world structure
 matches the published spec (it does, closely) but **not committed**, and not used as source data
-for anything committed. **Three specific files are the exception**: `fixtures/real-samples/
-TESTv15.cii`, `TESTv15_slugged.cii`, and `44002.cii` — the user explicitly said these are safe to
-commit, so unlike the rest they *are* committed and available as real, non-synthetic structural
-references. Everything else under `fixtures/` (`straight-run.cii`, `run-with-riser.cii`,
+for anything committed. **Four specific files are the exception**: `fixtures/real-samples/
+TESTv15.cii`, `TESTv15_slugged.cii`, `44002.cii`, and `NEWTEST.cii` — the user explicitly shared
+each one for Conduit's own use (`NEWTEST.cii` specifically "for you to use to check tees",
+2026-09-01, the sample that demonstrated real `#$ SIF&TEES` intersections node degree alone would
+miss — see "Known open decisions"), so unlike the rest they *are* committed and available as real,
+non-synthetic structural references. Everything else under `fixtures/` (`straight-run.cii`, `run-with-riser.cii`,
 `loop-50m-3d.cii`, ...) remains freshly authored synthetic geometry with invented node numbers —
 merely *structurally* valid `.cii` files, cross-checked against the real samples' byte layout but
 not derived from their content. See "Known open decisions" for the reasoning.

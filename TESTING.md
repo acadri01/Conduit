@@ -17,31 +17,38 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: optional recheck — the placement *mechanism* changed (splitting now happens during the
-initial pass, not reactively), the CLI output confirms identical final results, but a real
-`iecho.exe`/CAESAR II reopen would double-check that from your end too.**
+**Status: optional recheck — three independent things confirmed by automated tests this round, a
+real CAESAR II reopen would double-check any/all of them from your end too, none blocking.**
 
-Per your 2026-09-01 PR comment ("I would not like the placement to be done during a walk...")
-`SupportPlacer`'s own initial pass now splits an overlong leg itself instead of relying on
-`OptimizationLoop`'s reactive fallback to discover it one evaluate-cycle later. All three fixtures
-now `PASS` in a single iteration instead of 2-3, with the same interior node numbers and even
-10,000 mm grid spacing confirmed by your last test round. This is a mechanism change, not a
-placement change, so nothing is expected to look different in CAESAR II — but since you're set up
-to check, rerunning the same three examples once more would confirm that directly:
+1. **Placement mechanism change**: `SupportPlacer`'s own initial pass now splits an overlong leg
+   itself instead of relying on `OptimizationLoop`'s reactive fallback one evaluate-cycle later.
+   All three loop/Fig-6.8 fixtures `PASS` in a single iteration instead of 2-3, same final
+   placements as before.
+2. **Tee detection switched to the real SIF pointer**: per your correction ("determine a tee by its
+   tee/sif pointer, not by the actual geometry"), confirmed against your attached `NEWTEST.cii`
+   (now committed at `fixtures/real-samples/NEWTEST.cii`) — 3 of its 4 real intersections have no
+   branch geometry at all, which the old node-degree check would have missed. `SupportPlacer`/
+   `OptimizationLoop` now use `Element.IntersectionPointer` instead.
+3. Tee/branch span exclusion (a branch arm starting at a tee gets its own independent span
+   accumulator) is done — turned out to fix a real bug where such a branch was silently dropped
+   entirely, not just under-supported.
+
+To recheck any of these: rerun the three example fixtures —
 ```
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
 ```
-then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI. Not
-blocking further work either way — logged as optional confirmation, not a known issue.
+then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI.
+`NEWTEST.cii` itself has no restraints yet (0 anchors in the file as you sent it), so
+`conduit optimize` on it alone won't exercise placement — the tee-detection fix is verified via
+`IntersectionPointerTests`/`SupportPlacerTests` directly against its real `#$ SIF&TEES` data
+instead. If you'd like a real end-to-end placement check against it, adding an anchor or two to a
+copy of the file (or telling me where to add one) would let `conduit optimize` actually run on it.
 
-Tee/branch span exclusion is now done (M1) — a branch arm starting at a tee gets its own
-independent span accumulator, and turned out to fix a real bug where such a branch was silently
-dropped entirely rather than just under-supported. Still open, not part of this round's ask:
-applying the SIF at a tee, and the guide direction-cosine question (still open from a few rounds
-back) — see SPEC.md's "## Milestones" section (M2) for these, now batched as consult items rather
-than scattered across rounds.
+Still open, not part of this round's ask: applying the SIF at a tee, and the guide direction-cosine
+question — see SPEC.md's "## Milestones" section (M2) for these, batched as consult items with
+starting proposals already posted (see QUESTIONS.md).
 
 # Step-by-step: test Conduit on your own machine
 

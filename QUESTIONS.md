@@ -1918,3 +1918,44 @@ three isn't a scope cut into `SupportTypeClassifier`/`RestraintTypeMapper`/`Supp
 tests against a concrete synthetic scenario for each. No support-placement code changes for these
 three specifically will be pushed ahead of your answer, per CLAUDE.md's reservation of this class
 of decision — M1/M3 work continues in the meantime, unaffected.
+
+## Fixed: tee detection switched from node degree to the real SIF/intersection pointer (2026-09-01)
+
+User feedback on the M1 milestone, with a real test file attached specifically "to check tees":
+"I think it is best to determine a tee by its tee/sif pointer, not by the actual geometry." Direct
+instruction, not a question — implemented, not just logged.
+
+**Investigated first, not guessed**: extracted `#$ SIF&TEES`'s real layout from
+`NeutralFile-v15.pdf` (7 lines/42 values per tee-node record, item 1 = node number, item 11 of the
+15-item `IEL` auxiliary-pointer array = "Pointer to Intersection Auxiliary field") and confirmed it
+byte-for-byte against the user's attached file (committed as `fixtures/real-samples/NEWTEST.cii` —
+same "safe to commit, shared for Conduit's own use" pattern as the three existing real samples).
+Found exactly 4 intersection records (nodes 160, 1120, 1007, 895), each pointed to by
+`AuxiliaryPointers[10]` on the element whose `ToNode` is that node — matching the same convention
+as the existing bend pointer (index 0) and restraint pointer (index 3).
+
+**Confirmed the user's point concretely, not just taken on faith**: cross-checked all 4 tee nodes
+against the file's actual element connectivity. Only node 895 has real branch geometry (a genuine
+third element, 895→1270, node degree 3) — the other three (160, 1007, 1120) are ordinary two-element
+(degree-2) chains with *no branch pipe modeled in this file at all*. A node-degree-based guess (what
+`SupportPlacer`/`OptimizationLoop` were using) would have missed 3 of the 4 real intersections
+entirely. Full derivation in `docs/neutral-file/WALKTHROUGH.md`'s new `#$ SIF&TEES` section.
+
+**Implemented**: `Element.IntersectionPointer` (new convenience property, `AuxiliaryPointers[10]`,
+matching the existing `AllowableStressPointer`/`EquipmentCheckPointer` pattern). `SupportPlacer`'s
+`RunNode.IsTee` and `OptimizationLoop.TryPickMidpointNode`'s tee exclusion both switched from
+`nodeDegree > 2` to `element.IntersectionPointer != 0`. **Node degree is kept** for the *separate*
+concern `SplitIntoRuns` uses it for (recognizing a genuine topological branch run to walk
+independently, from this same session's earlier M1 fix) — a real branch needs its own span
+accumulator whether or not it happens to carry SIF data, so that's a different question from
+"should a support avoid this specific node," where the pointer is now authoritative.
+
+Added `IntersectionPointerTests.cs` (parses `NEWTEST.cii`, confirms all 4 real pointers resolve
+correctly, confirms 3 of 4 have no branch geometry, confirms an ordinary element has a zero
+pointer) plus a `SupportPlacerTests` case that injects an intersection pointer onto an otherwise
+perfectly ordinary synthetic element (no bend, no branch geometry) and confirms placement still
+avoids it — verified this new test actually fails against the pre-fix node-degree logic (places a
+rest right at the node) before confirming it passes with the fix. 95/95 tests passing (10 new).
+
+**Next step**: none — this was a direct instruction with a concrete test case, not a question.
+Reported the fix on the PR along with the requested MVP-vision restatement.
