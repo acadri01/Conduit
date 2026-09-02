@@ -17,29 +17,34 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: optional recheck — a material-data correction this round, confirmed by automated tests,
-none blocking.**
+**Status: optional recheck — `MaterialLibrary` now covers all 399 materials, confirmed by
+automated tests, none blocking.**
 
-Your uploaded UMAT1.pdf printout revealed material #107 was wrongly recorded as A106 Grade B in
-every earlier round — it's actually A135 Grade A. A106 Grade B is material #106. The allowable
-stress fallback (118 MPa) also turned out to be from an unidentified UMAT1 piping-code section, not
-B31.3-2024; it's now read from `reference/B31.3-2024.pdf`'s own Table A-1 instead (138 MPa
-cold/ambient for A106 Grade B). Also confirmed your suspicion: shear modulus isn't in the UMAT1
-data at all, but Poisson's ratio doesn't need it — it's a direct per-material field. Full derivation
-in QUESTIONS.md's "Corrected: material #107 was never A106 Grade B..." entry.
+Per your request ("I would like to have all the materials in the database"), `MaterialLibrary`
+went from 2 entries to all 399 in the UMAT1 printout — extracted programmatically, sanity-checked,
+and spot-checked (not hand-typed). Two real data-quality issues found along the way: an extraction
+bug (fixed) where a blank cell in the source table shifted a later column's value into the wrong
+field, and a genuine issue in CAESAR's own database (materials #9/#12 list an invalid negative
+"cold modulus" — now `null` rather than embedded). Allowable stress is still only real for
+materials #106/#107 — cross-referencing the other 397 against B31.3-2024's own allowable-stress
+table is real follow-up work, not attempted this round (a material without its own allowable
+stress falls back to #106's). Full detail in QUESTIONS.md's "Implemented: all 399 materials in
+`MaterialLibrary`" entry.
 
-This only affects `SpanLimitCalculator`'s *fallback* values — used when a file has no `#$ ALLOWBLS`
-record for an element (real files usually do, so this may not change anything for your actual
-projects). To recheck: rerun the three example fixtures —
+This only affects `SpanLimitCalculator`'s *fallback* values — used when a file has no
+`#$ ALLOWBLS` record for an element, or when its own material isn't #106/#107 (real files usually
+carry their own `#$ ALLOWBLS` data, so this may not change anything for your actual projects). To
+recheck: rerun the three example fixtures —
 ```
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
 ```
-then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI —
-comparing against last round's output would show whether the corrected allowable stress actually
-changed any placements for these fixtures (they either carry real `#$ ALLOWBLS` data already, or
-use material #106/#107 specifically — worth confirming either way).
+(confirmed byte-identical to before this round on this end, since none of them use a material
+outside #106/#107) then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in
+CAESAR II's GUI to confirm independently. If you have a real project using a material other than
+#106/#107 and no `#$ ALLOWBLS` data, that would be a genuinely useful test of the new coverage —
+happy to take a look at the output if you'd like to share one.
 
 Still open, not part of this round's ask: applying the SIF at a tee, and the guide direction-cosine
 question — see SPEC.md's "## Milestones" section (M2) for these, batched as consult items with

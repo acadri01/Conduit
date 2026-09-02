@@ -738,6 +738,26 @@ milestone.
       A106 Grade B..." entry. 98/98 tests passing (one fixture's deliberately-extreme density
       constant bumped to keep exercising the "genuinely unsplittable" edge case now that the
       higher allowable stress raises the computed max span slightly).
+  - **Update (2026-09-02, "I would like to have all the materials in the database"):**
+    `MaterialLibrary` now covers all **399** materials in the user's real UMAT1 printout — not
+    just the two hand-verified ones above. Extracted programmatically (399 is well past reliable
+    manual transcription) from the printout's code-independent `APPLICABLE PIPING CODE: 0` section,
+    with every value sanity-range-checked and several individually spot-checked against the raw
+    text (aluminum's ~71 GPa modulus/~2,800 kg/m³ density matched real aluminum, confirming the
+    extraction generalizes beyond the carbon-steel entries it was tuned against). Two real
+    data-quality issues were found in the *source* printout itself during this pass (not
+    extraction bugs): materials #9 (WROUGHT IRON) and #12 (K-MONEL) both list an impossible
+    negative "cold modulus" (-1.01 MPa, an unpopulated-field sentinel) — `ElasticModulusMpa` is
+    `null` for these two rather than that value. Allowable stress stays `null` for all but the two
+    already-cross-referenced materials (#106, #107) — it's a code-specific design limit, not a
+    material property, and cross-referencing 397 more materials by name against B31.3-2024's own
+    ~110-page Table A-1 is real, separate scope not attempted this round (see QUESTIONS.md).
+    `SpanLimitCalculator` falls back to material #106's real allowable stress/elastic modulus for
+    any material missing its own. Poisson's ratio for #106/#107 now uses the same code-0 source as
+    the other 397 (0.292, superseding the immediately preceding round's 0.30 from an unidentified
+    per-code section) for consistency across the whole library. 102/102 tests passing; all three
+    real fixtures produce byte-identical placements to before this change (none of them use a
+    material outside #106/#107, and two carry their own real `#$ ALLOWBLS` data anyway).
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means

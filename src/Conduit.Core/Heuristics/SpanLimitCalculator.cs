@@ -59,13 +59,15 @@ namespace Conduit.Core.Heuristics;
 /// <item>Every fallback (allowable stress, elastic modulus, density) is resolved through
 /// <see cref="MaterialLibrary"/>, keyed by the element's own material ID (<c>#$ MISCEL_1</c>'s
 /// <c>RRMAT</c> array) — not always the same hardcoded A106 Grade B values regardless of what the
-/// file specifies. <see cref="MaterialLibrary"/> is a placeholder (per direct instruction,
-/// 2026-09-01: "no point in creating an MVP that is only able to handle a single type of
-/// material... set a placeholder for this currently"): the *mechanism* is real; the *data* now
-/// covers two real materials (A106 Grade B and A135 Grade A) and can grow from here. This
-/// constants block (<see cref="DefaultAllowableBendingStressMpa"/> etc.) mirrors
-/// <see cref="MaterialLibrary"/>'s A106 Grade B entry and exists for backward-compatible direct
-/// access; <see cref="MaterialLibrary"/> is the source of truth going forward.</item>
+/// file specifies. <see cref="MaterialLibrary"/> now covers all 399 real materials in the user's
+/// UMAT1 printout (per direct instruction, 2026-09-02: "I would like to have all the materials in
+/// the database"), though only two (#106, #107) have a real, verified allowable stress — see
+/// <see cref="MaterialLibrary"/>'s class doc comment. A material whose own allowable stress or
+/// elastic modulus isn't yet known falls back further, to material #106's real values, inside
+/// <see cref="ComputeMaxSpan(NeutralFile, Element)"/>. This constants block
+/// (<see cref="DefaultAllowableBendingStressMpa"/> etc.) mirrors <see cref="MaterialLibrary"/>'s
+/// A106 Grade B entry and exists for backward-compatible direct access;
+/// <see cref="MaterialLibrary"/> is the source of truth going forward.</item>
 /// </list>
 /// </summary>
 public static class SpanLimitCalculator
@@ -130,9 +132,13 @@ public static class SpanLimitCalculator
     /// <paramref name="element"/> when populated, falling back to <paramref name="element"/>'s own
     /// resolved material (<see cref="MaterialLibrary.Resolve"/>, via <c>#$ MISCEL_1</c>'s
     /// <c>RRMAT</c> material ID) otherwise — not always the same hardcoded material regardless of
-    /// what the file actually specifies. <see cref="MaterialLibrary"/> only has one real material
-    /// so far, so this resolves identically to the previous always-A106-Grade-B fallback for every
-    /// file today, but is now ready to grow per-material once more real data is available.
+    /// what the file actually specifies. <see cref="MaterialLibrary"/> now covers all 399 real
+    /// materials in the user's UMAT1 printout, though only two (#106, #107) have a real, verified
+    /// <see cref="MaterialProperties.AllowableStressMpa"/> (an inherently code-specific value, not
+    /// safely extractable for the other 397 — see <see cref="MaterialLibrary"/>'s class doc
+    /// comment); any material with a <c>null</c> allowable stress or elastic modulus (materials
+    /// #9/#12 — a genuine data-quality issue in the source printout, also documented there) falls
+    /// back further, to material #106's own real values, rather than leaving the span uncomputable.
     /// </summary>
     public static double ComputeMaxSpan(NeutralFile file, Element element)
     {
@@ -140,11 +146,14 @@ public static class SpanLimitCalculator
         var elementIndex = file.Elements.IndexOf(element);
         var materialId = elementIndex >= 0 && elementIndex < file.MaterialIds.Count ? file.MaterialIds[elementIndex] : MaterialLibrary.A106GradeBMaterialId;
         var material = MaterialLibrary.Resolve(materialId);
+        var fallbackMaterial = MaterialLibrary.Resolve(MaterialLibrary.A106GradeBMaterialId);
 
         var allowable = file.TryGetAllowableStress(element)?.ColdAllowableStress;
-        var defaultAllowableBendingStress = units.IsMetric ? material.AllowableStressMpa : material.AllowableStressMpa / MpaPerPsi;
+        var materialAllowableStressMpa = material.AllowableStressMpa ?? fallbackMaterial.AllowableStressMpa!.Value;
+        var defaultAllowableBendingStress = units.IsMetric ? materialAllowableStressMpa : materialAllowableStressMpa / MpaPerPsi;
         var allowableBendingStress = allowable is > 0 ? allowable.Value : defaultAllowableBendingStress;
-        var defaultElasticModulus = units.IsMetric ? material.ElasticModulusMpa : material.ElasticModulusMpa / MpaPerPsi;
+        var materialElasticModulusMpa = material.ElasticModulusMpa ?? fallbackMaterial.ElasticModulusMpa!.Value;
+        var defaultElasticModulus = units.IsMetric ? materialElasticModulusMpa : materialElasticModulusMpa / MpaPerPsi;
         var elasticModulus = element.RealValues[27] is > 0 ? element.RealValues[27] : defaultElasticModulus;
         return ComputeMaxSpanMillimetres(element, allowableBendingStress, elasticModulus, units, material);
     }

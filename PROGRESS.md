@@ -600,3 +600,14 @@ running status log Claude appends to (skim this from mobile)
   expansion coefficient/Poisson's ratio (previously null). 98/98 tests passing (one fixture's
   extreme-density constant re-tuned for the new allowable-stress value). Full derivation in
   QUESTIONS.md's "Corrected: material #107 was never A106 Grade B..." entry.
+- 2026-09-02: implemented "I would like to have all the materials in the database" — MaterialLibrary
+  now covers all 399 materials from the user's real UMAT1 printout (up from 2), extracted
+  programmatically and sanity/spot-checked rather than hand-typed. Found and fixed a real
+  extraction bug (blank EXP COEFF cells shifting the next column into its place) using a
+  structural fix (exponent-sign pattern matching) rather than fragile column-position slicing.
+  Found a real data-quality issue in the source itself: materials #9/#12 have an invalid negative
+  "cold modulus" sentinel, now null rather than embedded. AllowableStressMpa/ElasticModulusMpa are
+  now nullable on MaterialProperties; SpanLimitCalculator falls back to material #106's real values
+  for anything without its own. Allowable stress stays null for 397 of 399 materials (a genuine
+  code-table cross-reference, not attempted at this scale yet — flagged as real follow-up work).
+  102/102 tests passing, all three real fixtures byte-identical.

@@ -2212,6 +2212,88 @@ tests passing.
 user's input. Reply posted on the PR summarizing both findings. The still-open ask from the
 previous entry (which further materials/RRMAT IDs matter for the user's real work) stands.
 
+## Implemented: all 399 materials in `MaterialLibrary` (2026-09-02)
+
+Direct instruction: "I would like to have all the materials in the database." Previously
+`MaterialLibrary` had exactly 2 entries (A106 Grade B, A135 Grade A), both hand-verified line by
+line against the printout and against `reference/B31.3-2024.pdf`. Extending that same
+one-at-a-time verification to all 399 materials in the printout isn't feasible by hand — so this
+had to be a real extraction pipeline, built and verified carefully rather than trusted blindly.
+
+**Extraction approach**: parsed `reference/pipe-stress-engineering/UMAT1-material-database.pdf`
+(confirmed byte-identical, via md5sum, to the user's fresh 2026-09-02 upload — this was never a
+missing-source problem) via `pdftotext -layout`, then regex-extracted every material's
+`APPLICABLE PIPING CODE: 0` record (the code-independent, generic physical-property listing every
+material has exactly once) — NUMBER, NAME, DENSITY, COLD MODULUS, POISSONS RATIO, and the EXP
+COEFF value at the temperature row closest to 21°C (ambient). 399 materials extracted, numbered
+1-17 and 101-501 (CAESAR reserves the low numbers for generic material classes — LOW CARBON, HIGH
+CARBON, ALUMINUM, etc. — and the 100s+ for specific ASTM/EN/DIN-numbered specs).
+
+**Two real extraction bugs found and fixed during verification** (both caught by sanity-range-
+checking every value rather than trusting the first pass):
+1. **Blank-cell column shift.** My first pass took "the first two numbers on a temperature row" as
+   (temperature, EXP COEFF) — but when EXP COEFF is blank at a given temperature (common at
+   temperature extremes), the next populated column (MODULUS) shifts into that position instead.
+   This produced one wildly wrong value (material #395's "expansion coefficient" came out as
+   196,510 — obviously not a per-°C coefficient). Tried fixing this with header-relative column
+   position slicing next; that was *also* unreliable, since the printout's header-label position
+   and its data column's actual position don't consistently align in the `pdftotext -layout`
+   output. The robust fix: EXP COEFF and MODULUS are structurally distinguishable regardless of
+   column position — EXP COEFF is always scientific notation with a *negative* exponent
+   (`~1e-5`/°C), MODULUS always a *positive* exponent (`~1e5` MPa), and ALLOWABLE/YIELD/UTS are
+   always plain integers with no exponent at all. Matching on that pattern instead of position
+   fixed it cleanly, confirmed by re-checking all 399 values landed in a sane range afterward
+   (zero were physically implausible after the fix, versus one at the far end of physically
+   impossible before it).
+2. Not a bug in the extraction — a real data-quality issue *in the source printout itself*,
+   confirmed by reading the raw text directly: materials #9 (WROUGHT IRON) and #12 (K-MONEL) both
+   show `COLD MODULUS MPa: -0.1010E+01` (-1.01 MPa) — an unmistakable "not populated" sentinel in
+   CAESAR's own database, not a real modulus. Recorded as `null` for these two rather than
+   embedding a negative elastic modulus.
+
+**Verification, beyond the sanity-range check**: re-confirmed the pipeline against the two already
+hand-verified materials (#106, #107 — exact match), then deliberately checked entries with
+distinctive expected values the extraction logic was never tuned against — aluminum (#14: 71,020
+MPa modulus, 2,804 kg/m³ density — both match real aluminum, unlike anything in the carbon-steel
+data the earlier rounds worked with) and copper/stainless/cast-iron entries, all physically
+plausible. This is real evidence the extraction generalizes rather than being curve-fit to the
+two known-good rows.
+
+**What's deliberately still `null`: allowable stress for 397 of 399 materials.** Allowable stress
+is a design-code limit, not a material property — it can't be read out of UMAT1 at all (its
+numeric "applicable piping code" IDs have no legend, per the previous entry's finding), only
+cross-referenced by material name against a code's own table (as was done individually for #106,
+#107 against B31.3-2024 Table A-1). Doing that for all 399 means either building a full
+programmatic join against B31.3-2024's own ~110-page Table A-1 (parsing both its "material
+listing" pages — Line No./Spec/Grade — and its "stress value" pages — Line No./temperature
+columns — and joining by name), or 397 more individual by-hand lookups. Neither was attempted this
+round: the join is real, separate, and non-trivial scope (Table A-1 spans many page-pairs with a
+locally-scoped "Line No." that resets per pair, which needs careful, verified parsing of its own —
+not something to rush given this is exactly the kind of table-misalignment mistake that caused the
+#106/#107 mixup in the first place); the by-hand route doesn't scale. `SpanLimitCalculator` falls
+back to material #106's real allowable stress for anything without its own.
+
+**Also revised**: Poisson's ratio for #106/#107 now uses the same code-0 source as the other 397
+materials (0.292), rather than the previous round's 0.30 from an unidentified per-code section —
+for consistency now that the library isn't just those two entries anymore. Both are real values
+from the same document; the difference doesn't matter for beam-theory spacing purposes.
+
+**Also revised**: material names are now verbatim from the printout (e.g. `"A106 B"`, not "ASTM
+A106 Grade B") across all 399 entries, including the two that previously had an expanded name —
+expanding all 399 to fully-qualified names isn't safely automatable at this scale (would need
+per-material judgment), so consistency won this round; a name-expansion lookup is a possible
+future addition.
+
+102/102 tests passing (4 new: aluminum spot-check, the two invalid-modulus materials, the
+"most materials have no allowable stress" honesty check). All three real fixtures produce
+byte-identical output to before this change.
+
+**Next step**: none blocking. The B31.3-2024 Table A-1 programmatic join (to get real,
+code-authoritative allowable stress for the other 397 materials) is real follow-up work, not
+started — flagged here rather than in a fresh entry since it's a direct continuation of this one.
+Also still open: which specific materials/RRMAT IDs matter most for the user's real projects, in
+case that should prioritize which get the Table A-1 join first once it's built.
+
 ## Evaluated: the colleague's CAESAR II 15.1 result-database approach (2026-09-02)
 
 M4's first bullet ("document and evaluate the colleague's GUI-automation approach... as an
