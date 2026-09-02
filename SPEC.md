@@ -688,6 +688,22 @@ milestone.
     is the single one already extracted ("material #107 = A106 Grade B"). See QUESTIONS.md's
     "Found: B31.3-2024's own Appendix A/C tables..." entry; waiting on which materials/IDs to
     support before building the table-driven system.
+  - **Update (2026-09-01, continued again)**: the user confirmed the data source (UMAT1's own
+    printout, "all materials are in the umat1.pdf print out with the corresponding number and
+    properties") and gave the real engineering framework this all serves: **rest positioning is
+    mainly governed by sustained stress; horizontal guide/hold-down spacing mainly by expansion
+    stress; vertical guide spacing mainly by vibration** (may also be expansion-governed) — three
+    distinct physical drivers, none yet modeled. Explicitly authorized deferring the exact
+    heuristics: "these heuristics may be determined later. Set a placeholder for this currently if
+    required." Implemented that placeholder: `MaterialLibrary`
+    (`src/Conduit.Core/Heuristics/MaterialLibrary.cs`) resolves material properties (allowable
+    stress, elastic modulus, density, thermal expansion coefficient, Poisson's ratio) by the
+    element's own real `RRMAT` ID instead of always the same hardcoded fallback — the *mechanism*
+    for multi-material support is real and wired into `SpanLimitCalculator`; the *data* is still
+    just material #107 (A106 Grade B) until the printout (or specific material list) comes back.
+    Thermal expansion coefficient/Poisson's ratio are explicitly `null` (never guessed). 98/98
+    tests passing, CLI output byte-identical to before this refactor. See QUESTIONS.md's
+    "Implemented: MaterialLibrary placeholder..." entry for the full detail.
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means

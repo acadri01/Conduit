@@ -577,3 +577,16 @@ running status log Claude appends to (skim this from mobile)
   A106 Grade B" is known so far). Posted the finding on the PR; waiting on which materials to
   support before building the table-driven lookup. No code changes — pure research, build/test
   unaffected (95/95 passing).
+- 2026-09-01 (continued): user confirmed material data must be real and multi-material-capable
+  (sourced from the UMAT1 printout, which has all materials by number), and gave the real
+  engineering framework: sustained stress governs rest spacing, expansion stress governs horizontal
+  guide/hold-down spacing, vibration governs vertical guide spacing — three distinct calculations,
+  none built yet. Explicitly authorized a placeholder rather than full implementation. Built it:
+  MaterialLibrary resolves material properties by the element's own real RRMAT ID (previously
+  SpanLimitCalculator always used the same hardcoded A106 Grade B fallback regardless of what the
+  file's material ID actually said) -- the resolution mechanism is real and wired in; the data is
+  still just one material until the printout (or a specific material list) comes back. Thermal
+  expansion coefficient/Poisson's ratio left explicitly null rather than guessed. 98/98 tests
+  passing (3 new), CLI output confirmed byte-identical to before the refactor. Posted on the PR,
+  asking for the printout re-share (expired link) and clarification on "some of these can be
+  calculated."

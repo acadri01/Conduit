@@ -53,6 +53,16 @@ namespace Conduit.Core.Heuristics;
 /// when populated, falling back to <see cref="DefaultElasticModulusMpa"/>/
 /// <see cref="DefaultElasticModulusPsi"/> — again A106 Grade B's real cold modulus (203,400 MPa),
 /// not an arbitrary constant.</item>
+/// <item>Every fallback (allowable stress, elastic modulus, density) is resolved through
+/// <see cref="MaterialLibrary"/>, keyed by the element's own material ID (<c>#$ MISCEL_1</c>'s
+/// <c>RRMAT</c> array) — not always the same hardcoded A106 Grade B values regardless of what the
+/// file specifies. <see cref="MaterialLibrary"/> is a placeholder (per direct instruction,
+/// 2026-09-01: "no point in creating an MVP that is only able to handle a single type of
+/// material... set a placeholder for this currently"): the *mechanism* is real, the *data* is
+/// still just this one material until more are available. This constants block
+/// (<see cref="DefaultAllowableBendingStressMpa"/> etc.) mirrors <see cref="MaterialLibrary"/>'s
+/// A106 Grade B entry and exists for backward-compatible direct access; <see cref="MaterialLibrary"/>
+/// is the source of truth going forward.</item>
 /// </list>
 /// </summary>
 public static class SpanLimitCalculator
@@ -107,31 +117,40 @@ public static class SpanLimitCalculator
 
     /// <summary>Computes max span (mm) assuming <see cref="UnitsSection.Metric"/> — for callers with an <see cref="Element"/> but no <see cref="NeutralFile"/> (e.g. tests).</summary>
     public static double ComputeMaxSpan(Element element) =>
-        ComputeMaxSpanMillimetres(element, DefaultAllowableBendingStressMpa, DefaultElasticModulusMpa, UnitsSection.Metric);
+        ComputeMaxSpanMillimetres(element, DefaultAllowableBendingStressMpa, DefaultElasticModulusMpa, UnitsSection.Metric, MaterialLibrary.Resolve(MaterialLibrary.A106GradeBMaterialId));
 
     /// <summary>
     /// Computes max span (always in millimetres) using <paramref name="file"/>'s own
     /// <c>#$ ALLOWBLS</c> cold allowable stress and the element's own cold elastic modulus for
-    /// <paramref name="element"/> when populated, falling back to defaults matching the file's own
-    /// unit system otherwise.
+    /// <paramref name="element"/> when populated, falling back to <paramref name="element"/>'s own
+    /// resolved material (<see cref="MaterialLibrary.Resolve"/>, via <c>#$ MISCEL_1</c>'s
+    /// <c>RRMAT</c> material ID) otherwise — not always the same hardcoded material regardless of
+    /// what the file actually specifies. <see cref="MaterialLibrary"/> only has one real material
+    /// so far, so this resolves identically to the previous always-A106-Grade-B fallback for every
+    /// file today, but is now ready to grow per-material once more real data is available.
     /// </summary>
     public static double ComputeMaxSpan(NeutralFile file, Element element)
     {
         var units = file.Units;
+        var elementIndex = file.Elements.IndexOf(element);
+        var materialId = elementIndex >= 0 && elementIndex < file.MaterialIds.Count ? file.MaterialIds[elementIndex] : MaterialLibrary.A106GradeBMaterialId;
+        var material = MaterialLibrary.Resolve(materialId);
+
         var allowable = file.TryGetAllowableStress(element)?.ColdAllowableStress;
-        var defaultAllowableBendingStress = units.IsMetric ? DefaultAllowableBendingStressMpa : DefaultAllowableBendingStressPsi;
+        var defaultAllowableBendingStress = units.IsMetric ? material.AllowableStressMpa : material.AllowableStressMpa / MpaPerPsi;
         var allowableBendingStress = allowable is > 0 ? allowable.Value : defaultAllowableBendingStress;
-        var defaultElasticModulus = units.IsMetric ? DefaultElasticModulusMpa : DefaultElasticModulusPsi;
+        var defaultElasticModulus = units.IsMetric ? material.ElasticModulusMpa : material.ElasticModulusMpa / MpaPerPsi;
         var elasticModulus = element.RealValues[27] is > 0 ? element.RealValues[27] : defaultElasticModulus;
-        return ComputeMaxSpanMillimetres(element, allowableBendingStress, elasticModulus, units);
+        return ComputeMaxSpanMillimetres(element, allowableBendingStress, elasticModulus, units, material);
     }
 
     /// <param name="allowableBendingStress">In the same unit system as <paramref name="units"/> (MPa if metric, psi if English).</param>
     /// <param name="elasticModulus">In the same unit system as <paramref name="units"/> (MPa if metric, psi if English).</param>
-    private static double ComputeMaxSpanMillimetres(Element element, double allowableBendingStress, double elasticModulus, UnitsSection units)
+    /// <param name="material">The element's resolved material — only its density fallback is used here; allowable stress/elastic modulus are already resolved by the caller.</param>
+    private static double ComputeMaxSpanMillimetres(Element element, double allowableBendingStress, double elasticModulus, UnitsSection units, MaterialProperties material)
     {
         var sectionModulusMm3 = ComputeSectionModulusMillimetres(element, units);
-        var weightPerLengthNewtonsPerMm = ComputeWeightPerLengthNewtonsPerMillimetre(element, units);
+        var weightPerLengthNewtonsPerMm = ComputeWeightPerLengthNewtonsPerMillimetre(element, units, material);
 
         if (weightPerLengthNewtonsPerMm <= 0 || sectionModulusMm3 <= 0)
         {
@@ -166,14 +185,14 @@ public static class SpanLimitCalculator
         return Math.PI * (Math.Pow(outsideDiameter, 4) - Math.Pow(insideDiameter, 4)) / (32.0 * outsideDiameter);
     }
 
-    private static double ComputeWeightPerLengthNewtonsPerMillimetre(Element element, UnitsSection units)
+    private static double ComputeWeightPerLengthNewtonsPerMillimetre(Element element, UnitsSection units, MaterialProperties material)
     {
         var toMm = units.LengthToMillimetres;
         var outsideDiameter = element.OutsideDiameter * toMm;
         var wallThickness = element.WallThickness * toMm;
         var insulationThickness = element.RealValues[7] * toMm;
 
-        var defaultPipeDensity = units.IsMetric ? DefaultSteelDensityKgPerM3 : DefaultSteelDensityLbPerIn3;
+        var defaultPipeDensity = units.IsMetric ? material.DensityKgPerM3 : material.DensityKgPerM3 / KgPerM3PerLbPerIn3;
         var pipeDensity = element.RealValues[29] is > 0 ? element.RealValues[29] : defaultPipeDensity;
         var insulationDensity = element.RealValues[30];
         var fluidDensity = element.RealValues[31];

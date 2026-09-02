@@ -2069,3 +2069,50 @@ concrete, buildable one now that the data source is known and public.
 ID/name listing from the UMAT1 printout) before building the table-driven material system — the
 table *extraction and structure* work itself could start once that's confirmed, without needing
 anything further from the user.
+
+## Implemented: MaterialLibrary placeholder + real placement-driver framework recorded (2026-09-01)
+
+User's reply: confirmed real material-specific constants (allowable, elastic modulus, thermal
+expansion coefficient, Poisson's ratio — "some of these can be calculated") are needed, sourced
+from the UMAT1 printout ("all materials are in the umat1.pdf print out with the corresponding
+number and properties"). Also gave the actual engineering framework this is all in service of:
+**rest positioning is mainly governed by sustained stress; horizontal guide/hold-down spacing is
+mainly governed by expansion stress; vertical guide spacing is mainly governed by vibration (but
+may also be expansion-governed).** Explicitly authorized deferring the exact heuristics: "these
+heuristics may be determined later. Set a placeholder for this currently if required."
+
+**Recording the framework here so it doesn't need re-deriving**: this is real, valuable design
+guidance beyond what SPEC.md's original span/utilisation proxy captures. Sustained stress (rests),
+expansion stress (horizontal guides/hold-downs), and vibration (vertical guides) are three distinct
+physical drivers needing three different calculations — none of which `MockStressSolver`'s current
+simplified span check attempts. Not implementing any of the three calculations yet (vibration
+analysis in particular is a substantial, separate topic from static stress) — logged as the target
+architecture for when M2's hold-down/guide items actually get built out.
+
+**Implemented the placeholder, per direct instruction**: `MaterialLibrary`
+(`src/Conduit.Core/Heuristics/MaterialLibrary.cs`) — a `MaterialProperties` record (allowable
+stress, elastic modulus, density, thermal expansion coefficient, Poisson's ratio) resolved by
+CAESAR's own numeric material ID (`#$ MISCEL_1`'s `RRMAT`, already parsed but never previously
+consulted for this). `SpanLimitCalculator.ComputeMaxSpan(NeutralFile, Element)` now resolves the
+*element's own* material via this library instead of always falling back to the same hardcoded A106
+Grade B constants regardless of what the file's `RRMAT` actually says. Only one material (#107,
+A106 Grade B) has real data so far — every other ID currently falls back to it, identical to the
+previous behavior for every existing test/fixture (confirmed: 98/98 tests passing, and the CLI's
+output on `loop-2d.cii` is byte-identical to before this refactor, same 10835.70 mm max span). This
+is the "placeholder" — the *mechanism* is real and ready to grow; the *data* isn't guessed.
+`ThermalExpansionCoefficientPerDegreeCelsius`/`PoissonsRatio` are explicitly `null` (never
+extracted from the UMAT1 printout, not guessed) rather than a fabricated number, since this is
+safety-relevant engineering data.
+
+**What's still needed from the user**: the UMAT1 printout was reviewed once, several rounds back,
+but never committed (its temporary attachment link has since expired) — re-extracting anything
+beyond material #107's four already-recorded values needs either a fresh copy of it, or the
+specific materials/RRMAT IDs that matter for the user's real work (per the still-open ask in the
+"Found: B31.3-2024's own Appendix A/C tables..." entry above). Also asked for clarification on
+"some of these can be calculated" — which properties, and by what relationship (e.g. Poisson's
+ratio from E and shear modulus, if that's what's meant) — rather than guessing.
+
+**Next step**: posted this on the PR. `MaterialLibrary`'s data stays at one material until the
+printout (or specific material list) comes back — the mechanism doesn't need anything further to be
+useful going forward (every new material is now just one more dictionary entry, once its values are
+verified).
