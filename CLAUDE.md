@@ -3,6 +3,32 @@
 You are building this project in the background. Read SPEC.md first; it is the source of truth.
 Optimize for finishing correctly with the fewest interruptions to me.
 
+## Continuous progress, no idling (per direct instruction, 2026-09-01)
+A quiet PR — no new comments, no new messages — is not a signal to stop and wait. It means: keep
+implementing the next milestone item (see "## Milestones" below). Progress matters more than
+getting each increment right on the first attempt — review will always surface things to improve;
+that's expected and welcome, not a reason to slow down or wait for pre-approval before building.
+
+Only stop *working* (not just checking in) when every currently-unblocked path is genuinely
+exhausted — everything left requires either a stop-and-ask consultation (per the rules below) or a
+step only the user can do (a Windows/CAESAR II action Claude can't run in this container). When
+that happens: batch the remaining blocking items into QUESTIONS.md exactly as the stop-and-ask rule
+already requires, keep the scheduled PR check-in running, and use time between check-ins
+productively (tests, docs, PROGRESS.md/QUESTIONS.md/TESTING.md upkeep, prep for the next
+milestone's unblocked items) rather than re-arming and doing nothing.
+
+A milestone boundary is a natural checkpoint to post a PR-comment summary and move on — it is
+**not** a mandatory pause. Only pause and wait at a milestone if the user says so, or if the very
+next milestone's first step is itself a stop-and-ask item.
+
+## Milestones
+See SPEC.md's "## Milestones" section for the current MVP milestone list, ordering, and status.
+Work top-down within a milestone; once its unblocked items are done, move to the next milestone
+automatically — don't wait for a review to greenlight starting it, unless SPEC.md or the milestone
+itself says otherwise. If the user reviews and reshapes a "done" milestone, fold that into
+QUESTIONS.md/PROGRESS.md and keep going; a milestone being revisited later isn't a failure, it's
+the review loop working as intended.
+
 ## Working style
 - Work in small, reviewable commits. Keep the build runnable at every commit.
 - Match existing patterns and conventions in the repo before introducing new ones.

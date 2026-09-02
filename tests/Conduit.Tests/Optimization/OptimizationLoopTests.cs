@@ -145,19 +145,24 @@ public class OptimizationLoopTests
 
     /// <summary>
     /// Regression test for a real report against <c>fixtures/loop-2d.cii</c> and
-    /// <c>fixtures/loop-50m-3d.cii</c>: once each 24 m leg overflows and needs reactive splitting
-    /// (<see cref="OptimizationLoop"/>'s <c>Adjust</c>/<c>TrySplit</c> path, not
-    /// <see cref="SupportPlacer"/>'s own initial pass), the *second* split — landing past the
-    /// jog, with part of its axis budget already spent by the jog's own short legs — used to
-    /// chunk the still-overlong leg from its own start rather than from the zone's true last
-    /// reset point, producing a new node whose cumulative span (jog + first chunk) still
+    /// <c>fixtures/loop-50m-3d.cii</c>: once each 24 m leg overflows, the split that resolves it —
+    /// landing past the jog, with part of its axis budget already spent by the jog's own short
+    /// legs — used to chunk the still-overlong leg from its own start rather than from the zone's
+    /// true last reset point, producing a new node whose cumulative span (jog + first chunk) still
     /// overflowed and had nowhere left to go, which was visually confirmed in CAESAR II as a
-    /// support sitting directly on a bend corner. Fixed by making the reactive split
-    /// budget-aware (<c>TrySplitAtFirstOverflow</c>) and bend/tee-aware
-    /// (<c>TryPickMidpointNode</c>).
+    /// support sitting directly on a bend corner. Originally fixed in
+    /// <see cref="OptimizationLoop"/>'s reactive <c>Adjust</c>/<c>TrySplit</c> fallback
+    /// (budget-aware <c>TrySplitAtFirstOverflow</c>, bend/tee-aware <c>TryPickMidpointNode</c>);
+    /// per direct instruction (2026-09-01), <see cref="SupportPlacer"/>'s own initial pass now
+    /// resolves this same scenario directly (see <c>SupportPlacerTests</c>'s
+    /// <c>SplitsAnOverlongLegItselfInsteadOfLeavingItForTheReactiveFallback</c>), so this test
+    /// mostly exercises <see cref="OptimizationLoop"/>'s end-to-end wiring now rather than its
+    /// reactive fallback specifically — kept as full-pipeline coverage for the same real bug, and
+    /// as a check that the reactive fallback (still in place as a safety net) hasn't silently
+    /// stopped being reachable/correct if this scenario is ever routed through it again.
     /// </summary>
     [Fact]
-    public void PlanarJogWithOverlongLegs_ReactiveSplitting_NeverRestrainsABendNode()
+    public void PlanarJogWithOverlongLegs_NeverRestrainsABendNode()
     {
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
         {
@@ -174,6 +179,11 @@ public class OptimizationLoopTests
 
         Assert.True(result.Passed);
         Assert.DoesNotContain(file.Restraints, r => bendNodes.Contains(r.Node));
+
+        // With splitting folded into SupportPlacer's own initial pass (per direct instruction,
+        // 2026-09-01), this should resolve in a single iteration — the initial placement already
+        // satisfies MockStressSolver, with no Adjust round needed at all.
+        Assert.Equal(1, result.Iterations);
 
         // The second leg's split shouldn't cluster new supports just past the jog to stay
         // conservative — with the two-tier chunking fix (a short first chunk sized to the

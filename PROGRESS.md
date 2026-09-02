@@ -510,3 +510,28 @@ running status log Claude appends to (skim this from mobile)
   meters, then extends 12m in z, then goes 9.2 meters in x to the final anchor") and rebuilt
   `fixtures/fig6-8-example.cii` to the actual, much simpler 3-element geometry, replacing the
   earlier flattened multi-segment guess. 83/83 tests passing.
+- 2026-09-01: per direct instruction, updated CLAUDE.md with a "no idling on a quiet PR" policy —
+  absent new comments/messages, keep working the milestone list below instead of just re-checking
+  and waiting — and added a "## Milestones" section to SPEC.md (M1-M5) mapping the path from the
+  current state to a done MVP, folding in the user's same-day PR comment (test-file tooling, the
+  colleague's CAESAR-automation approach, and folding element-splitting into `SupportPlacer`'s own
+  initial pass). While drafting M1, found the "reactive-split rest doesn't get a companion guide"
+  gap flagged open in the round-3/4 QUESTIONS.md entries was actually already closed by round 4's
+  `AddSupport` helper (adds a `Gui` DOF for any `SupportType.Rest`, reactive path included) — just
+  never called out explicitly when it landed. Corrected QUESTIONS.md/SPEC.md rather than
+  re-implementing something already working.
+- 2026-09-01: implemented M1's main item — folded `OptimizationLoop`'s reactive element-splitting
+  into `SupportPlacer`'s own initial-pass walk, per direct instruction ("I would not like the
+  placement to be done during a walk"). `SupportPlacer` now splits an element whose own span is too
+  long for any existing/eligible node to relieve, using the exact same two-tier `ElementSplitter`
+  chunking and restraint-pointer-preservation math the reactive fallback already used, inline during
+  its own walk (no `nodes` list rebuild needed — splitting an element doesn't change the run's total
+  per-axis length, so every downstream node's precomputed position stays valid). `OptimizationLoop`'s
+  reactive path is unchanged and stays in place as a safety net. Verified against all three real
+  fixtures (`loop-2d.cii`, `loop-50m-3d.cii`, `fig6-8-example.cii` via the CLI) and the full test
+  suite: each fixture now `PASS`es in exactly 1 iteration (down from 2-3), with the same final
+  placements as before (same interior nodes, same even 10,000 mm grid spacing). Updated
+  `SupportPlacerTests`/`OptimizationLoopTests` doc comments that had gone stale describing the old
+  reactive-only behavior, and added direct SupportPlacer-level coverage for the split. 84/84 tests
+  passing (1 new). Tee/branch span accumulator remains open for the next round — genuine topology
+  complexity with no concrete failing case driving it yet, unlike this item.

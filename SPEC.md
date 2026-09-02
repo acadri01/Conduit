@@ -596,6 +596,67 @@ decisions"). This locator only answers "where," not "how to read what's there."
       and do not block build/test.
 - [x] PROGRESS.md and QUESTIONS.md updated per CLAUDE.md as work proceeds.
 
+## Milestones
+The acceptance criteria above are the v1 baseline and are already met. These milestones are the
+forward path from here to a genuinely done MVP, defined 2026-09-01 per direct instruction so work
+continues automatically between reviews instead of idling on a quiet PR — see CLAUDE.md's
+"Continuous progress, no idling" section. Work top-down; move to the next milestone's unblocked
+items as soon as the current one's are done, without waiting for a review to greenlight it. Items
+marked **(consult)** are support-placement-logic decisions that still need the user per CLAUDE.md's
+one-type-at-a-time rule — they get batched into QUESTIONS.md and don't block the rest of their
+milestone.
+
+- **M1 — Support-placement consistency pass.** Close the gaps the last redesign round left open,
+  all pure engineering (no new support-type policy):
+  - ~~Give a reactively-split rest the same co-located guide `SupportPlacer`'s own initial pass
+    gives every plain rest~~ — already done (`OptimizationLoop.AddSupport`, landed with the round-4
+    clustering fix but never explicitly logged as closing this; see QUESTIONS.md's 2026-09-01
+    correction entry).
+  - Extend tee/branch handling from point-exclusion (the tee node itself is kept clear) to a real
+    separate span accumulator for the branch arm. **Still open** — genuine topology-handling
+    complexity (how a branch's own accumulator should interact with its header run's) with no
+    concrete failing case driving it yet, unlike the other M1 items; left for the next round.
+  - ~~Fold `OptimizationLoop`'s reactive element-splitting into `SupportPlacer`'s own initial-pass
+    walk~~ — **done (2026-09-01)**, per the user's same-day PR comment: "I would not like the
+    placement to be done during a walk. It would be better if the initial pass identified the same
+    placements as we currently have." `SupportPlacer` now splits a single-element span too long
+    for any existing node to help (same `ElementSplitter` math OptimizationLoop's reactive fallback
+    used) directly during its own walk, rather than relying on `OptimizationLoop.Adjust` to
+    discover it after a failed `IStressSolver.Evaluate` round-trip. Verified against all three real
+    fixtures (`loop-2d.cii`, `loop-50m-3d.cii`, `fig6-8-example.cii`): each now `PASS`es in a single
+    iteration instead of 2-3, with identical final placements to before. `OptimizationLoop`'s
+    reactive path stays in place as a safety net for whatever the initial pass still misses.
+- **M2 — Remaining support-type criteria (consult).** v1's classifier only ever produces rest,
+  guide, or anchor; hold-down and line-stop have no placement criteria yet. Per CLAUDE.md, each is
+  defined one at a time with the user before implementation:
+  - Hold-down **(consult)**: what makes a location need `-Y`/`-Z` (resisting uplift) instead of
+    plain `+Y`/`+Z`?
+  - Line stop **(consult)**: what makes a location need `LIM` (restrains axial/lateral movement
+    along the run)?
+  - Guide direction cosines **(consult)**: still `(0,0,0)` — a real, non-placeholder value per the
+    guide's own run axis is still open (see QUESTIONS.md).
+- **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: evaluate and build
+  whichever is more efficient — a small Conduit-side generator program for synthetic input files
+  (so the user isn't hand-authoring them), and/or an automatic `.C2` → `.cii` conversion helper so
+  the user can keep authoring files the way they normally would (in CAESAR II itself) and hand
+  Conduit the native file directly. Depends on how `IechoConverter`'s real invocation ends up
+  working (see "Native file adapter (iecho)") — evaluate now, build what's unblocked, log the rest.
+- **M4 — Real-CAESAR-validation path.** Windows-only, needs the user's environment to actually
+  exercise, but the design/decision work can happen now:
+  - Document and evaluate the user's colleague's GUI-automation approach (driving CAESAR II's input
+    GUI directly, reading results back from the CAESAR II 15.1 result database it now produces) as
+    an alternative or complement to the originally-planned `CaesarComStressSolver` COM path — per
+    the user's 2026-09-01 PR comment point 2, this could be "a functioning alternative to what we
+    currently have" and would directly enable the results-informed iteration loop Conduit is built
+    around.
+  - Decide (with the user) which path `CaesarComStressSolver` should target first once this is
+    resolved, and update the "Caesar II abstraction" section of this doc accordingly.
+- **M5 — End-to-end real validation.** Once M4's path is working: run Conduit's proposed placements
+  through an actual CAESAR II analysis (not `MockStressSolver`) on a real or realistic model, and
+  compare the result against engineering judgment / a hand-placed layout. This is the milestone
+  that actually proves the MVP's core promise ("a first-pass, defensible support layout") rather
+  than just its plumbing.
+
 ## Known open decisions (pre-answer what you can)
 - Real sample `.cii` files and the official Hexagon format documentation (CAESAR II Users Guide,
   v15 neutral file interface) are now available and were used to write the "Neutral file format"
@@ -674,9 +735,11 @@ decisions"). This locator only answers "where," not "how to read what's there."
   against the actual image rather than an earlier paraphrase, and diagonal segments remain out of
   MVP scope). Still open: tee/branch *span* exclusion (only the node itself is kept clear of
   placements so far, not a separate accumulator for the branch arm), applying the SIF at a tee, the
-  guide direction-cosine question (still `(0,0,0)`, unresolved from a few rounds back), and a
-  reactive-split rest not getting the same companion guide an initial-pass one does. See
-  QUESTIONS.md's "Implemented: the `SupportPlacer` rewrite" entry for the full derivation.
+  guide direction-cosine question (still `(0,0,0)`, unresolved from a few rounds back). (A
+  reactive-split rest not getting the same companion guide an initial-pass one does was flagged
+  here too, but turned out to already be fixed by the time of the round-4 clustering fix — see
+  QUESTIONS.md's 2026-09-01 correction entry.) See QUESTIONS.md's "Implemented: the `SupportPlacer`
+  rewrite" entry for the full derivation.
 - **Resolved (2026-08-28, third round):** a real report (with CAESAR II screenshots) showed the
   bend-corner bug still happening after the rewrite above — traced to `OptimizationLoop.Adjust`'s
   reactive fallback path (`TryPickMidpointNode`/`TrySplit`, used when the initial pass alone can't

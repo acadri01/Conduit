@@ -50,9 +50,17 @@ public sealed record PlacedSupport(int Node, SupportType Type, RestraintType Res
 /// own topology is still a simple element-order chain (see <see cref="SplitIntoRuns"/>); a branch
 /// element diverging from a run is walked as its own separate run wherever it appears in file
 /// order, unaffected by (and not affecting) the header run's accumulators.</item>
-/// <item>Supports can only be placed at existing nodes in this file — <see cref="SupportPlacer"/>
-/// itself never splits an element to introduce one. <see cref="Optimization.OptimizationLoop"/>'s
-/// reactive pass does that when nothing else works.</item>
+/// <item><b>Splits during the initial pass, not reactively (per direct instruction, 2026-09-01:
+/// "I would not like the placement to be done during a walk. It would be better if the initial
+/// pass identified the same placements as we currently have").</b> When an overflow is detected
+/// and there's no eligible node anywhere in the zone to back off to (the current node is itself
+/// excluded — a bend/tee or its clearance — and nothing eligible came before it since the last
+/// reset), <see cref="SupportPlacer"/> now splits the offending element itself
+/// (<see cref="ElementSplitter"/>, same two-tier chunking and restraint-pointer-preservation math
+/// <see cref="Optimization.OptimizationLoop"/>'s reactive fallback already used), placing a support
+/// at each new interior node inline. <see cref="Optimization.OptimizationLoop"/>'s own reactive
+/// `Adjust`/`TrySplit` path stays in place as a safety net for whatever this pass still misses, but
+/// should trigger rarely to never for cases this pass's own model already covers.</item>
 /// <item>A "run" is a contiguous stretch of <see cref="NeutralFile.Elements"/> (in file order)
 /// between two nodes that already carry an anchor (<see cref="RestraintType.Anc"/>) restraint.
 /// Elements before the first anchor or after the last aren't part of any run and are skipped.</item>
@@ -261,8 +269,84 @@ public static class SupportPlacer
             return null;
         }
 
-        foreach (var node in nodes)
+        // Splits the element ending at <paramref name="node"/> (the axis <paramref name="axis"/>
+        // overflowed) into evenly-spaced chunks, per <see cref="ElementSplitter"/>, placing a
+        // support (with a companion guide, matching every other rest) at each new interior node.
+        // Returns false (nothing changed) when the max span rounds down to under
+        // <see cref="ElementSplitter.ChunkRoundingIncrementMillimetres"/> — a pipe too small for
+        // even a 1 m chunk, left for the caller to leave unresolved exactly as before.
+        bool TrySplitElement(RunNode node, PipeAxis axis, double thresholdMillimetres, double remainingBudgetMillimetres)
         {
+            var element = node.ElementEndingHere;
+            var elementLengthMillimetres = element.Length * toMillimetres;
+            var elementOutsideDiameterMillimetres = element.OutsideDiameter * toMillimetres;
+            var nextNode = file.Elements.SelectMany(e => new[] { e.FromNode, e.ToNode }).DefaultIfEmpty(0).Max() + 10;
+
+            // If this element already carries a restraint (its FromNode or ToNode is a run's own
+            // anchor), the split must preserve that pointer on whichever new chunk still ends at
+            // that same node — see ElementSplitter.Split's doc comment.
+            var restraintPointer = element.AuxiliaryPointers[Element.RestraintPointerIndex];
+            var restraintBelongsToFromNode = restraintPointer != 0
+                && file.Restraints[restraintPointer - 1].Node == element.FromNode;
+
+            var plan = ElementSplitter.Split(
+                element, elementLengthMillimetres, thresholdMillimetres, elementOutsideDiameterMillimetres,
+                () =>
+                {
+                    var allocated = nextNode;
+                    nextNode += 10;
+                    return allocated;
+                },
+                restraintBelongsToFromNode,
+                firstChunkBudgetMillimetres: remainingBudgetMillimetres);
+
+            if (plan.NewInteriorNodes.Count == 0)
+            {
+                return false;
+            }
+
+            file.ReplaceElement(element, plan.Elements);
+
+            var chunkSupportType = axis == PipeAxis.Vertical ? SupportType.Guide : SupportType.Rest;
+            var chunkRestraintType = RestraintTypeMapper.Map(chunkSupportType, izup);
+            var axisLabel = axis switch
+            {
+                PipeAxis.Vertical => "vertical",
+                PipeAxis.HorizontalA => "horizontal-A",
+                _ => "horizontal-B",
+            };
+            foreach (var interiorNode in plan.NewInteriorNodes)
+            {
+                placed.Add(new PlacedSupport(interiorNode, chunkSupportType, chunkRestraintType,
+                    $"{axisLabel}-axis span would exceed the max allowable span of {thresholdMillimetres:F2} mm with no " +
+                    $"existing node close enough — split into {plan.Elements.Count} elements with a {chunkSupportType} " +
+                    "support at each new interior node"));
+                if (chunkSupportType == SupportType.Rest)
+                {
+                    placed.Add(new PlacedSupport(interiorNode, SupportType.Guide, RestraintType.Gui,
+                        $"co-located with the rest support at node {interiorNode} — a guide is added at every rest that isn't close to a bend or tee, per direct instruction"));
+                }
+                alreadySupported.Add(interiorNode);
+            }
+
+            // Reset every accumulator to reflect the last new interior node as the new baseline —
+            // the same "universal reset" every ordinary placement gets. Only the overflowing axis
+            // actually changes across this element (each element belongs to exactly one axis), so
+            // the other two axes' cumulative values are unchanged by the split either way.
+            var lastChunkLengthMillimetres = plan.Elements[^1].Length * toMillimetres;
+            baseVertical = axis == PipeAxis.Vertical ? node.CumulativeVertical - lastChunkLengthMillimetres : node.CumulativeVertical;
+            baseA = axis == PipeAxis.HorizontalA ? node.CumulativeA - lastChunkLengthMillimetres : node.CumulativeA;
+            baseB = axis == PipeAxis.HorizontalB ? node.CumulativeB - lastChunkLengthMillimetres : node.CumulativeB;
+            lastEligibleA = null;
+            lastEligibleB = null;
+            lastEligibleVertical = null;
+
+            return true;
+        }
+
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            var node = nodes[i];
             if (node.Node != runEndNode && alreadySupported.Contains(node.Node))
             {
                 // An existing restraint (from the input file, or one this run already placed)
@@ -314,7 +398,31 @@ public static class SupportPlacer
             var target = previousEligible ?? (eligibleHere ? node : (RunNode?)null);
             if (target is not { } t)
             {
-                continue; // no eligible node in this zone yet — left for OptimizationLoop's reactive splitting fallback
+                // Genuinely stuck: no eligible node anywhere in this zone (the current node is
+                // itself excluded — a bend/tee or its clearance — and nothing eligible came before
+                // it since the last reset). Split the offending element itself rather than leaving
+                // it for OptimizationLoop's reactive fallback to discover later.
+                var axis = overflowAxis.Value;
+                var maxSpanHere = SpanLimitCalculator.ComputeMaxSpan(file, node.ElementEndingHere);
+                var thresholdHere = axis == PipeAxis.Vertical ? maxSpanHere * VerticalSpanMultiplier : maxSpanHere;
+                var beforeCumulative = axis switch
+                {
+                    PipeAxis.Vertical => i == 0 ? 0.0 : nodes[i - 1].CumulativeVertical,
+                    PipeAxis.HorizontalA => i == 0 ? 0.0 : nodes[i - 1].CumulativeA,
+                    _ => i == 0 ? 0.0 : nodes[i - 1].CumulativeB,
+                };
+                var baseForAxis = axis switch
+                {
+                    PipeAxis.Vertical => baseVertical,
+                    PipeAxis.HorizontalA => baseA,
+                    _ => baseB,
+                };
+                var remainingBudget = thresholdHere - (beforeCumulative - baseForAxis);
+                if (remainingBudget > 0)
+                {
+                    TrySplitElement(node, axis, thresholdHere, remainingBudget);
+                }
+                continue; // if splitting wasn't possible either, left as an unresolved failure — same as before
             }
 
             PlaceAt(t);

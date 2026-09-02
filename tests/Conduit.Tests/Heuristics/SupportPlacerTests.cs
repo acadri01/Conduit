@@ -114,11 +114,13 @@ public class SupportPlacerTests
 
     /// <summary>
     /// Never place a support directly on a bend corner — the bug report that started this whole
-    /// redesign. A 24 m leg into a 90° bend, on its own, has no interior node to fall back to, so
-    /// <see cref="SupportPlacer"/>'s own pass correctly places nothing there (left for
-    /// <see cref="Optimization.OptimizationLoop"/>'s reactive <see cref="ElementSplitter"/>
-    /// fallback, covered in <see cref="Optimization.OptimizationLoopTests"/>) — what this test
-    /// asserts is simply that nothing ever lands *on* node 20 itself.
+    /// redesign. A 24 m leg into a 90° bend, on its own, has no interior node to fall back to —
+    /// per direct instruction (2026-09-01), <see cref="SupportPlacer"/>'s own initial pass now
+    /// splits this leg itself (<see cref="ElementSplitter"/>) rather than leaving it for
+    /// <see cref="Optimization.OptimizationLoop"/>'s reactive fallback to discover after a failed
+    /// evaluate — see <see cref="SplitsAnOverlongLegItselfInsteadOfLeavingItForTheReactiveFallback"/>
+    /// for that. What this test asserts is simply that nothing ever lands *on* node 20 itself,
+    /// regardless of which mechanism resolves the rest of the leg.
     /// </summary>
     [Fact]
     public void NeverPlacesASupportDirectlyOnABendCorner()
@@ -136,13 +138,42 @@ public class SupportPlacerTests
     }
 
     /// <summary>
+    /// Per direct instruction (2026-09-01): "I would not like the placement to be done during a
+    /// walk. It would be better if the initial pass identified the same placements as we currently
+    /// have." A 24 m leg ending at a bend has no interior node to back off to, so
+    /// <see cref="SupportPlacer"/>'s own pass now splits it (same math
+    /// <see cref="Optimization.OptimizationLoop"/>'s reactive fallback used to apply one evaluate
+    /// cycle later) and places a rest+guide at each new interior node, in this same call —
+    /// verified directly here rather than only through <see cref="Optimization.OptimizationLoopTests"/>'s
+    /// end-to-end coverage.
+    /// </summary>
+    [Fact]
+    public void SplitsAnOverlongLegItselfInsteadOfLeavingItForTheReactiveFallback()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            Seg(10, 20, 24000, 0, 0),
+            Seg(20, 30, 0, 0, 2000),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, [10, 30], izup: 0, bendNodes: [20]);
+
+        var placed = SupportPlacer.PlaceSupports(file);
+
+        Assert.NotEmpty(placed);
+        Assert.All(placed, p => Assert.True(p.Type is SupportType.Rest or SupportType.Guide));
+        Assert.DoesNotContain(placed, p => p.Node is 10 or 20 or 30); // never on an anchor or the bend
+        Assert.True(file.Elements.Count > 2, "the 24 m leg should have been split into more than one element");
+    }
+
+    /// <summary>
     /// A purely-planar ("2D") jog — mirrors <c>fixtures/loop-2d.cii</c>: a long X leg, a small
     /// Z-axis offset, then a long X leg back to the far anchor, all in one horizontal plane (no
     /// vertical element at all). Per direct instruction, the two horizontal axes' span
     /// accumulation is tracked separately with a universal reset at any support — a rest on
-    /// either long leg (added reactively once each leg is split, since a single 24 m element has
-    /// no interior node of its own) resets the *other* horizontal axis too, so the short 2000 mm
-    /// Z-axis offset in the middle never needs — and never gets — a support of its own.
+    /// either long leg (split by <see cref="SupportPlacer"/>'s own initial pass, since a single
+    /// 24 m element has no interior node of its own) resets the *other* horizontal axis too, so
+    /// the short 2000 mm Z-axis offset in the middle never needs — and never gets — a support of
+    /// its own.
     /// </summary>
     [Fact]
     public void PlanarJog_GetsNoSupportsInsideTheJogItself()

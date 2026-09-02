@@ -1790,3 +1790,23 @@ that it `PASS`es without supporting either bend.
 **Next step**: report both fixes on the PR with the verified spacing/geometry. Both loop fixtures
 and Fig 6.8 should now be ready for another real CAESAR II check if the user wants one, though
 nothing is currently known to be wrong with them.
+
+## Correction: the "reactive-split companion-guide gap" was already closed, just never called out (2026-09-01)
+
+While drafting SPEC.md's new Milestones section (see CLAUDE.md's "Continuous progress, no idling"
+policy, added the same day), re-read `OptimizationLoop.cs` to scope the M1 milestone item "give a
+reactively-split rest the same companion guide the initial pass gives" — and found it's already
+done. The fourth round's `AddSupport(file, node, type, izup)` helper (introduced for the
+clustering fix, to add restraints at every new interior node from a split) already packs a `Gui`
+DOF onto the restraint whenever `type == SupportType.Rest`, and both reactive call sites
+(`TryPickMidpointNode`'s single-node add, and `TrySplit`'s per-interior-node loop) go through it.
+So the gap flagged open in the round-3 and round-4 entries above ("reactive-split companion-guide
+gap") was a side effect fixed without being explicitly logged as resolving that specific earlier
+note — the round-4 entry documents the clustering fix but never mentions this. No code change
+needed here; corrected the stale "still open" language in SPEC.md's "Known open decisions" section
+and in this file's own round-3/4 "Still not done" wording. Real remaining M1 work: folding
+element-splitting into `SupportPlacer`'s own initial pass (per the user's 2026-09-01 PR comment),
+and the tee/branch span accumulator.
+
+**Next step**: none — this is a documentation correction, not a blocking question. Continuing with
+M1's remaining items per SPEC.md's Milestones section.
