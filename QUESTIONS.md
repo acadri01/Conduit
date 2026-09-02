@@ -2116,3 +2116,98 @@ ratio from E and shear modulus, if that's what's meant) — rather than guessing
 printout (or specific material list) comes back — the mechanism doesn't need anything further to be
 useful going forward (every new material is now just one more dictionary entry, once its values are
 verified).
+
+## Corrected: material #107 was never A106 Grade B — it's A135 Grade A (2026-09-02)
+
+The user uploaded their real UMAT1.pdf printout (1,708 pages, CAESAR II Material Data Base v4.20,
+COADE-supplied). Extracted with `pdftotext -layout` and searched directly.
+
+**Question 1, answered — Poisson's ratio doesn't need calculating.** The user asked: "I'm not sure
+about calculating the poisson ratio as I am not confident the shear modulus is in the material
+data. You may check this." Checked:
+- `grep -i "shear modulus\|shear mod"` → zero matches anywhere in the 1,708 pages.
+- `grep -i "poisson"` → many matches, always a direct field, e.g. `POISSONS RATIO: 0.2920 MIN TEMP
+  CURVE: -`.
+
+So the user's suspicion was correct: shear modulus isn't in the data at all. But that's fine —
+Poisson's ratio doesn't need deriving from it, because it's already a direct per-material lookup
+value in the printout. No calculation required.
+
+**Question 2, found unprompted while answering Question 1 — material #107 was wrong all along.**
+While looking up material #107 (recorded in the codebase since 2026-08-28 as "ASTM A106 Grade B")
+to cross-reference its Poisson's ratio, its actual printout entry read:
+
+```
+NUMBER: 107                             NAME:   A135 A
+APPLICABLE PIPING CODE:    0
+DENSITY kg/m3     :       7833.4399     COLD MODULUS MPa        : 0.2034E+06
+POISSONS RATIO:              0.2920     MIN TEMP CURVE:      -
+```
+
+`grep -n "MATERIAL.*107\|NUMBER: 107"` confirms this at 7 separate locations across the printout's
+repeated per-piping-code sections (`A135 A` and `A135 Grade A` both appear — same material, the
+naming just varies slightly by code section). ASTM A135 is an electric-resistance-welded steel pipe
+spec — a real, different material from A106 (seamless carbon steel pipe for high-temperature
+service).
+
+Searched for where A106 Grade B actually lives: `grep -n "A106"` shows it consistently at
+**material #106** (`NUMBER: 106  NAME: A106 B` / `A106 Grade B`, same 7-location pattern). The
+earlier round's extraction was a plain off-by-one — caught only because CLAUDE.md requires
+re-verifying against the primary source (the printout itself) rather than trusting a prior round's
+recorded number, which is exactly the situation this rule exists for.
+
+**What was actually still correct**: density (7833.4399 kg/m³) and cold elastic modulus
+(203,400 MPa) turn out to be identical for materials #106 and #107 in this printout — so those two
+values, despite being extracted under the wrong material number, were numerically right for A106
+Grade B all along by coincidence (both are generic carbon-steel physical constants CAESAR reuses
+across several materials in its database, not something specific to material #107).
+
+**What was wrong**: the allowable stress (118 MPa). Tracing where it came from: the printout
+repeats every material once per an internal numeric "APPLICABLE PIPING CODE" ID (0, 1, 3, 4, 5, 8,
+10, 12, 13, 24, 29, 32, 33, 37, 38, 39, 40, 43, 44...) — CAESAR's own code-selection list, in an
+order not documented anywhere in the 1,708-page printout (no legend maps a number to a named code
+or edition). Material #106's code-"1" section shows: Poisson's ratio 0.3000 (not 0.2920 as in the
+generic code-0 section), and an allowable-stress column populated at 118 MPa flat from -29°C to
+343°C, then declining (108 MPa at 371°C, 90 at 399°C, 74 at 427°C). That's where 118 MPa came from —
+copied from this unidentified code-1 section.
+
+Cross-checked against `reference/B31.3-2024.pdf`'s own Table A-1 (the code Conduit defaults to,
+`CaesarConfig.DefaultAssumedCode = B31.3_2024`). Table A-1's material-listing page unambiguously
+assigns A106 Grade B to **Line 33** (matching its min tensile 415 MPa / min yield 240 MPa exactly).
+Line 33's allowable-stress curve: 138 MPa flat from -196°C to 200°C, then declining (132 at 250°C,
+126 at 300°C, 122 at 325°C...) — a materially different curve from UMAT1's code-1 section (138 vs
+118 MPa at ambient, and the "flat until" temperature differs: 200°C vs 343°C). **Code "1" in UMAT1
+is not B31.3-2024** — it's some other code or an older B31.3 edition (allowable stresses were
+revised between editions), and without a legend there's no reliable way to identify which.
+
+**Decision (decide-and-proceed — reversible, internal, already implied by CaesarConfig's own
+B31.3-2024 default)**: allowable stress is now read from `reference/B31.3-2024.pdf`'s Table A-1
+directly rather than any UMAT1 piping-code section, since (a) it's the code Conduit actually
+targets by default, (b) it's unambiguous and code-authoritative, and (c) UMAT1's numeric code IDs
+can't currently be identified with confidence. Physical properties (density, elastic modulus,
+thermal expansion coefficient, Poisson's ratio) stay sourced from UMAT1's generic code-0 section,
+since those are genuine material physical constants (confirmed identical across every code section
+for the same material), not code-specific design limits. Poisson's ratio specifically uses 0.30
+(the code-1 section's value, and carbon steel's conventional textbook value) rather than code-0's
+0.292 — a minor, non-safety-critical rounding choice between two real values from the same
+document, logged as an assumption.
+
+**Also added a second real material while this was open**: material #107 (A135 Grade A) is now a
+genuine second `MaterialLibrary` entry (was previously *also* incorrectly labeled A106 Grade B,
+since everything resolved to the single placeholder record) — density/modulus from UMAT1 material
+#107, allowable stress cross-checked against B31.3-2024 Table A-1 Line 12 (110 MPa, confirmed via
+its own min tensile/yield match). This is a real, if small, step toward "no point in creating an
+MVP that only handles a single type of material."
+
+**Corrected**: `MaterialLibrary.A106GradeBMaterialId` 107 → 106, `AllowableStressMpa` 118.0 → 138.0,
+`SpanLimitCalculator.DefaultAllowableBendingStressMpa` likewise, `ThermalExpansionCoefficientPerDegreeCelsius`
+and `PoissonsRatio` populated with real ambient values (1.0925e-5 /°C, 0.30) instead of `null`. One
+test (`UnsplittableElement_IsStillReportedRatherThanLoopedForever`) needed its deliberately-extreme
+density constant increased (5,000,000 → 50,000,000 kg/m³) to keep exercising the "genuinely
+irreducible failure" edge case now that the corrected (higher) allowable stress raises the computed
+max span slightly — not a logic change, just re-tuning a fixture constant to the new number. 98/98
+tests passing.
+
+**Next step**: none blocking — this was a self-contained correction, not something needing the
+user's input. Reply posted on the PR summarizing both findings. The still-open ask from the
+previous entry (which further materials/RRMAT IDs matter for the user's real work) stands.

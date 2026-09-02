@@ -35,11 +35,14 @@ namespace Conduit.Core.Heuristics;
 /// stress when the file provides one (real, per-material/code/temperature data CAESAR II computed
 /// when generating the file — see <see cref="ComputeMaxSpan(NeutralFile, Element)"/>), falling
 /// back to <see cref="DefaultAllowableBendingStressMpa"/>/<see cref="DefaultAllowableBendingStressPsi"/>
-/// only when the file has no allowable-stress record for that element. This fallback is no longer
-/// an arbitrary placeholder — it's ASTM A106 Grade B's real cold/ambient allowable stress (118 MPa),
-/// read directly from the user's own CAESAR II material database (UMAT1.umd, material #107) —
-/// per direct instruction to reference a real, complete material rather than CAESAR's generic
-/// "LOW CARBON" entry (material #1), which turns out to carry no allowable/yield/UTS data at all.
+/// only when the file has no allowable-stress record for that element. This fallback is not an
+/// arbitrary placeholder — it's ASTM A106 Grade B's real cold/ambient allowable stress (138 MPa),
+/// read from <c>reference/B31.3-2024.pdf</c>'s own Table A-1 (Line 33), the code Conduit targets by
+/// default. See <see cref="MaterialLibrary"/>'s class doc comment for why allowable stress is
+/// sourced from the B31.3 code table rather than the user's UMAT1.umd printout directly (that
+/// printout's numeric "applicable piping code" IDs have no legend tying them to a named
+/// code/edition) and for the 2026-09-02 correction of material #107 (previously believed to be
+/// A106 Grade B; it's actually A135 Grade A — A106 Grade B is material #106).
 /// </item>
 /// <item>Distributed weight <c>w</c> includes pipe metal, insulation, and a fully-liquid-filled
 /// bore, computed from the element's own density fields (falling back to
@@ -58,22 +61,24 @@ namespace Conduit.Core.Heuristics;
 /// <c>RRMAT</c> array) — not always the same hardcoded A106 Grade B values regardless of what the
 /// file specifies. <see cref="MaterialLibrary"/> is a placeholder (per direct instruction,
 /// 2026-09-01: "no point in creating an MVP that is only able to handle a single type of
-/// material... set a placeholder for this currently"): the *mechanism* is real, the *data* is
-/// still just this one material until more are available. This constants block
-/// (<see cref="DefaultAllowableBendingStressMpa"/> etc.) mirrors <see cref="MaterialLibrary"/>'s
-/// A106 Grade B entry and exists for backward-compatible direct access; <see cref="MaterialLibrary"/>
-/// is the source of truth going forward.</item>
+/// material... set a placeholder for this currently"): the *mechanism* is real; the *data* now
+/// covers two real materials (A106 Grade B and A135 Grade A) and can grow from here. This
+/// constants block (<see cref="DefaultAllowableBendingStressMpa"/> etc.) mirrors
+/// <see cref="MaterialLibrary"/>'s A106 Grade B entry and exists for backward-compatible direct
+/// access; <see cref="MaterialLibrary"/> is the source of truth going forward.</item>
 /// </list>
 /// </summary>
 public static class SpanLimitCalculator
 {
     /// <summary>
-    /// A106 Grade B's real cold/ambient allowable stress (MPa), read directly from the user's own
-    /// CAESAR II material database (UMAT1.umd, material #107) — used as the fallback allowable
+    /// A106 Grade B's real cold/ambient allowable stress (MPa), read from
+    /// <c>reference/B31.3-2024.pdf</c>'s Table A-1, Line 33 — used as the fallback allowable
     /// stress for a metric file with no <c>#$ ALLOWBLS</c> record for an element. The metric
-    /// equivalent of <see cref="DefaultAllowableBendingStressPsi"/>.
+    /// equivalent of <see cref="DefaultAllowableBendingStressPsi"/>. See
+    /// <see cref="MaterialLibrary"/>'s class doc comment for why this is a code-table value
+    /// rather than the UMAT1.umd printout's own (ambiguous) allowable-stress data.
     /// </summary>
-    public const double DefaultAllowableBendingStressMpa = 118.0;
+    public const double DefaultAllowableBendingStressMpa = 138.0;
 
     /// <summary>A106 Grade B's real cold/ambient allowable stress (psi), for an English file's span formula, when it has no <c>#$ ALLOWBLS</c> record.</summary>
     public const double DefaultAllowableBendingStressPsi = DefaultAllowableBendingStressMpa / MpaPerPsi;

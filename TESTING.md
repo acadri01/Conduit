@@ -17,34 +17,29 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: optional recheck — three independent things confirmed by automated tests this round, a
-real CAESAR II reopen would double-check any/all of them from your end too, none blocking.**
+**Status: optional recheck — a material-data correction this round, confirmed by automated tests,
+none blocking.**
 
-1. **Placement mechanism change**: `SupportPlacer`'s own initial pass now splits an overlong leg
-   itself instead of relying on `OptimizationLoop`'s reactive fallback one evaluate-cycle later.
-   All three loop/Fig-6.8 fixtures `PASS` in a single iteration instead of 2-3, same final
-   placements as before.
-2. **Tee detection switched to the real SIF pointer**: per your correction ("determine a tee by its
-   tee/sif pointer, not by the actual geometry"), confirmed against your attached `NEWTEST.cii`
-   (now committed at `fixtures/real-samples/NEWTEST.cii`) — 3 of its 4 real intersections have no
-   branch geometry at all, which the old node-degree check would have missed. `SupportPlacer`/
-   `OptimizationLoop` now use `Element.IntersectionPointer` instead.
-3. Tee/branch span exclusion (a branch arm starting at a tee gets its own independent span
-   accumulator) is done — turned out to fix a real bug where such a branch was silently dropped
-   entirely, not just under-supported.
+Your uploaded UMAT1.pdf printout revealed material #107 was wrongly recorded as A106 Grade B in
+every earlier round — it's actually A135 Grade A. A106 Grade B is material #106. The allowable
+stress fallback (118 MPa) also turned out to be from an unidentified UMAT1 piping-code section, not
+B31.3-2024; it's now read from `reference/B31.3-2024.pdf`'s own Table A-1 instead (138 MPa
+cold/ambient for A106 Grade B). Also confirmed your suspicion: shear modulus isn't in the UMAT1
+data at all, but Poisson's ratio doesn't need it — it's a direct per-material field. Full derivation
+in QUESTIONS.md's "Corrected: material #107 was never A106 Grade B..." entry.
 
-To recheck any of these: rerun the three example fixtures —
+This only affects `SpanLimitCalculator`'s *fallback* values — used when a file has no `#$ ALLOWBLS`
+record for an element (real files usually do, so this may not change anything for your actual
+projects). To recheck: rerun the three example fixtures —
 ```
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
 ```
-then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI.
-`NEWTEST.cii` itself has no restraints yet (0 anchors in the file as you sent it), so
-`conduit optimize` on it alone won't exercise placement — the tee-detection fix is verified via
-`IntersectionPointerTests`/`SupportPlacerTests` directly against its real `#$ SIF&TEES` data
-instead. If you'd like a real end-to-end placement check against it, adding an anchor or two to a
-copy of the file (or telling me where to add one) would let `conduit optimize` actually run on it.
+then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in CAESAR II's GUI —
+comparing against last round's output would show whether the corrected allowable stress actually
+changed any placements for these fixtures (they either carry real `#$ ALLOWBLS` data already, or
+use material #106/#107 specifically — worth confirming either way).
 
 Still open, not part of this round's ask: applying the SIF at a tee, and the guide direction-cosine
 question — see SPEC.md's "## Milestones" section (M2) for these, batched as consult items with

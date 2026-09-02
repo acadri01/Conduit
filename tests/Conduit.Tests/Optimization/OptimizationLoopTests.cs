@@ -81,7 +81,7 @@ public class OptimizationLoopTests
         // the MVP.
         var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
         {
-            new(10, 20, DeltaX: 50000, DeltaY: 0, DeltaZ: 0, OutsideDiameter: 168.3, WallThickness: 7.11, PipeDensity: 5_000_000),
+            new(10, 20, DeltaX: 50000, DeltaY: 0, DeltaZ: 0, OutsideDiameter: 168.3, WallThickness: 7.11, PipeDensity: 50_000_000),
         };
         var file = NeutralFileFixtureBuilder.Build(segments, [10, 20]);
 

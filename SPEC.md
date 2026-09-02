@@ -704,6 +704,40 @@ milestone.
     Thermal expansion coefficient/Poisson's ratio are explicitly `null` (never guessed). 98/98
     tests passing, CLI output byte-identical to before this refactor. See QUESTIONS.md's
     "Implemented: MaterialLibrary placeholder..." entry for the full detail.
+  - **Update (2026-09-02): real UMAT1.pdf received, and it corrected a standing error.** The user
+    uploaded their actual UMAT1 material database printout (1,708 pages). Two findings:
+    1. **Poisson's ratio question answered.** The user asked whether it needs calculating from
+       shear modulus, since they weren't confident shear modulus is even in the data. Confirmed by
+       full-text search: "shear modulus" appears zero times in the printout; "Poisson's ratio" is a
+       direct per-material field (e.g. `POISSONS RATIO: 0.2920`). No calculation needed — it's a
+       straight lookup.
+    2. **Material #107 was never A106 Grade B.** Grepping the printout for material #107 shows
+       `NUMBER: 107  NAME: A135 A` (ASTM A135, electric-resistance-welded pipe) — not A106 Grade B,
+       contradicting every earlier round's docs and code. A106 Grade B is actually material **#106**
+       (`NUMBER: 106  NAME: A106 B`, confirmed at 7 separate locations across the printout's
+       repeated per-piping-code sections). This was a plain off-by-one in an earlier round, caught
+       only because CLAUDE.md requires re-verifying against the primary source rather than trusting
+       a prior summary — the density/modulus values already in the codebase (7833.4399 kg/m³,
+       203,400 MPa) turned out to be correct (both materials share identical physical constants in
+       this printout), only the ID and the allowable-stress value were wrong.
+    - Also found while cross-checking: the printout repeats every material once per an internal,
+      undocumented numeric "applicable piping code" ID (0, 1, 3, 4, 5, 8, 10, 33...) with no legend
+      anywhere in the 1,708 pages tying a number to a named code/edition. The previous round's
+      118 MPa allowable-stress fallback had been copied from one of these unidentified code
+      sections (code "1"). Cross-checked that section's full temperature curve against
+      `reference/B31.3-2024.pdf`'s own Table A-1 (Line 33, unambiguously ASTM A106 Grade B via its
+      matching min-tensile/yield entry) and the curves don't match — code "1" isn't B31.3-2024.
+      Since Conduit defaults to B31.3-2024, allowable stress is now read directly from that table
+      instead (138 MPa cold/ambient, correcting the 118 MPa fallback) rather than continuing to
+      guess at UMAT1's code-ID scheme.
+    - `MaterialLibrary` now has two real, corrected entries: A106 Grade B (#106) and A135 Grade A
+      (#107, its allowable stress likewise cross-checked against B31.3-2024 Table A-1 Line 12 —
+      110 MPa). Thermal expansion coefficient and Poisson's ratio are now populated (ambient
+      values: 1.0925e-5 /°C, 0.30) rather than `null`. Full derivation and source-line citations in
+      `MaterialLibrary`'s class doc comment and QUESTIONS.md's "Corrected: material #107 was never
+      A106 Grade B..." entry. 98/98 tests passing (one fixture's deliberately-extreme density
+      constant bumped to keep exercising the "genuinely unsplittable" edge case now that the
+      higher allowable stress raises the computed max span slightly).
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means
@@ -868,3 +902,11 @@ milestone.
   not 200mm) — already matches `ElementSplitter`'s existing radius+500mm constant exactly, no code
   change needed. See QUESTIONS.md's "Implemented: real A106 Grade B material + textbook span
   formula" entry for the full derivation and verification detail.
+  - **Correction (2026-09-02):** the material ID and allowable stress cited above were wrong. The
+    user's real UMAT1.pdf printout shows material #107 is ASTM A135 Grade A, not A106 Grade B —
+    A106 Grade B is material #106. The 118 MPa allowable stress had also been copied from an
+    unidentified UMAT1 "applicable piping code" section that doesn't match `reference/B31.3-2024.pdf`'s
+    own Table A-1 for A106 Grade B (138 MPa cold/ambient). Density (7833.4399 kg/m3) and elastic
+    modulus (203,400 MPa) were unaffected — both materials share identical physical constants in
+    the printout. See the M2 section's 2026-09-02 update above and QUESTIONS.md for the full
+    re-derivation.

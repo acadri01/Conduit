@@ -590,3 +590,13 @@ running status log Claude appends to (skim this from mobile)
   passing (3 new), CLI output confirmed byte-identical to before the refactor. Posted on the PR,
   asking for the printout re-share (expired link) and clarification on "some of these can be
   calculated."
+- 2026-09-02: user uploaded their real UMAT1.pdf printout. Confirmed Poisson's ratio needs no
+  calculation (shear modulus isn't in the data; Poisson's ratio is a direct field). Found and fixed
+  a standing error: material #107 was never A106 Grade B, it's A135 Grade A — A106 Grade B is
+  material #106. The 118 MPa allowable-stress fallback also came from an unidentified UMAT1 code
+  section that doesn't match B31.3-2024's own Table A-1 for A106 Grade B (138 MPa); switched to
+  reading allowable stress from that table directly. Added A135 Grade A as a real second
+  MaterialLibrary entry (110 MPa via B31.3-2024 Table A-1 Line 12) and populated real thermal
+  expansion coefficient/Poisson's ratio (previously null). 98/98 tests passing (one fixture's
+  extreme-density constant re-tuned for the new allowable-stress value). Full derivation in
+  QUESTIONS.md's "Corrected: material #107 was never A106 Grade B..." entry.
