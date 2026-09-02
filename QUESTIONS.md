@@ -1810,3 +1810,111 @@ and the tee/branch span accumulator.
 
 **Next step**: none — this is a documentation correction, not a blocking question. Continuing with
 M1's remaining items per SPEC.md's Milestones section.
+
+## Proposed: M3 fixture-generator CLI subcommand — input format and scope (2026-09-01)
+
+Per your point 1 ("a small program that creates the input files... let's discuss how this could be
+done") and my PR reply proposing to expose the existing from-scratch generator as a CLI subcommand:
+before moving code and locking in an external file format, want your read on the concrete shape,
+since it's the kind of choice that's cheap to get right up front and annoying to have you relearn
+if I guess wrong.
+
+**Proposed CLI surface**: `conduit generate <spec.json> <output.cii>` — reads a small JSON
+description of a run and writes a structurally-valid `.cii` (same synthesis logic
+`NeutralFileFixtureBuilder` already uses for the committed fixtures — `#$ VERSION`/`WIND`/`UNITS`/
+`COORDS` boilerplate, `#$ ELEMENTS`/`#$ BEND` from your segment list, `#$ RESTRANT` anchors — cross-
+checked against the real samples' byte layout, see "Neutral file format" above).
+
+**Proposed input format** (JSON, since it needs no extra dependency — `System.Text.Json` is built
+into .NET — and maps directly onto the existing `PipeSegmentSpec` fields):
+```json
+{
+  "izup": 0,
+  "anchors": [10, 100],
+  "segments": [
+    { "from": 10, "to": 20, "dx": 8000, "dy": 0, "dz": 0, "od": 168.3, "wt": 7.11 },
+    { "from": 20, "to": 100, "dx": 0, "dy": 0, "dz": 12000, "od": 168.3, "wt": 7.11, "bend": true }
+  ]
+}
+```
+`od`/`wt` (and density, defaulting to the fixture builder's existing steel constant if omitted) per
+segment rather than once for the whole file, so a run with a size change is still describable.
+
+**Open questions this needs your input on, not guessed at**:
+1. Is JSON the right format for you to hand-write/edit, or would a flatter, more spreadsheet-like
+   form (CSV, or a simple line-oriented text format — one line per segment) fit your actual workflow
+   better? You mentioned you'd still prefer to create test files yourself when practical — worth
+   optimizing for what's fastest to hand-edit, not just what's easiest for Conduit to parse.
+2. Does the segment-by-segment `from`/`to` node numbering match how you'd naturally describe a run,
+   or would auto-numbered nodes (you just give directions/lengths in sequence) be more natural?
+3. Scope: is a single straight/jogged run with anchors and bends enough for what you need test files
+   for right now, or do you also want equipment nozzles (`#$ EQUIPMNT`) and tees/branches
+   describable from day one?
+
+**Implementation note, not blocking the question above**: `NeutralFileFixtureBuilder` currently
+lives in the test project, explicitly documented as test-only/not-part-of-Conduit.Core (see
+"Generating test neutral files" above — that boundary was about keeping *production* Conduit.Core's
+own parsing free of invented data, written before this CLI-facing use case existed). Building this
+subcommand means relocating that synthesis logic into `Conduit.Core` for real, as a genuine new
+production capability, not just an internal refactor — flagging that since it's a real scope
+addition to what Conduit's CLI does, not merely an implementation detail.
+
+**Next step**: once you weigh in on the three questions above (or say "just pick something and
+build it"), implement the subcommand: move `NeutralFileFixtureBuilder`'s synthesis logic into
+`Conduit.Core` (test project keeps calling it via the same names, now through a `Conduit.Core`
+reference instead of its own local copy — mechanical, low-risk, existing tests don't change
+behavior), add the JSON (or chosen format) parser, wire up the `generate` CLI verb, and add tests
+plus a `TESTING.md` walkthrough entry. Proceeding with the JSON design above as the default if no
+response arrives before the next round, per the continuous-progress policy — logged here so it's a
+visible, reversible choice rather than a silent one.
+
+## M2 starting proposals: guide direction cosine, hold-down, line stop (2026-09-01)
+
+Bringing concrete starting proposals rather than open-ended questions, per CLAUDE.md's "batch
+consult questions with a concrete next step" rule and the M2 milestone.
+
+**1. Guide direction cosine — the old fix's vehicle no longer exists; is the problem still real?**
+The round-3 discussion (see "Answers received: deterministic loop-placement rule" above) concluded
+CAESAR's own `(0,0,0)` default is correct for the ordinary case, and only needs an explicit non-zero
+cosine when an all-round vertical guide would over-restrain a real thermal-expansion path — which
+that round handled via a *loop-specific* placement rule (no guide ever lands on a loop's own
+vertical/transverse legs). That loop-specific mechanism was superseded by the later universal-reset
+per-axis rewrite, which has no concept of "loop" at all — but the underlying physical concern
+(a standalone riser's guide, left at `(0,0,0)`, restrains *both* lateral directions, one of which
+might be an adjacent run's own expansion path) can still occur under the current model, e.g. a
+riser near a bend into a long horizontal run. Unlike the loop case, there's no obvious general rule
+here without knowing what's actually adjacent to a given riser — "restrain the direction nothing
+downstream needs to expand into" requires reasoning about the wider layout, not just the riser
+itself. **Question**: keep `(0,0,0)` as the standing default for every guide for now (simplest,
+matches "no need to define this right now" from the original guide-at-every-rest instruction), and
+revisit only if a real case shows it causing a problem — or is this worth a general rule now? If the
+latter, what should that rule look for?
+
+**2. Hold-down — starting proposal, needs your correction.** A rest (`+Y`/`+Z`) alone can't resist
+uplift; a hold-down is needed wherever something could lift the pipe off a rest — thermal bowing
+between two rests on a long span, a relief-valve/safety-valve discharge reaction, or a point
+specifically called out as needing a bidirectional restraint. v1 has no signal for any of these yet
+(no valve/relief-load data parsed from the neutral file, no thermal-bowing calculation). **Proposed
+MVP simplification**: don't infer hold-downs automatically at all for v1 — only emit one where the
+input file already specifies uplift resistance is needed (if that's discoverable from `#$ RESTRANT`
+or `#$ EQUIPMNT` data Conduit already parses), and leave genuine new-hold-down placement as a
+post-MVP heuristic once there's a concrete case to design against. Is that an acceptable scope cut,
+or is there a simpler v1-appropriate trigger I'm missing (e.g. "always pair a hold-down with a rest
+within N mm of an equipment nozzle")?
+
+**3. Line stop — starting proposal, needs your correction.** A line stop (`LIM`) restrains
+movement along a specific axis at one point — typically needed near equipment nozzles (to keep
+piping-induced load off the nozzle in a specific direction), at expansion joints (to force
+directed movement rather than letting the joint wander), or where a branch needs to be held from
+walking axially. v1 already has real nozzle data (`#$ EQUIPMNT`) driving the anchor heuristic.
+**Proposed MVP simplification**: reuse that same nozzle-proximity signal for line stops instead of
+(or alongside) anchors when a location is near a nozzle but doesn't need the *other* directions
+restrained too — though this needs your judgment on when a nozzle-adjacent point should get a full
+anchor vs. just a line stop, since v1's current heuristic always escalates to anchor near a nozzle
+and has no criterion yet for choosing the lighter-weight option instead.
+
+**Next step**: once you weigh in (or say "use the proposals as-is"), implement whichever of these
+three isn't a scope cut into `SupportTypeClassifier`/`RestraintTypeMapper`/`SupportPlacer`, with
+tests against a concrete synthetic scenario for each. No support-placement code changes for these
+three specifically will be pushed ahead of your answer, per CLAUDE.md's reservation of this class
+of decision — M1/M3 work continues in the meantime, unaffected.

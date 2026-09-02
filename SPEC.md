@@ -635,19 +635,29 @@ milestone.
     reactive path stays in place as a safety net for whatever the initial pass still misses.
 - **M2 — Remaining support-type criteria (consult).** v1's classifier only ever produces rest,
   guide, or anchor; hold-down and line-stop have no placement criteria yet. Per CLAUDE.md, each is
-  defined one at a time with the user before implementation:
+  defined one at a time with the user before implementation. Concrete starting proposals for all
+  three posted 2026-09-01 (see QUESTIONS.md's "M2 starting proposals" entry) — implementation
+  paused on each pending confirmation/correction, not blocking M1/M3:
   - Hold-down **(consult)**: what makes a location need `-Y`/`-Z` (resisting uplift) instead of
-    plain `+Y`/`+Z`?
+    plain `+Y`/`+Z`? Proposed: no automatic inference for v1 (no uplift-load data parsed yet) —
+    only emit one where the input file already specifies it, if discoverable.
   - Line stop **(consult)**: what makes a location need `LIM` (restrains axial/lateral movement
-    along the run)?
-  - Guide direction cosines **(consult)**: still `(0,0,0)` — a real, non-placeholder value per the
-    guide's own run axis is still open (see QUESTIONS.md).
-- **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: evaluate and build
-  whichever is more efficient — a small Conduit-side generator program for synthetic input files
-  (so the user isn't hand-authoring them), and/or an automatic `.C2` → `.cii` conversion helper so
-  the user can keep authoring files the way they normally would (in CAESAR II itself) and hand
-  Conduit the native file directly. Depends on how `IechoConverter`'s real invocation ends up
-  working (see "Native file adapter (iecho)") — evaluate now, build what's unblocked, log the rest.
+    along the run)? Proposed: reuse the existing nozzle-proximity signal, as a lighter-weight
+    alternative to escalating straight to anchor.
+  - Guide direction cosines **(consult)**: still `(0,0,0)` — the round-3 fix for this (a
+    loop-specific placement rule) was superseded by the later universal-reset rewrite, which has no
+    "loop" concept; the underlying over-restraint concern can still occur for a standalone riser,
+    but there's no obvious general rule without reasoning about what's adjacent to it. Proposed:
+    keep `(0,0,0)` as the standing default until a real case shows it's a problem.
+- **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
+  proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
+  fixture-generator CLI subcommand" entry, along with the actual implementation note — this means
+  relocating `NeutralFileFixtureBuilder`'s synthesis logic from the test project into
+  `Conduit.Core` for real (a genuine new production capability, not just an internal refactor,
+  since it was previously deliberately kept test-only — see "Generating test neutral files" above).
+  Paused pending format confirmation, per the same consult-first treatment as a genuine UX/scope
+  choice; the separate `.C2` → `.cii` conversion fallback stays gated on M4 (`IechoConverter` isn't
+  fully headless in that direction — see "Native file adapter (iecho)").
 - **M4 — Real-CAESAR-validation path.** Windows-only, needs the user's environment to actually
   exercise, but the design/decision work can happen now:
   - Document and evaluate the user's colleague's GUI-automation approach (driving CAESAR II's input
