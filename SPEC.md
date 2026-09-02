@@ -757,6 +757,15 @@ milestone.
     around.
   - Decide (with the user) which path `CaesarComStressSolver` should target first once this is
     resolved, and update the "Caesar II abstraction" section of this doc accordingly.
+  - **Evaluated (2026-09-02):** checked all 4 vendor PDFs already in `reference/` (New Analysis
+    Reviewer Help, Output Tab, Static Analysis Help, Static Analysis Output Help) for any mention
+    of a CAESAR II 15.1 "results database" — zero matches for "database" across any of them. They
+    document only the two interactive GUI reviewers and their save-to-ASCII-text/PDF report paths
+    (the mechanism the existing "revised plan for `CaesarComStressSolver`," above, is already built
+    around). This is the same situation as `UMAT1.UMD`/`iecho.exe`: a real file/mechanism the user
+    knows exists (via their colleague), but with no format documentation in anything Conduit has
+    access to — genuinely blocked, not something to guess at. See QUESTIONS.md's "Evaluated: the
+    colleague's CAESAR II 15.1 result-database approach..." entry for the two paths forward.
 - **M5 — End-to-end real validation.** Once M4's path is working: run Conduit's proposed placements
   through an actual CAESAR II analysis (not `MockStressSolver`) on a real or realistic model, and
   compare the result against engineering judgment / a hand-placed layout. This is the milestone

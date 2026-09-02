@@ -2211,3 +2211,47 @@ tests passing.
 **Next step**: none blocking — this was a self-contained correction, not something needing the
 user's input. Reply posted on the PR summarizing both findings. The still-open ask from the
 previous entry (which further materials/RRMAT IDs matter for the user's real work) stands.
+
+## Evaluated: the colleague's CAESAR II 15.1 result-database approach (2026-09-02)
+
+M4's first bullet ("document and evaluate the colleague's GUI-automation approach... as an
+alternative or complement to `CaesarComStressSolver`'s COM path") is design/decision work that can
+happen without a real CAESAR II install, so worked it while the material-data correction above was
+otherwise the only unblocked item. The user's 2026-08-31 PR comment: "A colleague of mine has
+created a program that automatically runs Caesar... Caesar v15.1 now creates a database with all
+the output information."
+
+**Checked whether Conduit already has documentation of this**: grepped all four Static/output-
+related vendor PDFs already in `reference/` (`New-Analysis-Reviewer-Help.pdf`, `Output-Tab.pdf`,
+`Static-Analysis-Help.pdf`, `Static-Analysis-Output-Help.pdf`) for "database" — zero matches across
+all four. What they *do* document (already reflected in SPEC.md's "Caesar II abstraction" section,
+the "revised plan for `CaesarComStressSolver`"): the two interactive GUI reviewers (Classic Static
+Output Processor, modern New Analysis Reviewer) and their save-to-ASCII-text/PDF report mechanisms
+— no mention of a queryable results database file anywhere in this documentation set.
+
+**This is the same situation as `UMAT1.UMD` and `iecho.exe`'s exact invocation contract**: a real
+mechanism the user has independent knowledge of (via their colleague) that isn't covered by any
+documentation Conduit currently has access to. Two ways forward, neither of which is guessing at an
+undocumented binary/database format:
+1. **Ask the user for more detail**, if they're willing — even without troubling the colleague
+   directly (per their earlier "not natural to ask him either" on a different but related point):
+   what kind of database (a `.mdb`/Access file? SQLite? SQL Server? a proprietary CAESAR format?),
+   roughly where CAESAR II 15.1 writes it relative to a job's `.cii` file, and ideally a sample or
+   its schema/table list if the colleague's tool has ever printed one.
+2. **Stay on the already-documented ASCII-report path** (SPEC.md's existing "revised plan") as the
+   concrete, buildable-now direction, since it doesn't require reverse-engineering anything — a
+   custom Report Template is authored once, its column layout is fixed and known, and CAESAR II's
+   own "Send to Text File" mechanism is fully vendor-documented. The results-database route, if its
+   format becomes available, could still complement this later (structured parsing is strictly
+   easier than ASCII-report parsing once the schema is known) rather than replace it.
+
+**Not deciding between them unilaterally** — this is exactly the kind of external/Windows-dependent
+choice M4 flags as "needs the user's environment," and path 1 requires the user's own judgment
+about troubling their colleague, which isn't Conduit's call to make. Recording this as a genuine
+finding (there's nothing more to extract from the docs already available) rather than a
+placeholder.
+
+**Next step**: waiting on the user — either more detail about the database (if they're willing to
+ask), or an explicit "just build the ASCII-report path, skip the database idea for now." No code
+changes attempted in the meantime, since either path only touches `CaesarComStressSolver`'s skeleton
+which nothing else in the codebase depends on.
