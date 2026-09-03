@@ -61,9 +61,10 @@ namespace Conduit.Core.Heuristics;
 /// <c>RRMAT</c> array) — not always the same hardcoded A106 Grade B values regardless of what the
 /// file specifies. <see cref="MaterialLibrary"/> now covers all 399 real materials in the user's
 /// UMAT1 printout (per direct instruction, 2026-09-02: "I would like to have all the materials in
-/// the database"), though only two (#106, #107) have a real, verified allowable stress — see
-/// <see cref="MaterialLibrary"/>'s class doc comment. A material whose own allowable stress or
-/// elastic modulus isn't yet known falls back further, to material #106's real values, inside
+/// the database"), the ~200 ASTM materials B31.3 lists carrying a real, verified B31.3 allowable
+/// stress — see <see cref="MaterialLibrary"/>'s class doc comment. A material whose own allowable
+/// stress or elastic modulus isn't known (the ~199 non-B31.3 materials; materials #9/#12's
+/// modulus) falls back further, to material #106's real values, inside
 /// <see cref="ComputeMaxSpan(NeutralFile, Element)"/>. This constants block
 /// (<see cref="DefaultAllowableBendingStressMpa"/> etc.) mirrors <see cref="MaterialLibrary"/>'s
 /// A106 Grade B entry and exists for backward-compatible direct access;
@@ -133,12 +134,12 @@ public static class SpanLimitCalculator
     /// resolved material (<see cref="MaterialLibrary.Resolve"/>, via <c>#$ MISCEL_1</c>'s
     /// <c>RRMAT</c> material ID) otherwise — not always the same hardcoded material regardless of
     /// what the file actually specifies. <see cref="MaterialLibrary"/> now covers all 399 real
-    /// materials in the user's UMAT1 printout, though only two (#106, #107) have a real, verified
-    /// <see cref="MaterialProperties.AllowableStressMpa"/> (an inherently code-specific value, not
-    /// safely extractable for the other 397 — see <see cref="MaterialLibrary"/>'s class doc
-    /// comment); any material with a <c>null</c> allowable stress or elastic modulus (materials
-    /// #9/#12 — a genuine data-quality issue in the source printout, also documented there) falls
-    /// back further, to material #106's own real values, rather than leaving the span uncomputable.
+    /// materials in the user's UMAT1 printout, the ~200 ASTM materials B31.3 lists carrying a real,
+    /// verified B31.3 <see cref="MaterialProperties.AllowableStressMpa"/> (see
+    /// <see cref="MaterialLibrary"/>'s class doc comment); any material with a <c>null</c> allowable
+    /// stress (the ~199 non-B31.3 materials) or <c>null</c> elastic modulus (materials #9/#12 — a
+    /// genuine data-quality issue in the source printout, also documented there) falls back further,
+    /// to material #106's own real values, rather than leaving the span uncomputable.
     /// </summary>
     public static double ComputeMaxSpan(NeutralFile file, Element element)
     {

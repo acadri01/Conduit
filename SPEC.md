@@ -757,16 +757,26 @@ milestone.
     data-quality issues were found in the *source* printout itself during this pass (not
     extraction bugs): materials #9 (WROUGHT IRON) and #12 (K-MONEL) both list an impossible
     negative "cold modulus" (-1.01 MPa, an unpopulated-field sentinel) — `ElasticModulusMpa` is
-    `null` for these two rather than that value. Allowable stress stays `null` for all but the two
-    already-cross-referenced materials (#106, #107) — it's a code-specific design limit, not a
-    material property, and cross-referencing 397 more materials by name against B31.3-2024's own
-    ~110-page Table A-1 is real, separate scope not attempted this round (see QUESTIONS.md).
+    `null` for these two rather than that value. Poisson's ratio for #106/#107 now uses the same
+    code-0 source as every other material (0.292, superseding the immediately preceding round's 0.30
+    from an unidentified per-code section) for consistency across the whole library. 102/102 tests
+    passing; all three real fixtures produce byte-identical placements to before this change (none
+    of them use a material outside #106/#107, and two carry their own real `#$ ALLOWBLS` data
+    anyway).
+  - **Update (2026-09-03): real B31.3 allowable stress for 200 materials.** The previous entry left
+    allowable stress `null` for all but #106/#107. Rather than parse the B31.3-2024 PDF's Table A-1
+    geometry (attempted, then abandoned — its listing↔stress-page join gave a wrong answer for one
+    verification anchor; see QUESTIONS.md), the far more robust route was to *identify which of
+    UMAT1's own unlabeled numeric piping-code sections is B31.3*: exactly three (codes 3/50/63)
+    reproduce both hand-verified anchors (#106=138, #107=110), never disagree where they overlap,
+    and code 3 is the widest. Code 3 was then cross-checked against the B31.3-2024 PDF at seven
+    further materials by name — all matched, nine independent confirmations total. Allowable stress
+    now comes from code 3 for the ~200 ASTM materials B31.3 lists; the ~199 EN/DIN/JIS specs and
+    CAESAR ASTM duplicates B31.3 doesn't list stay `null` and fall back to material #106.
     `SpanLimitCalculator` falls back to material #106's real allowable stress/elastic modulus for
-    any material missing its own. Poisson's ratio for #106/#107 now uses the same code-0 source as
-    the other 397 (0.292, superseding the immediately preceding round's 0.30 from an unidentified
-    per-code section) for consistency across the whole library. 102/102 tests passing; all three
-    real fixtures produce byte-identical placements to before this change (none of them use a
-    material outside #106/#107, and two carry their own real `#$ ALLOWBLS` data anyway).
+    any material missing its own. 108/108 tests passing; the three real fixtures are still
+    byte-identical (they use #106, whose 138 MPa was already correct). See QUESTIONS.md's "Shipped:
+    real B31.3 allowable stress for 200 materials..." entry.
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means

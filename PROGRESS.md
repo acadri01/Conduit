@@ -628,3 +628,12 @@ running status log Claude appends to (skim this from mobile)
   (real block-boundary tracking + cross-validation against UMAT1's own yield/tensile data) so a
   future attempt doesn't repeat the same failure. No code changes — MaterialLibrary stays honest
   (397 materials null, falling back to #106).
+- 2026-09-03: shipped real B31.3 allowable stress for 200 materials (up from 2). Instead of parsing
+  the B31.3-2024 PDF table (which failed validation earlier), identified which of UMAT1's own
+  unlabeled piping-code sections is B31.3 by matching the two hand-verified anchors (#106=138,
+  #107=110) — exactly codes 3/50/63 match, code 3 is the widest, and code 3 was cross-checked
+  against the PDF at 7 more materials by name (9 confirmations total). Allowable now comes from code
+  3 for the 200 ASTM materials B31.3 lists; the ~199 EN/DIN/JIS + duplicate materials stay null and
+  fall back to #106. AllowableStressMpa was already nullable. 108/108 tests passing (2 removed, 6
+  parameterized added); all 3 real fixtures byte-identical (they use #106). Full derivation in
+  QUESTIONS.md's "Shipped: real B31.3 allowable stress for 200 materials" entry.

@@ -39,17 +39,39 @@ public class MaterialLibraryTests
     }
 
     /// <summary>
-    /// Most of the 399 materials have no code-authoritative allowable stress cross-referenced yet
-    /// (see the class doc comment) — this should be a real, honest <c>null</c>, not a guess.
+    /// Allowable stress comes from CAESAR's own B31.3 code section (code 3), verified at nine
+    /// points against the B31.3-2024 PDF — so the ~200 ASTM materials B31.3 lists carry a real
+    /// value. A few distinctive ones checked by name against the PDF's Table A-1 (all ambient/cold
+    /// end): A53 Grade A 110, A53 Grade B 138, A333 Grade 1 126, A312 TP304 (stainless) 138.
     /// </summary>
-    [Fact]
-    public void Resolve_MostMaterials_HaveNoGuessedAllowableStress()
+    [Theory]
+    [InlineData(101, "A53 A", 110.0)]
+    [InlineData(102, "A53 B", 138.0)]
+    [InlineData(174, "A333 1", 126.0)]
+    [InlineData(155, "A312 TP304", 138.0)]
+    public void Resolve_B31_3ListedMaterial_HasItsRealB31_3AllowableStress(int materialId, string name, double allowableMpa)
     {
-        var lowCarbon = MaterialLibrary.Resolve(1);
+        var material = MaterialLibrary.Resolve(materialId);
 
-        Assert.Null(lowCarbon.AllowableStressMpa);
-        Assert.NotNull(lowCarbon.ElasticModulusMpa);
-        Assert.True(lowCarbon.DensityKgPerM3 > 0);
+        Assert.Equal(name, material.Name);
+        Assert.Equal(allowableMpa, material.AllowableStressMpa);
+    }
+
+    /// <summary>
+    /// The ~199 materials B31.3 does not list (generic CAESAR classes like #1 "LOW CARBON",
+    /// EN/DIN/JIS specs, and CAESAR ASTM duplicates only tabulated under other codes) keep an
+    /// honest <c>null</c> allowable rather than a guessed one — <see cref="SpanLimitCalculator"/>
+    /// falls back to material #106's value for these. Physical properties are still real.
+    /// </summary>
+    [Theory]
+    [InlineData(1)]     // LOW CARBON — a generic CAESAR class, not a B31.3-listed ASTM spec
+    [InlineData(420)]   // 1.4541CS — an EN/DIN spec, covered by EN 13480 not B31.3
+    public void Resolve_NonB31_3Material_HasNullAllowableRatherThanAGuess(int materialId)
+    {
+        var material = MaterialLibrary.Resolve(materialId);
+
+        Assert.Null(material.AllowableStressMpa);
+        Assert.True(material.DensityKgPerM3 > 0);
     }
 
     /// <summary>

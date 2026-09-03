@@ -2448,3 +2448,52 @@ no code changes this entry, by design.
 **Next step**: none blocking. This is real, scoped follow-up work for whenever it's picked up again
 — the next attempt should start from "track block boundaries explicitly and cross-validate every
 join against UMAT1's own yield/tensile data," not from a fresh reading of the table.
+
+## Shipped: real B31.3 allowable stress for 200 materials, by identifying UMAT1's own B31.3 code section (2026-09-03)
+
+Picked this back up ("go through and make sure to make the agreed changes") and found a
+**fundamentally more robust route than parsing the B31.3-2024 PDF's table geometry at all** — which
+is what the previous entry got stuck on. The insight: UMAT1 itself already contains allowable
+stress for every material, tabulated once per an internal numeric `APPLICABLE PIPING CODE` ID. The
+problem was never that the data is missing — it's that the code IDs are unlabeled. So instead of
+going to a different document (the PDF) and fighting its layout, **identify which UMAT1 code number
+IS B31.3**, then read every material's allowable from that one internally-consistent section.
+
+**How the code section was identified and verified** (nine independent confirmations, no
+PDF-geometry parsing in the final pipeline):
+1. For each numeric code, read the ambient allowable of the two independently hand-verified anchors
+   (#106 A106 Grade B = 138 MPa, #107 A135 Grade A = 110 MPa — both confirmed against
+   `reference/B31.3-2024.pdf` Table A-1 in prior rounds). Exactly three code sections match *both*
+   anchors: codes **3, 50, 63** (plausibly consecutive B31.3 editions — 2018/2020/2022/2024). All
+   other codes give different values (code 1 = 118/81, code 33 = 241/207, etc.).
+2. The three matching codes **never disagree** on allowable where they overlap, and code **3** is
+   the widest — codes 50 and 63 are strict subsets of code 3's material set. So code 3 is the
+   single most complete B31.3 representation in the database.
+3. Cross-checked code 3 against the B31.3-2024 PDF at **seven further materials** by name (not by
+   the fragile line-number join — I read the PDF's block-1 listing/stress page pair, which pairs
+   cleanly, and matched by spec+grade): A53 A (110), A53 B (138), A106 A (110), A135 A (110),
+   A135 B (138), A333 1 (126), A333 6 (138). **All seven matched code 3 exactly.** Two anchors +
+   seven = nine independent confirmations that code 3 is B31.3(-2024-consistent).
+
+**Result**: `MaterialLibrary`'s allowable stress now comes from UMAT1 code section 3 for the
+**200** materials B31.3 lists (the ASTM carbon/low-alloy/stainless specs), up from just 2. The
+values for #106/#107 are unchanged (138/110 — code 3 agrees with the PDF, as it must). The
+remaining ~199 materials are genuinely not in any B31.3 code section — EN/DIN/JIS specs (1.4301,
+STPG370, etc.) that live under EN 13480 or JIS codes, plus a few CAESAR ASTM duplicate entries only
+tabulated under other codes (e.g. #153 A312 304, whose canonical twin #155 A312 TP304 *is* covered
+at 138 MPa). Those stay `null` and fall back to material #106, exactly as before.
+
+**Why this is trustworthy where the PDF-geometry join wasn't**: the join failed because it
+guessed a material's identity from page-adjacency of an ambiguous local line number. This approach
+never guesses identity — it reads each material's own record by CAESAR material number (unambiguous)
+from a single code section whose identity is pinned by nine name-matched B31.3 values. There's no
+line-number-reset problem because there are no line numbers involved; the join key is CAESAR's own
+material number, which is globally unique.
+
+108/108 tests passing (added parameterized tests: four B31.3 materials get their real allowable,
+two non-B31.3 materials stay null). All three real fixtures still produce byte-identical output
+(they use material #106, whose 138 MPa was already correct). CLI max-span unchanged at 10835.70 mm.
+
+**Next step**: none blocking. A possible future refinement — temperature-dependent allowable (code 3
+has the full curve, not just the ambient value) — is still deferred; the MVP uses the cold/ambient
+value, matching how `#$ ALLOWBLS`'s cold allowable is already consumed.
