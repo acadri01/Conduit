@@ -2388,3 +2388,63 @@ placeholder.
 ask), or an explicit "just build the ASCII-report path, skip the database idea for now." No code
 changes attempted in the meantime, since either path only touches `CaesarComStressSolver`'s skeleton
 which nothing else in the codebase depends on.
+
+## Investigated, not shipped: B31.3-2024 Table A-1 join for the other 397 materials' allowable stress (2026-09-02)
+
+Continuing the flagged follow-up from the "all 399 materials" entry above: a programmatic join
+against `reference/B31.3-2024.pdf`'s own Table A-1 (SI units), to get a real, code-authoritative
+allowable stress for the 397 `MaterialLibrary` materials that currently have `null`. Built a first
+version, found a real failure in it via cross-checking against the two already-known-correct
+answers, and am **not shipping it** — writing this up so a future attempt starts from what's
+already known rather than repeating the same mistake.
+
+**Table structure, mapped precisely this time**: Table A-1 (SI units) spans a contiguous
+110-page range (pages 206-315 of the extracted text) alternating two page types — a "LISTING"
+page (Spec/Grade/min-tensile/min-yield, headed "Nominal Composition... Line No.") and a "STRESS"
+page (the temperature-vs-allowable-stress table, headed "Basic Allowable Stress, S, MPa"). Found
+and fixed a page-classifier bug along the way: my first classifier required the literal substring
+"Product Form" to detect a LISTING page, but that header wraps across two lines ("Product" / "Form")
+on some pages depending on column width for that material category, so 8 real LISTING pages were
+silently misclassified as "OTHER" until the classifier was relaxed to just "Nominal" + "Composition"
++ "Line".
+
+**The real problem: "Line No." is a *local* index that resets at unpredictable points**, not a
+global one — confirmed empirically, not assumed. The very first block (Lines 1-160) spans multiple
+LISTING/STRESS page pairs *without* resetting, but a new block can start immediately after
+(Line numbering restarting at 1 for a new material category — low-alloy steel, stainless, etc.).
+Wrote a "block" grouper to track these boundaries, but the boundaries didn't cleanly self-identify
+(a stress page's row count came up short compared to its paired listing page on some pages, and
+one block ended up merging two clearly-unrelated line-number ranges — `[1, 3, 4]..[122, 240, 241]`
+in one "block," which is obviously two separate blocks incorrectly joined).
+
+**Tried a second approach — nearest-page-adjacency instead of block-grouping** (for each LISTING
+row, search outward from its own page index for the nearest STRESS page containing a value at that
+same line number) — and it's *worse*, confirmed by the exact regression-testing discipline this
+project uses everywhere else: check it against the two already-verified ground-truth answers before
+trusting it on anything new.
+- **A106 Grade B (Line 33)**: joined value **138 MPa** — correct, matches the hand-verified value
+  from the previous round exactly.
+- **A135 Grade A (Line 12)**: joined value **25 MPa** — **wrong**. The hand-verified value (also
+  cross-checked in the previous round, independently, against the same document) is **110 MPa**.
+  The nearest-adjacency search picked up a *different* material's "Line 12" from an unrelated
+  earlier table page — coincidentally reusing the same local line number — rather than the correct
+  one two pages later.
+
+**This is exactly the failure mode the earlier material-#107 mixup exemplified, caught before
+shipping instead of after**, because the join was checked against known-correct anchors rather than
+trusted on the strength of "the code ran without an error." One of two anchors silently gave a
+wrong answer — that's a 50% observed failure rate on the only ground truth available, nowhere near
+reliable enough to trust for the other 397 materials sight-unseen. **Not fixing the join further
+this round** — a reliable version needs real block-boundary tracking (a block starts when a new
+LISTING page's lowest line number is not a plausible continuation of the previous block's highest,
+verified against multiple signals, not just page proximity) plus a stronger, independent
+cross-check for every single joined material before trusting it, e.g. comparing UMAT1's own
+YIELD/UTS-by-temperature data (already extracted for all 399 materials) against Table A-1's
+Min. Yield/Min. Tensile Strength columns for the same (Spec, Grade) — a real correctness signal
+beyond "the name matched," costing nothing since both datasets are already extracted.
+`MaterialLibrary` stays as it is (397 materials honestly `null`, falling back to material #106) —
+no code changes this entry, by design.
+
+**Next step**: none blocking. This is real, scoped follow-up work for whenever it's picked up again
+— the next attempt should start from "track block boundaries explicitly and cross-validate every
+join against UMAT1's own yield/tensile data," not from a fresh reading of the table.

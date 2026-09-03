@@ -620,3 +620,11 @@ running status log Claude appends to (skim this from mobile)
   inflated the max span (unsafe direction). Hardened both to clamp to zero. Documented the general
   convention in docs/neutral-file/WALKTHROUGH.md for future field-parsing work. 103/103 tests
   passing (1 new, verified to fail pre-fix).
+- 2026-09-02: investigated (not shipped) a programmatic B31.3-2024 Table A-1 join to get real
+  allowable stress for the other 397 materials. Mapped the table's real page structure, but a
+  first-pass "nearest stress page" join gave a wrong answer (25 MPa vs. the correct 110 MPa) for
+  one of the two known-good anchors (A135 Grade A) — caught only by checking against ground truth
+  before trusting it. Not fixing this round; documented exactly what a reliable version needs
+  (real block-boundary tracking + cross-validation against UMAT1's own yield/tensile data) so a
+  future attempt doesn't repeat the same failure. No code changes — MaterialLibrary stays honest
+  (397 materials null, falling back to #106).
