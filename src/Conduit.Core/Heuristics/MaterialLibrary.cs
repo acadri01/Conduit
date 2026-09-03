@@ -120,6 +120,15 @@ public static class MaterialLibrary
         ById.TryGetValue(materialId, out var properties) ? properties : ById[A106GradeBMaterialId];
 
     /// <summary>
+    /// Every material actually in the library (the real UMAT1 entries, not the resolve-fallback).
+    /// Exposed so a caller — or a regression test — can inspect the whole set; used to assert no
+    /// entry ever holds CAESAR's <c>-1.01</c> "field not populated" sentinel or another negative
+    /// value as if it were real data (the sentinel is represented as <c>null</c> instead — see the
+    /// class doc comment).
+    /// </summary>
+    public static IReadOnlyCollection<MaterialProperties> AllMaterials => (IReadOnlyCollection<MaterialProperties>)ById.Values;
+
+    /// <summary>
     /// Builds the full 399-material library. Generated from the user's real UMAT1.umd printout
     /// (extraction methodology in the class doc comment) — every <c>Add</c> call below carries one
     /// material's physical properties from its code-0 (generic, code-independent) record and its

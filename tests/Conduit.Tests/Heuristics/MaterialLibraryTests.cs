@@ -115,4 +115,25 @@ public class MaterialLibraryTests
         Assert.Equal(MaterialLibrary.A106GradeBMaterialId, material.MaterialId);
         Assert.Equal("A106 B", material.Name);
     }
+
+    /// <summary>
+    /// CAESAR's "field not populated" sentinel is <c>-1.01</c> ("This is always the case for the
+    /// neutral file" — direct instruction). Extraction from the UMAT1 printout must never ingest it
+    /// as a real value: an unpopulated field is <c>null</c>, never <c>-1.01</c> or any other
+    /// negative number (a negative allowable stress or elastic modulus would silently corrupt the
+    /// span calculation). This guards the whole baked-in table at once, so a future regeneration
+    /// that lets the sentinel slip through fails here instead of shipping.
+    /// </summary>
+    [Fact]
+    public void NoMaterial_HoldsTheCaesarNullSentinelOrANegativeValueAsRealData()
+    {
+        foreach (var m in MaterialLibrary.AllMaterials)
+        {
+            Assert.True(m.DensityKgPerM3 > 0, $"#{m.MaterialId} {m.Name}: density {m.DensityKgPerM3}");
+            Assert.True(m.AllowableStressMpa is null or > 0, $"#{m.MaterialId} {m.Name}: allowable {m.AllowableStressMpa}");
+            Assert.True(m.ElasticModulusMpa is null or > 0, $"#{m.MaterialId} {m.Name}: modulus {m.ElasticModulusMpa}");
+            Assert.True(m.ThermalExpansionCoefficientPerDegreeCelsius is null or > 0, $"#{m.MaterialId} {m.Name}: expansion {m.ThermalExpansionCoefficientPerDegreeCelsius}");
+            Assert.True(m.PoissonsRatio is null or > 0, $"#{m.MaterialId} {m.Name}: poisson {m.PoissonsRatio}");
+        }
+    }
 }

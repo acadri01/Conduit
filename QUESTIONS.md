@@ -2497,3 +2497,43 @@ two non-B31.3 materials stay null). All three real fixtures still produce byte-i
 **Next step**: none blocking. A possible future refinement — temperature-dependent allowable (code 3
 has the full curve, not just the ambient value) — is still deferred; the MVP uses the cold/ambient
 value, matching how `#$ ALLOWBLS`'s cold allowable is already consumed.
+
+## Verified: no `-1.01` sentinel ingested as real material data, and the .cii read path is safe against it (2026-09-03)
+
+Direct reminder while the material work was fresh: "remember that the default null value in Caesar
+is -1.01." Audited both the shipped data and the runtime read path, since a `-1.01` treated as a
+real negative value would corrupt a span calculation (a negative allowable stress or a phantom
+negative density) in the *unsafe* direction (larger computed span → under-support).
+
+**1. The baked-in material library is clean.** Range-audited all 399 entries: no allowable stress,
+density, thermal-expansion, or Poisson value is `-1.01`, negative, or implausibly small (allowables
+span 41-276 MPa; nothing near the sentinel). The only place the sentinel legitimately appears in
+the source is materials #9/#12's cold modulus (`-1.01`), already stored as `null`. Confirmed the
+allowable extraction can't ingest it structurally: the parser only accepts a digit-leading token
+for the allowable column, so a `-1.01` cell is skipped, not captured — and separately verified the
+value taken always equals the *coldest*-temperature real allowable (no high-temp value sneaking in
+via a skipped sentinel row). Added a permanent regression test
+(`NoMaterial_HoldsTheCaesarNullSentinelOrANegativeValueAsRealData`, iterating the new
+`MaterialLibrary.AllMaterials`) so a future data regeneration that lets a sentinel slip through
+fails a test instead of shipping.
+
+**2. The `.cii` runtime read path is safe against `-1.01` on every field it reads** — verified
+empirically, not by reasoning, with a throwaway probe that put `-1.01` in each real-value field of
+a synthetic element and checked the computed span:
+- `OD[5]` / `wall[6]` = -1.01 → span 0 (element "fails" → gets a support: safe over-support).
+- `insulThk[7]` / `insulDens[30]` / `fluidDens[31]` = -1.01 → same span as baseline (the
+  insulation/fluid contribution is clamped to zero — the `Math.Max(x,0)` hardening from the earlier
+  round plus the insulated-OD-below-OD area clamp).
+- `modulus[27]` / `pipeDens[29]` = -1.01 → same span as baseline (the existing `is > 0` fallback to
+  the resolved material's value; `-1.01` is not `> 0`, so it correctly falls back).
+- `#$ ALLOWBLS` cold allowable = -1.01 would likewise fail its `is > 0` check and fall back.
+
+Every field's sentinel value produced a span **≤ baseline** — i.e. always the safe (equal-or-more
+support) direction, never a larger unsafe span. No source change was needed for correctness; the
+existing guards (`is > 0`, `Math.Max(_,0)`, and the geometry checks that return 0 span) already
+cover it. Added the enumeration API + regression test as the durable guard, and this note as the
+record.
+
+**Next step**: none blocking — this was verification of existing behavior plus a regression test,
+prompted by the reminder. The general convention is already documented in
+`docs/neutral-file/WALKTHROUGH.md`'s file-level rules for future field-parsing work.

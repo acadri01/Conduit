@@ -637,3 +637,10 @@ running status log Claude appends to (skim this from mobile)
   fall back to #106. AllowableStressMpa was already nullable. 108/108 tests passing (2 removed, 6
   parameterized added); all 3 real fixtures byte-identical (they use #106). Full derivation in
   QUESTIONS.md's "Shipped: real B31.3 allowable stress for 200 materials" entry.
+- 2026-09-03: per reminder that -1.01 is CAESAR's general null sentinel, audited the shipped
+  material data (all 399 entries clean — no allowable/density/expansion/poisson is -1.01/negative;
+  only #9/#12 modulus, already null) and empirically verified the .cii read path treats -1.01 as
+  unset on every field (probe: sentinel in each field → span always <= baseline, the safe
+  direction). No correctness fix needed; added MaterialLibrary.AllMaterials + a regression test
+  (NoMaterial_HoldsTheCaesarNullSentinelOrANegativeValueAsRealData) as a durable guard against a
+  future regeneration ingesting the sentinel. 109/109 tests passing.
