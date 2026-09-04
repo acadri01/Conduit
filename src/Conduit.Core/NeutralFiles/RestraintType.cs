@@ -3,10 +3,11 @@ namespace Conduit.Core.NeutralFiles;
 /// <summary>
 /// CAESAR II's restraint type codes (1–62), as used in the <c>#$ RESTRANT</c> section and the
 /// Restraints report ("Restraint Type/Tag" column, e.g. <c>Rigid ANC</c>, <c>Rigid +Y</c>,
-/// <c>Rigid GUI</c>). v1's support-placement heuristic only ever assigns
-/// <see cref="Anc"/>/<see cref="Y"/>/<see cref="Gui"/>/<see cref="Xspr"/> (rest, guide, and
-/// spring-candidate placements), but the full table is reproduced here since any restraint
-/// Conduit reads back out of a real file could carry any of these codes.
+/// <c>Rigid GUI</c>). v1's support-placement heuristic only ever assigns rigid-support codes
+/// (<see cref="Anc"/>, <see cref="PlusY"/>/<see cref="PlusZ"/>, <see cref="MinusY"/>/<see cref="MinusZ"/>,
+/// <see cref="Gui"/>, <see cref="Lim"/>) — no spring logic in the MVP — but the full table is
+/// reproduced here since any restraint Conduit reads back out of a real file could carry any of
+/// these codes, springs included.
 /// </summary>
 public enum RestraintType
 {
@@ -75,7 +76,7 @@ public enum RestraintType
     MinusRy2 = 52,
     MinusRz2 = 53,
 
-    /// <summary>Spring (variable-support) placement along X — v1 flags spring candidates with this family.</summary>
+    /// <summary>Spring (variable-support) placement along X. Not assigned by v1's own logic (no spring support for the MVP) — modeled only so a real file's existing spring restraints round-trip correctly.</summary>
     Xspr = 54,
     Yspr = 55,
     Zspr = 56,

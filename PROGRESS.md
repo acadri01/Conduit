@@ -120,3 +120,575 @@ running status log Claude appends to (skim this from mobile)
   message said "hold off on committing the example files," which is ambiguous with the
   already-merged `fixtures/caesar.cfg` from PR #4 — asked the user to clarify rather than guess
   whether that should be reverted (see QUESTIONS.md); proceeded with everything else unblocked.
+- 2026-08-24: User reported the real neutral file converter rejects Conduit's output
+  ("the iecho does not accept it"). Root-caused and fixed a real bug: `NeutralFileWriter` wrote
+  LF-only line endings on every platform, while `NeutralFileReader` reads either; every real
+  `.cii` sample checked uses CRLF (confirmed directly against the files, still local, not
+  committed), matching `iecho.exe`/CAESAR II's Windows/Fortran heritage. Fixed the writer to
+  always emit CRLF, added `.gitattributes` pinning `*.cii` to `eol=crlf`, converted the committed
+  fixtures to match, and added a byte-level regression test (the existing round-trip tests
+  compare EOL-agnostic string content and couldn't have caught this). Added `reference/` — the 5
+  public Hexagon vendor PDFs, committed with an index — and a CLAUDE.md instruction to always
+  consult them for anything touching neutral-file format/I-O correctness, since this bug traces
+  back to relying on a paraphrase instead of the primary source. Removed all spring logic per
+  direct instruction (`SupportType.SpringCandidate`, its restraint mapping, and
+  `OptimizationLoop`'s escalation path — an unresolvable span is now just reported), with
+  historical QUESTIONS.md/PROGRESS.md entries left intact as record but SPEC.md/TESTING.md/tests
+  updated to match current behavior; kept `RestraintType.Xspr` itself since it's real CAESAR II
+  vocabulary needed for round-tripping. Added a CLAUDE.md instruction that support-placement
+  logic is defined one support type at a time with the user consulted first. Added
+  `scripts/run-and-log.ps1`/`.sh` (verified the bash twin actually runs; the PowerShell version
+  is carefully written but not executable-verified here — no `pwsh` available in this container)
+  so the user can capture a full console transcript to `test-logs/` and commit it back for
+  review, documented in TESTING.md. Logged (not yet actioned — no real fixture files to test
+  against) the user's observation that `SupportPlacer` may be over-placing supports. 35 → 36
+  tests (one new CRLF regression test; the spring-test rewrites were a net-neutral count change);
+  `dotnet build`/`test` clean.
+- 2026-08-24: Per direct instruction ("I want the logger to make each choice clear. Show the
+  reason for the restraint decisions being made"), added per-decision reasoning to the optimize
+  log. `SupportTypeClassifier.Classify` now returns a `SupportClassification(Type, Reason)`
+  record instead of a bare `SupportType`, with a plain-language reason for each of its three
+  branches (vertical → guide; near a run endpoint/equipment → anchor; otherwise → rest).
+  `PlacedSupport` gained a `Reason` field combining the span-trigger fact (which span, which max
+  allowable, which node) with the classifier's own reason. `OptimizationLoop.Run` now emits one
+  note per placed support (each showing its full reason) instead of one combined summary line;
+  verified the CLI's actual printed output against both fixtures. Updated TESTING.md's sample
+  output block and stale test count (30 → 37) to match. 36 → 37 tests (one new classifier-reason
+  coverage test); `dotnet build`/`test` clean.
+- 2026-08-24: Per direct instruction ("make sure you are able to create functioning neutral files
+  for us to use for testing"), investigated using the real `.cii` samples/PDFs as reference (still
+  local, not committed). Found `NeutralFileFixtureBuilder` already matched real files' 20-section
+  skeleton, but three sections were structurally wrong: `#$ VERSION` was 1 line instead of the
+  vendor doc's required 61 (1 info line + 60 title-page lines) — likely the actual cause of the
+  `iecho.exe` "line # 62" error if that was against a Conduit-synthesized file, since line 62 in a
+  real file is exactly where `#$ CONTROL` starts; `#$ WIND` was header-only instead of always
+  carrying a 1-line default row; `#$ UNITS` was empty instead of its fixed 28-line
+  conversion-constants-and-labels block. All three fixed and verified byte-for-byte against 4 real
+  samples and `NeutralFile-v15.pdf`; `#$ COORDS` now also always writes its required count line.
+  Asked the user (via AskUserQuestion) how Conduit should produce valid test files going forward:
+  decided on a blend — patch a real CAESAR II seed file (mirrors the user's own Python tooling,
+  read for context, not committed) now, keep pushing from-scratch synthesis in parallel; generated
+  files with no real project data get committed like the existing fixtures; unit-system default
+  is CAESAR II's own standard metric preset (exact name TBD, logged as an open question) rather
+  than the company-specific "AIBEL (mm)" name found in the real samples. Regenerated the committed
+  `fixtures/straight-run.cii`/`run-with-riser.cii` with the section fixes (same geometry/
+  restraints, only the previously-broken sections changed); updated SPEC.md's neutral-file-format
+  section with the newly-confirmed structural facts and a new "Generating test neutral files"
+  section documenting the decision. Still blocked on the "patch a real seed" half of the plan —
+  needs the user to export a throwaway, non-proprietary test model from their own CAESAR II.
+  37/37 tests still passing (same count — this was a section-content fix, not new tests);
+  `dotnet build`/`test` clean; manually re-ran the CLI against the regenerated fixture to confirm
+  behavior is unchanged.
+- 2026-08-24: Searched for publicly downloadable CAESAR II `.c2`/`.cii` sample files (per direct
+  suggestion, to unblock the seed-file need without waiting on the user to build one). No direct
+  downloadable sample-file archive found. Better lead surfaced instead: CAESAR II's own installer
+  (including the free trial/demo) ships Hexagon's own official tutorial jobs, which the user
+  likely already has locally — logged as the next thing to try before a from-scratch throwaway
+  model. No code changes this step.
+- 2026-08-26: The user shared a new `iecho.exe` error (converting `out.cii`) plus three real
+  `.cii` files explicitly marked safe to commit — `fixtures/real-samples/{TESTv15,
+  TESTv15_slugged,44002}.cii`. These reconfirmed every VERSION/WIND/UNITS structural fix from the
+  previous round byte-for-byte, and surfaced a new fact: their `#$ ELEMENTS` geometry is in
+  millimetres (confirmed via a 355.6 mm OD element being exactly a 14" pipe OD in mm), unlike
+  every existing fixture which uses inch-scale numbers. Per direct instruction, built
+  `fixtures/loop-50m-3d.cii`: a 50 m leg in X with a 3D expansion loop (up in Y, out in Z) at the
+  midpoint, in millimetre-scale geometry matching the real samples. Running `conduit optimize`
+  against it exposed (not a new bug — an already-documented assumption in
+  `SpanLimitCalculator`'s own XML doc, now empirically triggered) that its span-heuristic
+  constants are calibrated for inch/psi/lb units and produce nonsensical results on real mm-scale
+  geometry; logged as a blocking question in QUESTIONS.md since it's cross-cutting support math,
+  not something to fix unilaterally per the one-support-type-at-a-time consultation rule. Also
+  logged, not yet actioned: the user's CNODES note (CNODE-bearing nodes are not anchor supports)
+  and 44002.cii's "equipment as zero-weight rigid elements, ignore for support considerations"
+  note, both future support-placement inputs. 37/37 tests still passing; `dotnet build`/`test`
+  clean. Asked the user to test `fixtures/loop-50m-3d.cii` directly against `iecho.exe` and report
+  back.
+- 2026-08-26: `iecho.exe` still rejected `loop-50m-3d.cii` ("Error processing ELEMENT section,
+  line # 79"). Byte-diffed against the real samples at that line and found + fixed the actual
+  cause: `NeutralFileFixtureBuilder` wrote the element's "line color, line visibility" field in
+  real/E-notation format, while all 3 real samples (49 elements checked) write it as plain
+  integers (`-1 -1`) instead — contradicts `NeutralFile-v15.pdf`'s own stated format for that
+  field, so the real files won per CLAUDE.md's "trust the primary source" rule extended to mean
+  "trust real output over a doc's prose when they disagree." Regenerated
+  `loop-50m-3d.cii`/`straight-run.cii`/`run-with-riser.cii` with the fix. Also resolved the
+  `SpanLimitCalculator` unit-blindness question from the previous round, per direct instruction:
+  added `UnitsSection` (parses `#$ UNITS`'s CNVLEN constant), made mm/metric Conduit's default
+  computation unit system with automatic conversion for non-metric files, and added " mm" labels
+  to every span/distance message across `SupportPlacer`/`MockStressSolver`/`OptimizationLoop`.
+  Verified against `fixtures/real-samples/TESTv15.cii`: `conduit optimize` now reports
+  "10834.11 mm > 7035.44 mm" (physically sane) instead of the previous "10834.11 > 12.60"
+  (nonsensical psi/lb-calibrated garbage), and passes instead of failing after 5 iterations —
+  exactly the symptom the user reported. Also built `docs/neutral-file/WALKTHROUGH.md` (the
+  dedicated field-by-field build guide the user asked for) and
+  `ElementSectionFormatTests`/`UnitsSection`-related tests (46/46 passing, up from 37) guarding
+  the fixes against silent regression. Updated SPEC.md/QUESTIONS.md/TESTING.md accordingly; asked
+  the user to retest `loop-50m-3d.cii` against `iecho.exe`.
+- 2026-08-26: user retested — the ELEMENTS fix confirmed correct (no more "ELEMENT section"
+  error), but a new one appeared further along: "Error processing OFFSETS section." Byte-diffed
+  the WIND→OFFSETS transition against the real samples and found: `TESTv15.cii`/
+  `TESTv15_slugged.cii` both have a completely empty `#$ WIND` (`NumWindLoads = 0`), directly
+  contradicting this project's own earlier claim that `#$ WIND` "is never truly empty" — that
+  claim came from checking real samples that all happened to have a wind load applied. Conduit's
+  fixture builder unconditionally wrote a 1-line WIND default row while `NumWindLoads` stayed 0 —
+  a count/content mismatch that desyncs `iecho.exe`'s reader and surfaces as an error several
+  sections later (at OFFSETS), not at WIND itself. Fixed: WIND is now empty by default, matching
+  `NumWindLoads = 0`. Regenerated all three built fixtures again. Added
+  `SectionCountConsistencyTests` checking every count-gated section against its own `#$ CONTROL`
+  field, for real samples and Conduit's own output alike — guards this whole class of bug, not
+  just this one field. Corrected the now-wrong "WIND always populated" claims in SPEC.md and
+  docs/neutral-file/WALKTHROUGH.md. 50/50 tests passing (4 new), `dotnet build`/`test` clean.
+  Asked the user to retest again.
+- 2026-08-26: user retested via `.C2` conversion — WIND fix confirmed, new error: "Error
+  processing MISCEL_1 section." `#$ MISCEL_1` turns out to contain RRMAT (material IDs) plus an
+  unconditional trailing block (hanger-table defaults, execution options) present even with zero
+  hangers/nozzles in all 3 real samples — `NeutralFileFixtureBuilder` only ever wrote RRMAT. Fixed
+  by reusing the exact trailing block confirmed byte-identical between 2 of the 3 real samples
+  (the third differs slightly in a few fields — logged as a low-priority open question, not
+  structural). Added `Miscel1FormatTests`. Regenerated all three built fixtures again. 51/51 tests
+  passing (1 new), `dotnet build`/`test` clean. Asked the user to retest again.
+- 2026-08-26: milestone — `.C2` conversion now works; `fixtures/loop-50m-3d.cii` is the first
+  Conduit-generated file confirmed to convert successfully on a real CAESAR II install. Brought
+  docs/neutral-file/WALKTHROUGH.md fully up to date as the confirmed-correct reference. Per direct
+  instruction, corrected the loop's geometry: the original open zigzag wasn't a real expansion
+  loop — rebuilt as a proper closed U/camelback shape (horizontal approach, riser up, top segment
+  with the 3D component, riser down, horizontal departure) with 4 bends, matching the user's
+  reference sketches, total X span exactly 50 m. Added `#$ BEND` support to
+  `NeutralFileFixtureBuilder` (new — researched via the vendor doc plus `44002.cii`'s 13 real
+  bends; corner elements get a bend pointer, tangent-point node numbers follow the real sample's
+  (corner-1, corner-2) convention, radius/angle/fitting values reused from the real sample rather
+  than derived). Added `BendFormatTests`. 55/55 tests passing (4 new), `dotnet build`/`test`
+  clean.
+- 2026-08-26: `.C2` conversion confirmed working again, but the loop's shape was still wrong (a
+  diagonal element instead of two separate legs) — rebuilt to the user's exact 7-element/6-bend
+  sequence (+DX, +DY, -DZ, +DX, +DZ, -DY, +DX). Per direct instruction, also implemented
+  element-splitting: `ElementSplitter` (chunking math, unit-tested against the user's own worked
+  example — 25550 mm over a 6446.76 mm max span becomes 4×6000 mm + a 1550 mm remainder) and
+  `NeutralFile.ReplaceElement` (the first production capability that adds/mutates pipe elements,
+  not just restraints — surgically splices into both `#$ ELEMENTS` and `#$ MISCEL_1`'s RRMAT
+  array so the two can't desync), wired into `OptimizationLoop.Adjust` as the fallback when no
+  existing node is available. Refactored `Element.ToRawLines()` out as the single shared
+  element-formatting path for both production and test-fixture code. Caught and fixed a real bug
+  before shipping: the first version copied a bend pointer to every split chunk instead of just
+  the final one. Verified: the loop file's two 24 m legs now split and pass in 2 iterations
+  instead of failing after 5, matching the user's own description exactly. Also added a "Test
+  this now" section to TESTING.md (rewritten every round with the current ask, per direct
+  instruction) and a CLAUDE.md bullet codifying it. 62/62 tests passing (7 new), `dotnet
+  build`/`test` clean. Asked the user to retest again.
+- 2026-08-26: proactive follow-up (not a bug report) — bends need a minimum straight length
+  depending on pipe size, plus a 500 mm shoe-clearance buffer, and the default bend radius should
+  be "Long" (confirmed via a CAESAR II screenshot: the radius dropdown offers Short/Long/3D/5D).
+  Confirmed via the vendor doc that the neutral file only stores a plain radius number, no
+  separate "type" field, so this only needed computing the right value: "Long" = 1.5x OD (ASME
+  B16.9, approximated from actual OD since Conduit has no NPS table).
+  `NeutralFileFixtureBuilder.BuildBendLines` now computes radius per-bend instead of reusing a
+  flat 381 mm. Implemented the minimum-chunk-near-a-bend constraint in `ElementSplitter`: a
+  too-short remainder next to a bend gets merged into the previous chunk instead of standing
+  alone. Logged one known gap rather than guessing: this only covers a bend at the split
+  element's own `ToNode`, not a bend at its `FromNode` (needs neighbor-element context
+  `OptimizationLoop` doesn't thread through yet) — not exercised by our own fixture either way.
+  64/64 tests passing (2 new), `dotnet build`/`test` clean. Regenerated `loop-50m-3d.cii` with the
+  new radius; `conduit optimize` still passes in 2 iterations. Asked the user to retest.
+- 2026-08-27: user's fifth retest confirmed splitting/geometry work, but reported no restraints
+  actually appeared after converting the neutral file — correctly guessed a missing pointer.
+  Root cause confirmed: `NeutralFile.AddRestraint` never set the owning element's 4th auxiliary
+  pointer (the actual CAESAR II mechanism linking a `#$ RESTRANT` record to a node), so every
+  restraint Conduit wrote was valid but unreferenced and invisible on import. Fixed with a
+  `ToNode`-preferred/`FromNode`-fallback owner-selection convention (with collision-avoidance for
+  two restraints wanting the same connecting element), plus matching pointer-preservation logic in
+  `ElementSplitter.Split`. Found and fixed a second, independent bug in the same pass: every
+  restraint's stiffness was left at `0` (a zero-resistance spring, not a rigid support) — now uses
+  CAESAR II's confirmed rigid constant (`1e12 lbf/in`, converted via `#$ UNITS`' CNVTSF constant).
+  Axis-implied restraint types now also get correct direction cosines; `GUI`'s is left an open
+  question (only one ambiguous real example) rather than guessed, logged in QUESTIONS.md per
+  CLAUDE.md's support-placement-logic consultation rule. 79/79 tests passing (15 new), `dotnet
+  build`/`test` clean. Regenerated `loop-50m-3d.cii`; `conduit optimize` output unchanged but
+  restraints are now correctly wired and rigid. Updated `docs/neutral-file/WALKTHROUGH.md` with a
+  new `#$ RESTRANT` section covering all of this. Asked the user to retest, and logged the
+  still-unaddressed bend-radius-pointer question from the same PR comment as the next task.
+- 2026-08-27: re-verified the bend-radius question from the same PR comment (the user was
+  confident there's a proper pointer/preset field for Short/Long/3D/5D, not just a plain resolved
+  number). Re-extracted `NeutralFile-v15.pdf`'s text directly and re-read `#$ BEND` fresh rather
+  than trusting the earlier summary, and cross-checked all 3 real samples' actual bend bytes.
+  Conclusion unchanged: no such field exists in the neutral file — field 1 is a plain physical
+  radius, field 2 ("Type") is the weld type, not a radius preset; every real sample's bends within
+  one file share one constant radius value (a physical distance, not an enum code). CAESAR II's UI
+  dropdown resolves to a number before it ever reaches the neutral file; if `.c2` keeps the
+  dropdown selection internally, that's out of reach for a `.cii`-only tool regardless. No code
+  change needed — `NeutralFileFixtureBuilder.BuildBendLines`'s existing "Long = 1.5x OD" approach
+  is already correct. Replied on the PR with the finding and evidence.
+- 2026-08-27: user's sixth retest confirmed restraints now show up correctly, but flagged (with a
+  screenshot) that all three of `SupportPlacer`'s initial placements in `loop-50m-3d.cii` (nodes
+  20, 50, 70) landed exactly on bend corner nodes — not buildable without a trunnion fitting.
+  Root cause: `SupportPlacer`/`OptimizationLoop.TrySplit` have zero bend-corner awareness when
+  picking a candidate node, unlike `ElementSplitter` (which already has a bend-clearance rule, but
+  only within its own splitting logic). Also raised: GUI's direction cosine should be the pipe's
+  perpendicular unit vector rather than left all-round (ties into the open question from two
+  rounds ago); guides need minimum clearance from bends ("stresses" — exact rule TBD); a loop's
+  rest support should be centered on its dominant straight ("dx") segment, not any short jog
+  between bends. Explicitly asked to pause and realign on the overall plan before continuing.
+  Per CLAUDE.md's rule reserving support-placement logic for direct consultation, and the user's
+  own request, logged all of this as a blocking question batch in QUESTIONS.md and replied on the
+  PR with a diagnosis, the specific clarifying questions needed to implement precisely, and a
+  state-of-the-project recap for the vision-realignment conversation. No code pushed this round —
+  waiting on the user's answers before touching support-placement logic further.
+- 2026-08-27: user answered all three questions in detail and asked for a restatement to confirm
+  before implementing. Restated and logged in QUESTIONS.md: (1) CAESAR itself auto-resolves a
+  GUI's perpendicular direction on a horizontal run from a zero direction cosine; on a vertical run
+  a zero direction cosine becomes an "all-round guide" (restrains both perpendicular directions),
+  which over-restrains a designed expansion path near a bend — fixed not by computing a general
+  direction cosine but by the loop rule below, which stops a guide from ever landing there; (2) no
+  fixed minimum-clearance constant exists — it's a stress question needing a real solver, not a
+  distance threshold; (3) a full deterministic loop-detection and placement rule: a chain where two
+  axes each appear as an opposite-sign pair and the third matches the long run's own direction is a
+  "loop" — its extending segment gets a single centered rest only if the transverse leg's length
+  exceeds the max allowable span, and no support goes on the loop's other legs at all. Verified
+  this reading against `loop-50m-3d.cii`'s actual geometry (matches exactly) and worked out that
+  under this rule the loop currently needs zero supports (its 2000 mm transverse legs are well
+  under the 6446.76 mm max span) — meaning the original bug-triggering placements weren't load-
+  bearing decisions to begin with. Also logged (separately, not blocking): a reference `iecho.py`
+  wrapper the user shared confirms `.cii`→`.C2` is fully scriptable but `.C2`→`.cii` only works
+  through `iecho.exe`'s interactive UI — folded into SPEC.md's "Native file adapter (iecho)"
+  section for when `IechoConverter` gets implemented for real. Posted the restatement plus three
+  narrow follow-up questions on the PR; still no code changes pushed — waiting on confirmation.
+- 2026-08-27: user replied with corrections and three new items. Corrected the loop restatement:
+  transverse and extending legs are NOT immune from ordinary span rules (guides can legitimately
+  appear on loop-internal legs, especially in large loops) — the loop-specific rule only kicks in
+  when the transverse leg alone triggers a need but the extending segment doesn't independently,
+  in which case the extending segment gets one centered rest; if the extending segment also
+  independently needs support, place multiple supports symmetrically on it instead of a single
+  center point. Confirmed the 2D loop (4 bends/3 segments, one out-and-back pair) and 3D loop (6
+  bends/5 segments, two out-and-back pairs — unchanged from before) taxonomy, and introduced a
+  third pattern, the S-loop (also 6 bends/5 segments but topologically different, harder to detect
+  deterministically) — logged with the user's worked example, explicitly deferred as future work.
+  Also asked for research (not implementation) on a deterministic vertical-riser guide-spacing
+  heuristic — researched via `reference/`'s vendor PDFs (nothing relevant — software docs, not
+  design-practice references) and a web search, finding a well-corroborated industry rule of thumb
+  (guide spacing on a vertical riser ≈ 2× the ordinary horizontal max allowable span), directly
+  implementable against `SpanLimitCalculator.ComputeMaxSpan`'s existing output — reported findings
+  with sources on the PR, not yet implemented. Also logged two new non-support-placement requests:
+  a neutral-file viewer (proposed starting with a low-cost `conduit inspect` text-table CLI command,
+  asked whether that's sufficient or a graphical rendering is the real goal) and a list of CAESAR-
+  related files Conduit depends on (answered directly — `reference/*.pdf`, `fixtures/real-samples/
+  *.cii`, `fixtures/caesar.cfg`, plus `iecho.exe`/the CAESAR install tree as external, not-committed
+  dependencies). All logged in QUESTIONS.md; still no support-placement code pushed.
+- 2026-08-27: user confirmed the 2x vertical guide-spacing rule, expanded the viewer scope to full
+  CAESAR-input-GUI parity (read-only) — scoped against what's already parsed vs. what needs new
+  parsers (`#$ BEND`'s own fields, `#$ SIF&TEES`, `#$ REDUCERS`, `#$ FLANGES`, `#$ OFFSETS`,
+  `#$ FORCMNT`, `#$ DISPLMNT`, `#$ RIGID`, `#$ EXPJT`), proposed a phased/incremental build starting
+  from what's already modeled, defaulting to an HTML read-only page format unless told otherwise —
+  answered the UMAT1 question directly (not used; already documented, `#$ ALLOWBLS` covers what's
+  needed). Also raised a real, previously-unhandled gap: `SupportPlacer` accumulates span across
+  multiple elements but never resets that accumulation at a bend (confirmed by tracing the actual
+  `loop-50m-3d.cii` console output — the node-20 placement literally sums two elements across a
+  bend) — a bend must end one span-accumulation zone and start a new one, same as a restraint
+  already does. Also flagged tees (3 elements at one node) as an unhandled topology; checked
+  `NeutralFile-v15.pdf`'s `#$ SIF&TEES` section and a real sample and confirmed the neutral file
+  only identifies an intersection by node, not which element is the branch — that has to come from
+  geometric collinearity. Given this interacts with everything already agreed (bend-corner
+  exclusion, loop rule, 2x multiplier), decided to hold all support-placement code until this lands
+  together as one consistent pass rather than implementing pieces against a model that's about to
+  change. Logged in QUESTIONS.md; replied on the PR restating the correction for confirmation.
+- 2026-08-27: user pushed back on the "Conduit doesn't need UMAT1" answer, prompting a real
+  investigation rather than re-asserting it. Found the per-element ALLOWBLS-lookup mechanism itself
+  is correct (field indices match the vendor PDF exactly), but that it's likely never actually
+  fired: `NeutralFileFixtureBuilder` writes an empty `#$ ALLOWBLS` section in every fixture, AND all
+  3 real sample files' own `ColdAllowableStress` field is 0.0 too — so Conduit's span math has
+  probably always used the ~10.3 MPa placeholder fallback (vs. a real ~110-140 MPa B31.3 carbon-
+  steel allowable), producing max spans roughly 3-4x too short and likely far more supports than
+  necessary. This plausibly explains an old, unresolved note already in QUESTIONS.md about
+  `SupportPlacer` placing supports too aggressively. Asked the user to check a real model in
+  CAESAR's own GUI to confirm whether `#$ ALLOWBLS` item 1 is genuinely the right field to trust
+  before changing the lookup logic — can't resolve this from the container alone. Also refined the
+  span-accumulation model further per the user's correction (it's not "reset at every bend" as
+  previously framed, but "track accumulated distance per principal axis independently, re-cutting
+  the accumulated zone evenly regardless of original element boundaries") — proposed this as my own
+  design, explicitly asking for confirmation/pushback, and scoped 45°/diagonal-segment handling as
+  an explicit deferred follow-up. Logged a new open item (guide-on-horizontal-segment heuristic,
+  "generally wherever there's a rest, except near bends") and confirmed tee/SIF understanding is
+  correct. Still holding all support-placement code pending confirmation; the ALLOWBLS-in-fixtures
+  fix is unblocked and independent, queued as next concrete step regardless of the other answers.
+- 2026-08-28: user shared 5 new PDFs (textbook Ch2/3/6, a UMAT1.umd printout, B31.3-2024) and
+  answered several open questions. Downloaded and read the UMAT1 printout and Ch6's opening
+  section directly (GitHub attachment URLs needed a WebFetch-redirect-then-curl/Read workaround).
+  Found the material database itself carries no allowable/yield/UTS data at all (only density,
+  Poisson's ratio, expansion coefficient, modulus) — confirms allowable stress is a piping-code-
+  table computation, not a material lookup, and gives a cleaner explanation for why real sample
+  files' ALLOWBLS was zero (likely exported before ever running an analysis). Ch6 confirmed
+  Conduit's existing support terminology matches the standard textbook definitions, surfaced a
+  refined max-span formula (semi-fixed-beam constant of 10 vs. Conduit's simply-supported constant
+  of 8 — not changed yet, pending Section 2.7 review), a Table 6.1 sanity-check reference, and the
+  Fig 6.8 worked example the user wants as a future test fixture (equipment as anchors, flanges at
+  both ends) — noted its surrounding nonlinear-resting-support discussion is out of MVP scope.
+  Confirmed: bend clearance is radius+200mm (a different number from ElementSplitter's existing
+  500mm buffer — not merged without confirming they're the same concept), loop symmetry means
+  exact magnitude match, 2x guide-spacing confirmed for standalone risers too, and a significant
+  refinement to the per-axis span model — a rest resets every horizontal axis's accumulator, not
+  just its own segment's axis, since gravity support doesn't care about local pipe direction.
+  Raised (not yet resolved) a copyright question about committing the textbook/code PDFs into
+  reference/, following this project's established "read for context, commit only with explicit
+  authorization" pattern. All logged in QUESTIONS.md; still no support-placement code pushed.
+- 2026-08-28: user gave four direct answers, all acted on now. (1) "materials that do have all the
+  required information" + "low carbon steel does not exist as a material in the standard" → swapped
+  every `SpanLimitCalculator` fallback constant (allowable stress, elastic modulus, density) for
+  real ASTM A106 Grade B data (UMAT1.umd material #107: cold allowable 118 MPa, yield 241 MPa =
+  35,000 psi matching the textbook's own A106-B minimum, density 7833.4399 kg/m3, elastic modulus
+  203,400 MPa), and populated `NeutralFileFixtureBuilder`'s `#$ ALLOWBLS` block with the same 118
+  MPa instead of leaving it empty. (2) "use formulae that are given in the textbook rather than our
+  own" → replaced the simply-supported-beam derivation with the book's actual Eqs. 6.1/6.2
+  (semi-fixed-beam bending criterion, constant 10 not 8; sag/deflection criterion using a 12.5mm
+  design sag limit, the lower/more conservative end of the book's Kellogg range) and take the span
+  as min(L1, L2), the book's own rule. Standard 6" Sch 40 fixture pipe's max span moved from
+  ~6,446.76mm to ~10,835.70mm (sag-governed) as a direct result of real vs. placeholder material
+  data plus the formula change. (3) "500 mm not 200 mm, typo" → confirms bend clearance already
+  matches `ElementSplitter`'s existing radius+500mm constant exactly; no code change needed, just
+  resolves the earlier open reconciliation question. (4) "commitment is fine" → cleared to commit
+  the shared PDFs, but every attempt (curl download, local cp of an already-cached copy) was denied
+  by the sandbox's own action classifier even after retry, while unrelated commands kept working
+  normally — not a decision on my part, logged transparently in QUESTIONS.md and flagged on the PR
+  for the user to advise (e.g. attaching the PDFs directly via GitHub's own UI instead). Regenerated
+  all 3 committed fixtures for the new ALLOWBLS/density values, diff-verified only expected fields
+  changed, and incidentally caught straight-run.cii/run-with-riser.cii's restraint stiffness never
+  having been regenerated since an earlier fix (now corrected too). Adjusted two tests' input
+  geometry/density to keep exercising their intended overflow conditions under the new, much larger
+  max span. 79/79 tests passing. Support-placement rewrite itself (bend-corner exclusion, per-axis
+  span accumulation, 2x guide multiplier, tee/SIF handling, loop rule) still held, unchanged this
+  round, pending confirmation of the universal-rest-reset model and the guide-every-other-span
+  nuance from the prior round.
+- 2026-08-28 (second round): user confirmed the universal-rest-reset model, approved "guide at
+  every rest unless very close to a directional change" without needing it defined more precisely
+  ("let's build and see how these changes work"), and said to retry the PDF commit ("Remember the
+  files, but you can try again"). Retrying with the same curl approach that was denied last round
+  worked without issue this time (likely transient) — committed all 5 shared PDFs to `reference/`.
+  Rewrote `SupportPlacer` around a new `PipeAxisClassifier`: the two horizontal axes' span
+  accumulation is now tracked independently (not summed), with a universal reset at any support
+  (placed or pre-existing) across all three accumulators including vertical; bend and tee/branch
+  corner nodes (tee detected by node degree across the whole file) are now excluded from placement,
+  with the placer backing off to the nearest same-axis eligible node already passed, or deferring
+  to `OptimizationLoop`'s existing reactive `ElementSplitter` fallback when none exists in the
+  zone; vertical runs are checked against 2x the horizontal max span, not 1x; every eligible plain
+  rest now also gets a co-located guide (packed into one multi-DOF `#$ RESTRANT` record via new
+  `Restraint.CreateMultiDof`, matching real files' own convention). `MockStressSolver` was
+  necessarily updated to the same per-axis model too, so the iterate loop doesn't fight the new
+  placer by re-flagging spans it correctly left alone. Verified against three examples per direct
+  instruction: the existing 3D loop fixture (zero supports inside the jog, both 24m legs split
+  correctly via the reactive path, no supports on bend corners — the original bug report, now
+  confirmed fixed), a new self-designed 2D planar-jog fixture (`fixtures/loop-2d.cii`, same
+  zero-supports-in-the-jog result), and a new flattened axis-aligned approximation of the
+  textbook's Fig 6.8 worked example (`fixtures/fig6-8-example.cii`) — re-fetched the actual figure
+  image rather than trusting an earlier paraphrase of it (per CLAUDE.md), found it's genuinely
+  sloped/diagonal (out of this MVP's axis-aligned scope), and built an honest flattened
+  approximation instead, explicitly flagged as such rather than presented as faithful. 82/82 tests
+  passing. Tee/branch span exclusion, SIF application, the guide direction-cosine question, and a
+  narrower reactive-split companion-guide gap remain open, logged and queued.
+- 2026-08-28 (third round): user reported (with screenshots) that both loop fixtures still showed
+  rest supports directly on bend corners after the rewrite. Traced it to code the rewrite hadn't
+  touched: `OptimizationLoop.Adjust`'s reactive fallback (`TryPickMidpointNode`/`TrySplit`, used
+  when the initial pass alone doesn't fully resolve a span) had no bend/tee awareness at all, and
+  once that was fixed, a second bug surfaced — the reactive split chunked an overlong element using
+  its pipe's full max span rather than accounting for how much of that span's budget the zone had
+  already spent on earlier elements, putting the resulting new node's cumulative span back over
+  threshold with nowhere left to fix it in that zone. Fixed both: `TryPickMidpointNode` now excludes
+  bend/tee nodes with the same clearance buffer `SupportPlacer` uses; the split fallback
+  (`TrySplitAtFirstOverflow`) walks the failing zone in order and splits the first element that
+  would exceed the *remaining* budget, not the full one (conservative — more new supports than
+  strictly optimal in this case, logged as a known tradeoff, not fixed further this round). Added
+  `PipeAxis` as a real field on `StressFinding` so the reactive path knows which axis actually
+  failed instead of guessing. Verified directly against the real committed fixtures via a fresh
+  `conduit optimize` run (not just unit-test geometry): zero restraints land on any bend node in
+  either output file. 83/83 tests passing. Also re-checked the Fig 6.8 fixture per the user's
+  catch that it's missing a Z component — the figure image itself doesn't show one as drawn, so
+  asked for the specific dimension rather than guess a second time; that one fixture stays as-is
+  until answered.
+- 2026-08-28 (fourth round): user confirmed both loop fixtures now `PASS` with no bend-corner
+  supports, but flagged that the second leg's new supports were "very closely spaced" and shouldn't
+  be — exactly the conservative-but-suboptimal tradeoff flagged (and left unfixed) last round.
+  Fixed properly: `ElementSplitter.Split` now takes an optional first-chunk budget cap, used only
+  for the first new support (since every support after it resets the budget and can use the pipe's
+  full span again), instead of uniformly shrinking every chunk. Verified against the real fixtures:
+  both loops' second legs now get exactly 2 evenly-spaced new supports on a clean 10,000 mm grid,
+  matching what a human would place by hand (down from 5). Also answered directly ("rises two
+  meters, then extends 12m in z, then goes 9.2 meters in x to the final anchor") and rebuilt
+  `fixtures/fig6-8-example.cii` to the actual, much simpler 3-element geometry, replacing the
+  earlier flattened multi-segment guess. 83/83 tests passing.
+- 2026-09-01: per direct instruction, updated CLAUDE.md with a "no idling on a quiet PR" policy —
+  absent new comments/messages, keep working the milestone list below instead of just re-checking
+  and waiting — and added a "## Milestones" section to SPEC.md (M1-M5) mapping the path from the
+  current state to a done MVP, folding in the user's same-day PR comment (test-file tooling, the
+  colleague's CAESAR-automation approach, and folding element-splitting into `SupportPlacer`'s own
+  initial pass). While drafting M1, found the "reactive-split rest doesn't get a companion guide"
+  gap flagged open in the round-3/4 QUESTIONS.md entries was actually already closed by round 4's
+  `AddSupport` helper (adds a `Gui` DOF for any `SupportType.Rest`, reactive path included) — just
+  never called out explicitly when it landed. Corrected QUESTIONS.md/SPEC.md rather than
+  re-implementing something already working.
+- 2026-09-01: implemented M1's main item — folded `OptimizationLoop`'s reactive element-splitting
+  into `SupportPlacer`'s own initial-pass walk, per direct instruction ("I would not like the
+  placement to be done during a walk"). `SupportPlacer` now splits an element whose own span is too
+  long for any existing/eligible node to relieve, using the exact same two-tier `ElementSplitter`
+  chunking and restraint-pointer-preservation math the reactive fallback already used, inline during
+  its own walk (no `nodes` list rebuild needed — splitting an element doesn't change the run's total
+  per-axis length, so every downstream node's precomputed position stays valid). `OptimizationLoop`'s
+  reactive path is unchanged and stays in place as a safety net. Verified against all three real
+  fixtures (`loop-2d.cii`, `loop-50m-3d.cii`, `fig6-8-example.cii` via the CLI) and the full test
+  suite: each fixture now `PASS`es in exactly 1 iteration (down from 2-3), with the same final
+  placements as before (same interior nodes, same even 10,000 mm grid spacing). Updated
+  `SupportPlacerTests`/`OptimizationLoopTests` doc comments that had gone stale describing the old
+  reactive-only behavior, and added direct SupportPlacer-level coverage for the split. 84/84 tests
+  passing (1 new). Tee/branch span accumulator remains open for the next round — genuine topology
+  complexity with no concrete failing case driving it yet, unlike this item.
+- 2026-09-01 (continued, same round): finished M1 — the tee/branch span accumulator. Turned out to
+  be a real bug on inspection, not just a missing feature: `SupportPlacer.SplitIntoRuns` only ever
+  recognized a run whose first element started at an anchor, so a branch arm starting at a tee node
+  was silently dropped — never walked, never supported at all — contradicting the class doc
+  comment's existing (wrong) claim that branches were "walked as their own separate run." Fixed by
+  also accepting a tee/branch node as a valid run start (the reset trigger stays anchor-only, so a
+  run passing *through* a tee still accumulates uninterrupted, unaffected). Verified the fix is
+  real by confirming the new regression test fails against the pre-fix code (empty placement list —
+  the branch was dropped) and passes after. 85/85 tests passing (1 new). M1 is now fully done.
+- 2026-09-01 (continued): user attached a real test file specifically "to check tees" and gave a
+  direct correction: determine a tee by its real SIF/intersection pointer, not node degree.
+  Investigated `#$ SIF&TEES`'s actual layout in the vendor PDF, confirmed it byte-for-byte against
+  the attached file (committed as `fixtures/real-samples/NEWTEST.cii`), and found the user was
+  concretely right: 3 of the file's 4 real intersections (160, 1007, 1120) have no branch geometry
+  at all (ordinary degree-2 chains) — only node 895 also happens to have a real branch. Node degree
+  would have missed 75% of the real cases. Added `Element.IntersectionPointer`
+  (`AuxiliaryPointers[10]`) and switched `SupportPlacer`/`OptimizationLoop`'s tee exclusion to use
+  it, keeping node degree only for the separate branch-run-recognition concern. Verified the new
+  regression tests actually fail without the fix. 95/95 tests passing (10 new). Also restated the
+  MVP vision on the PR per the user's request to realign.
+- 2026-09-01 (continued): user pushed back on the M2 hold-down/guide-cosine proposals — both
+  genuinely need pipe thermal expansion (temperature + material properties), and the real model
+  should mirror CAESAR's own beam-theory calculations, not ad-hoc heuristics. Investigated rather
+  than assumed: `#$ ELEMENTS` already carries real per-element, per-load-case temperature data
+  (confirmed against all 4 real samples, just not exposed via a named property yet), but not the
+  thermal expansion coefficient itself — every real sample relies entirely on the material database
+  for that, same gap already known for allowable stress/EM/density. A simplified thermal-growth
+  model (ΔL = α·ΔT·L, fallback α sourced the same way as the existing A106 Grade B constants) is
+  more buildable than assumed, but is real new scope, not a quick fix. Posted the finding + a
+  concrete proposal on the PR; not implementing until confirmed whether this is MVP scope now or
+  its own milestone, per CLAUDE.md's support-placement-logic consultation rule. No code changes
+  this round — pure investigation and documentation, build/test unaffected (95/95 passing).
+- 2026-09-01 (continued): user confirmed real material-specific constants are a hard MVP
+  requirement, not a nice-to-have, and mentioned a colleague independently hit the same
+  undocumented-UMAT1.UMD wall. Found a better path than reverse-engineering: B31.3-2024.pdf
+  (already in reference/) has its own Appendix A (basic allowable stress by ASTM spec) and
+  Appendix C (thermal expansion by material group, -200 to 825°C) tables — real, public,
+  code-authoritative, covering many material groups, replacing the need to ever parse UMAT1.UMD.
+  One gap remains: mapping RRMAT's numeric material ID to a real name/group (only "material #107 =
+  A106 Grade B" is known so far). Posted the finding on the PR; waiting on which materials to
+  support before building the table-driven lookup. No code changes — pure research, build/test
+  unaffected (95/95 passing).
+- 2026-09-01 (continued): user confirmed material data must be real and multi-material-capable
+  (sourced from the UMAT1 printout, which has all materials by number), and gave the real
+  engineering framework: sustained stress governs rest spacing, expansion stress governs horizontal
+  guide/hold-down spacing, vibration governs vertical guide spacing — three distinct calculations,
+  none built yet. Explicitly authorized a placeholder rather than full implementation. Built it:
+  MaterialLibrary resolves material properties by the element's own real RRMAT ID (previously
+  SpanLimitCalculator always used the same hardcoded A106 Grade B fallback regardless of what the
+  file's material ID actually said) -- the resolution mechanism is real and wired in; the data is
+  still just one material until the printout (or a specific material list) comes back. Thermal
+  expansion coefficient/Poisson's ratio left explicitly null rather than guessed. 98/98 tests
+  passing (3 new), CLI output confirmed byte-identical to before the refactor. Posted on the PR,
+  asking for the printout re-share (expired link) and clarification on "some of these can be
+  calculated."
+- 2026-09-02: user uploaded their real UMAT1.pdf printout. Confirmed Poisson's ratio needs no
+  calculation (shear modulus isn't in the data; Poisson's ratio is a direct field). Found and fixed
+  a standing error: material #107 was never A106 Grade B, it's A135 Grade A — A106 Grade B is
+  material #106. The 118 MPa allowable-stress fallback also came from an unidentified UMAT1 code
+  section that doesn't match B31.3-2024's own Table A-1 for A106 Grade B (138 MPa); switched to
+  reading allowable stress from that table directly. Added A135 Grade A as a real second
+  MaterialLibrary entry (110 MPa via B31.3-2024 Table A-1 Line 12) and populated real thermal
+  expansion coefficient/Poisson's ratio (previously null). 98/98 tests passing (one fixture's
+  extreme-density constant re-tuned for the new allowable-stress value). Full derivation in
+  QUESTIONS.md's "Corrected: material #107 was never A106 Grade B..." entry.
+- 2026-09-02: implemented "I would like to have all the materials in the database" — MaterialLibrary
+  now covers all 399 materials from the user's real UMAT1 printout (up from 2), extracted
+  programmatically and sanity/spot-checked rather than hand-typed. Found and fixed a real
+  extraction bug (blank EXP COEFF cells shifting the next column into its place) using a
+  structural fix (exponent-sign pattern matching) rather than fragile column-position slicing.
+  Found a real data-quality issue in the source itself: materials #9/#12 have an invalid negative
+  "cold modulus" sentinel, now null rather than embedded. AllowableStressMpa/ElasticModulusMpa are
+  now nullable on MaterialProperties; SpanLimitCalculator falls back to material #106's real values
+  for anything without its own. Allowable stress stays null for 397 of 399 materials (a genuine
+  code-table cross-reference, not attempted at this scale yet — flagged as real follow-up work).
+  102/102 tests passing, all three real fixtures byte-identical.
+- 2026-09-02: user corrected that -1.01 is CAESAR's general "field not populated" null convention,
+  not just an odd UMAT1 entry — confirmed my #9/#12 elastic-modulus null handling was right, for
+  the wrong stated reason. Checked all 4 real .cii samples' own real-value fields for this literal
+  sentinel (not found; they use 0.0 instead) but found a real, unguarded gap along the way:
+  SpanLimitCalculator's insulation/fluid density read RealValues[30]/[31] with no guard at all,
+  unlike pipe density/elastic modulus — a -1.01 there would have silently subtracted weight and
+  inflated the max span (unsafe direction). Hardened both to clamp to zero. Documented the general
+  convention in docs/neutral-file/WALKTHROUGH.md for future field-parsing work. 103/103 tests
+  passing (1 new, verified to fail pre-fix).
+- 2026-09-02: investigated (not shipped) a programmatic B31.3-2024 Table A-1 join to get real
+  allowable stress for the other 397 materials. Mapped the table's real page structure, but a
+  first-pass "nearest stress page" join gave a wrong answer (25 MPa vs. the correct 110 MPa) for
+  one of the two known-good anchors (A135 Grade A) — caught only by checking against ground truth
+  before trusting it. Not fixing this round; documented exactly what a reliable version needs
+  (real block-boundary tracking + cross-validation against UMAT1's own yield/tensile data) so a
+  future attempt doesn't repeat the same failure. No code changes — MaterialLibrary stays honest
+  (397 materials null, falling back to #106).
+- 2026-09-03: shipped real B31.3 allowable stress for 200 materials (up from 2). Instead of parsing
+  the B31.3-2024 PDF table (which failed validation earlier), identified which of UMAT1's own
+  unlabeled piping-code sections is B31.3 by matching the two hand-verified anchors (#106=138,
+  #107=110) — exactly codes 3/50/63 match, code 3 is the widest, and code 3 was cross-checked
+  against the PDF at 7 more materials by name (9 confirmations total). Allowable now comes from code
+  3 for the 200 ASTM materials B31.3 lists; the ~199 EN/DIN/JIS + duplicate materials stay null and
+  fall back to #106. AllowableStressMpa was already nullable. 108/108 tests passing (2 removed, 6
+  parameterized added); all 3 real fixtures byte-identical (they use #106). Full derivation in
+  QUESTIONS.md's "Shipped: real B31.3 allowable stress for 200 materials" entry.
+- 2026-09-03: per reminder that -1.01 is CAESAR's general null sentinel, audited the shipped
+  material data (all 399 entries clean — no allowable/density/expansion/poisson is -1.01/negative;
+  only #9/#12 modulus, already null) and empirically verified the .cii read path treats -1.01 as
+  unset on every field (probe: sentinel in each field → span always <= baseline, the safe
+  direction). No correctness fix needed; added MaterialLibrary.AllMaterials + a regression test
+  (NoMaterial_HoldsTheCaesarNullSentinelOrANegativeValueAsRealData) as a durable guard against a
+  future regeneration ingesting the sentinel. 109/109 tests passing.
+- 2026-09-03: fixed the reported bug (support placed at a flange's starting node) by parsing
+  `#$ RIGID`/`#$ REDUCERS` pointers (new `RigidElement`, `Element.RigidPointer`/`ReducerPointer`)
+  and replacing the old bend/tee-only exclusion zone with a flat 250 mm `DiscontinuityClearanceMillimetres`
+  covering bends, tees, weighted rigids, and reducers uniformly, per direct instruction. Both
+  endpoints of a weighted-rigid element are excluded, not just its ToNode, matching the real bug.
+  Self-caught a vacuous first regression test (real-file-based, passed even with the fix disabled)
+  via the standard revert-and-check rigor discipline; replaced with a synthetic test that does fail
+  pre-fix. Verified against the real, restraint-free `fixtures/real-samples/44002.cii` (now
+  committed, replacing the old restrained copy) — no support lands near any of its 9 real
+  weighted-rigid nodes.
+- 2026-09-03: `RestraintTypeMapper.Map(SupportType.Rest, izup)` now emits bidirectional `Y`/`Z`
+  (bundled rest+hold-down) instead of one-directional `+Y`/`+Z`, and `Restraint`'s DOF construction
+  sets `Friction = 0.15` on any `Y`/`Z` restraint — both per direct instruction, the friction value
+  ground-truthed against the previously-committed `44002.cii`'s own real `Friction = 0.15` field.
+  113/113 tests passing.
+- 2026-09-03: committed the user's own restraint-free `44002.cii` (replacing the old committed
+  copy) and their 5 local verification-run outputs under `fixtures/real-samples/verification/`,
+  per direct instruction ("nice to have each of them in the folder for verification").
+- 2026-09-03: logged two consult-first placement-logic items in QUESTIONS.md per CLAUDE.md's
+  one-support-type-at-a-time rule rather than implementing unilaterally: (1) self-computed support
+  spacing instead of preferring existing element breaks — a concrete design is proposed, pending
+  confirmation of the reuse tolerance; (2) a scoping proposal for the simple beam/expansion-stress
+  model that gates hold-down narrowing, pending which `reference/` source to pin the formula to.
+- 2026-09-04: user posted a hand-drawn riser sketch with no caption; replied on the PR describing my
+  reading and asking 3 targeted questions (bend-node exception? beam-model geometry setup? standing
+  placement rule?) rather than guessing, since it touches placement logic directly.
+- 2026-09-04: user answered both open items plus the sketch in one comment. Shipped: (1)
+  self-computed support spacing at a confirmed 100 mm reuse tolerance
+  (`SpanReuseToleranceMillimetres`) — `SupportPlacer` now splits at the ideal max-span position
+  instead of backing off to an existing node more than 100 mm short of it; confirmed the existing
+  bend-radius minimum-chunk-size logic stays independently in force. (2) Friction narrowed to
+  rest-only restraints (`Restraint.FrictionFor` no longer matches standalone `MinusY`/`MinusZ`),
+  per "Only the rest supports should have the friction coefficients" — added dedicated test
+  coverage (`RestraintFormatTests.CreateSingleDof_SetsFriction_OnlyForARest`, friction had none
+  before). (3) Decoded the sketch: rest+hold-down sits `x1` *away from* the bend, not on it — no
+  bend-node placement exception needed; confirms the beam model (still not built, pending which
+  `reference/` source to use) is what determines when a hold-down gets dropped near a rising line.
+  Rigor-checked the spacing fix (reverted, confirmed the updated
+  `OverlongSegmentPastAnAddedRestSupport_AlsoGetsSplitAndPasses` test fails, restored). 122/122
+  tests passing; all 4 real fixtures byte-identical; `NEWTEST.cii` shows improved intermediate
+  spacing (still `FAIL` on the same 3 genuinely irreducible spans).
+- 2026-09-04: per direct instruction ("There should not be standalone hold-downs. We need to
+  derive the logic for the forces and stresses together"), removed `SupportType.HoldDown` and its
+  `RestraintTypeMapper` mapping case entirely — confirmed dead (never produced by
+  `SupportTypeClassifier`, unreferenced elsewhere) rather than just documented as unused, so the
+  invariant is now structurally enforced. Folded "derive forces and stresses together" (one coupled
+  sustained/expansion-stress model, not independent heuristics) into the still-open beam-model
+  QUESTIONS.md entry. 122/122 tests passing (no test referenced the removed member).

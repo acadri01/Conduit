@@ -20,14 +20,102 @@ public sealed class Restraint
     public static Restraint CreateEmpty() =>
         new() { Dofs = Enumerable.Range(0, DofsPerRestraint).Select(_ => new RestraintDof()).ToList() };
 
-    /// <summary>Creates a single-DOF restraint (the shape v1's placement heuristic emits).</summary>
-    public static Restraint CreateSingleDof(int node, RestraintType type)
+    /// <summary>
+    /// Creates a single-DOF restraint (the shape v1's placement heuristic emits), rigid rather
+    /// than a zero-stiffness no-op — see <paramref name="rigidStiffness"/>. Also sets the
+    /// direction cosine for restraint types whose axis is unambiguous from the type code itself
+    /// (X/Y/Z and their signed/rod/snubber variants) — confirmed against every such restraint in
+    /// <c>fixtures/real-samples/44002.cii</c>, all of which carry the matching axis's direction
+    /// cosine even though the type code alone already implies it. <see cref="RestraintType.Anc"/>
+    /// and <see cref="RestraintType.Gui"/> are left at (0,0,0): the one real GUI example available
+    /// has a non-zero, seemingly direction-specific cosine, but a single sample isn't enough to
+    /// confirm the general rule for a plain (non-directional) guide — logged in QUESTIONS.md as an
+    /// open question rather than guessed at further, since it's a placement-logic question CLAUDE.md
+    /// reserves for direct consultation. ANC's own real example is (0,0,0), so this default is
+    /// confirmed correct for anchors at least.
+    /// </summary>
+    public static Restraint CreateSingleDof(int node, RestraintType type, double rigidStiffness)
     {
         var restraint = CreateEmpty();
-        restraint.Dofs[0].Node = node;
-        restraint.Dofs[0].RawTypeCode = (int)type;
+        var dof = restraint.Dofs[0];
+        dof.Node = node;
+        dof.RawTypeCode = (int)type;
+        dof.Stiffness = rigidStiffness;
+        dof.Friction = FrictionFor(type);
+        (dof.DirectionCosineX, dof.DirectionCosineY, dof.DirectionCosineZ) = DirectionCosineFor(type);
         return restraint;
     }
+
+    /// <summary>
+    /// Creates one restraint record carrying several DOF types at the same node — e.g. a rest and
+    /// a guide together, matching how real files pack multiple restraint types into a single
+    /// record at one node rather than several separate records (confirmed against
+    /// <c>fixtures/real-samples/44002.cii</c>, e.g. node 175's <c>Y, Lim, Gui</c> all in one
+    /// record). <paramref name="types"/> must have at most <see cref="DofsPerRestraint"/> entries.
+    /// </summary>
+    public static Restraint CreateMultiDof(int node, IReadOnlyList<RestraintType> types, double rigidStiffness)
+    {
+        if (types.Count == 1)
+        {
+            return CreateSingleDof(node, types[0], rigidStiffness);
+        }
+
+        var restraint = CreateEmpty();
+        for (var i = 0; i < types.Count; i++)
+        {
+            var dof = restraint.Dofs[i];
+            dof.Node = node;
+            dof.RawTypeCode = (int)types[i];
+            dof.Stiffness = rigidStiffness;
+            dof.Friction = FrictionFor(types[i]);
+            (dof.DirectionCosineX, dof.DirectionCosineY, dof.DirectionCosineZ) = DirectionCosineFor(types[i]);
+        }
+        return restraint;
+    }
+
+    private static (double X, double Y, double Z) DirectionCosineFor(RestraintType type) => type switch
+    {
+        RestraintType.X or RestraintType.PlusX or RestraintType.MinusX
+            or RestraintType.Xsnb or RestraintType.PlusXsnb or RestraintType.MinusXsnb
+            or RestraintType.Xrod or RestraintType.PlusXrod or RestraintType.MinusXrod
+            or RestraintType.X2 or RestraintType.PlusX2 or RestraintType.MinusX2 => (1, 0, 0),
+        RestraintType.Y or RestraintType.PlusY or RestraintType.MinusY
+            or RestraintType.Ysnb or RestraintType.PlusYsnb or RestraintType.MinusYsnb
+            or RestraintType.Yrod or RestraintType.PlusYrod or RestraintType.MinusYrod
+            or RestraintType.Y2 or RestraintType.PlusY2 or RestraintType.MinusY2 => (0, 1, 0),
+        RestraintType.Z or RestraintType.PlusZ or RestraintType.MinusZ
+            or RestraintType.Zsnb or RestraintType.PlusZsnb or RestraintType.MinusZsnb
+            or RestraintType.Zrod or RestraintType.PlusZrod or RestraintType.MinusZrod
+            or RestraintType.Z2 or RestraintType.PlusZ2 or RestraintType.MinusZ2 => (0, 0, 1),
+        _ => (0, 0, 0),
+    };
+
+    /// <summary>
+    /// Friction coefficient for a rest (including the bundled rest+hold-down combination) — 0.15,
+    /// per direct instruction (2026-09-03): "The rest supports should actually have a friction
+    /// coefficient of .15, this may be applied to the Y support as well," confirmed against real
+    /// data: the committed <c>fixtures/real-samples/44002.cii</c> already carries a <c>+Y</c>
+    /// restraint with <c>Friction = 0.15</c> at node 35. Corrected 2026-09-04, per direct
+    /// instruction — "Only the rest supports should have the friction coefficients" — to exclude
+    /// a *standalone* hold-down (<c>-Y</c>/<c>-Z</c> on its own, not the bundled combination; per
+    /// the same round's "There should not be standalone hold-downs," this restraint type code is
+    /// never actually produced by Conduit's own placement — this exclusion documents the intended
+    /// invariant regardless): a rest resists gravity by sliding along the support surface (hence
+    /// friction); a plain hold-down resists uplift and isn't a sliding contact in the same sense.
+    /// The bundled <c>Y</c>/<c>Z</c> (rest+hold-down together, from
+    /// <see cref="RestraintTypeMapper.Map"/>'s default <see cref="SupportType.Rest"/> mapping) and
+    /// the plain one-directional rest (<c>+Y</c>/<c>+Z</c>) both still get it — both are, at
+    /// bottom, a rest. Not the rod/snubber/2-way variants either, which are physically different
+    /// support mechanisms with no sliding-friction concept in the same sense. Every other
+    /// restraint type (guide, line stop, anchor, X-axis...) is left at 0, matching what every real
+    /// sample's non-rest restraint carries.
+    /// </summary>
+    private static double FrictionFor(RestraintType type) => type switch
+    {
+        RestraintType.Y or RestraintType.PlusY
+            or RestraintType.Z or RestraintType.PlusZ => 0.15,
+        _ => 0.0,
+    };
 
     public static List<Restraint> ParseMany(IReadOnlyList<string> lines, int count)
     {

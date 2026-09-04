@@ -7,6 +7,55 @@ Kept up to date per CLAUDE.md: update this file whenever what/how to test change
 a new fixture convention, a new manual check that matters), and consult it whenever testing is
 relevant to the task at hand.
 
+# Test this now
+
+**This section is rewritten every round — it's not a permanent record, just the current ask.**
+Per direct instruction (2026-08-26): after any round of changes that needs your hands (a real
+CAESAR II install, `iecho.exe`, or anything else Claude can't run itself), the exact commands to
+run and what to report back live here, not scattered across PR comments — so you always have one
+place to check for "what do you want me to test." Once you've reported back and a round is
+resolved, this section is replaced with whatever the next thing to verify is (or left saying
+there's nothing outstanding).
+
+**Status: please retest — self-computed spacing and the friction narrowing you confirmed are now
+shipped; one design question (the beam/expansion-stress model's reference source) is still open.**
+
+You answered both open items from last round in one comment, plus decoded your riser sketch for
+me. Shipped this round:
+- **Self-computed spacing, at your confirmed 100 mm tolerance.** `SupportPlacer` now splits at the
+  ideal max-span position instead of backing off to an existing node more than 100 mm short of it —
+  no longer "prefers existing element breaks." Confirmed the existing bend-radius minimum-chunk-size
+  rule stays in force independently, per your "the minimum bend lengths must also apply" note.
+- **Friction narrowed to rest-only.** A standalone hold-down no longer carries `Friction = 0.15`,
+  per "Only the rest supports should have the friction coefficients" — only a rest (including the
+  bundled rest+hold-down `Y`/`Z`) does.
+- **Sketch decoded**: confirmed the rest+hold-down pair sits `x1`/`x2` away from each bend, not on
+  it — no exception to the 250 mm discontinuity clearance was needed.
+
+Please rerun the same files you tested before:
+```
+dotnet run --project src/Conduit.Cli -- optimize fixtures/real-samples/44002.cii out-44002.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/real-samples/NEWTEST.cii out-newtest.cii
+```
+On this end, all 4 of the first fixtures produce byte-identical placements to before this round
+(none had an existing-node candidate more than 100 mm short of ideal, so the new tolerance didn't
+change anything for them). `NEWTEST.cii` still `FAIL`s on the same 3 genuinely irreducible spans as
+before, but several of its intermediate support nodes shifted to better-spaced positions — worth
+comparing against your own rerun and the previous `fixtures/real-samples/verification/out-*.cii`.
+As always, if you're able to run any `out-*.cii` through `iecho.exe` and reopen it in CAESAR II's
+GUI, that's the strongest independent check.
+
+**One design question is still waiting on your answer**: the beam/expansion-stress model. You
+confirmed the segment definition ("expansion has to be considered for all straight-line
+segments... only disrupted by a change in direction") — that maps onto machinery `SupportPlacer`
+already has, so no new geometry logic is needed there. What's still open is which specific
+`reference/` source (a B31.3 PDF section, or a textbook chapter) the actual sustained/expansion
+stress formula should be pinned to — see QUESTIONS.md's "Scoping proposal... beam/expansion-stress
+model" entry. Nothing further will be built on it until that's answered.
+
 # Step-by-step: test Conduit on your own machine
 
 This walks through everything from "I have nothing installed" to "I ran Conduit and can see what
@@ -67,7 +116,7 @@ nothing past this point will work.
 ```powershell
 dotnet test
 ```
-Expect `Passed!` with every test passing (30 tests as of this writing — the exact count will grow
+Expect `Passed!` with every test passing (37 tests as of this writing — the exact count will grow
 over time, that's fine). This confirms your machine's setup is fine and the code itself is
 healthy, independent of anything you do manually next.
 
@@ -83,15 +132,22 @@ You should see output like:
 ```
 Conduit optimize: fixtures\straight-run.cii -> out.cii
 
-  Piping code assumed: B31.3_2020 (from caesar.cfg)
+  Piping code assumed: B31.3_2024 (from caesar.cfg)
   Material database (caesar.cfg): system directory 'SYSTEM', user material file 'UMAT1.UMD'
 
-  - Placed 3 initial support(s): node 60 (Rest), node 110 (Rest), node 160 (Rest)
+  - Placed 3 initial support(s):
+  - node 60 (Rest, PlusY): span 7620.00 mm would exceed the max allowable span of 6446.76 mm at node 60 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
+  - node 110 (Rest, PlusY): span 7620.00 mm would exceed the max allowable span of 6446.76 mm at node 110 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
+  - node 160 (Rest, PlusY): span 7620.00 mm would exceed the max allowable span of 6446.76 mm at node 160 — a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection
 
 Iterations: 1
 
 PASS
 ```
+All spans and distances Conduit prints are in millimetres, labeled — Conduit always computes in
+metric (mm/N/MPa/kg), converting a non-metric file's own data to match first, regardless of what
+unit system the input file itself uses (see `docs/neutral-file/WALKTHROUGH.md`'s `#$ UNITS`
+section).
 What this means:
 - It read `fixtures\straight-run.cii` (a small, synthetic — not real-project — example file
   committed in this repo for exactly this purpose).
@@ -99,7 +155,9 @@ What this means:
   file that happens to already sit right next to that fixture in this repo, which is why you see
   the "Piping code assumed" and "Material database" lines (more on this file in step 6).
 - It proposed 3 new pipe supports and wrote the modified file to `out.cii` (check your folder —
-  it's there now).
+  it's there now). Each line explains *why* that node got a support and *why that support type* —
+  useful when you want to sanity-check Conduit's reasoning against your own engineering judgment,
+  not just its final answer.
 - `PASS` means the placement satisfies Conduit's span checks. (See "What PASS/FAIL/exit codes
   mean" below for the other outcomes.)
 
@@ -164,6 +222,29 @@ A few things to know before pointing Conduit at a real model:
 If you're running this from a script and want to check the outcome automatically, check
 `$LASTEXITCODE` in PowerShell (or `$?` in Bash) right after the `dotnet run` command.
 
+## 8. When something looks wrong: run the log script and send it back
+
+Rather than describing what happened, run everything (build, tests, and the CLI against a file or
+folder of files) and capture the full console output to a file you commit back to the repo — so
+Claude sees exactly what your machine saw.
+
+**Windows PowerShell:**
+```powershell
+.\scripts\run-and-log.ps1                              # against fixtures\
+.\scripts\run-and-log.ps1 -InputPath C:\path\to\files   # against your own .cii file(s)/folder
+```
+**macOS/Linux (or WSL):**
+```bash
+./scripts/run-and-log.sh                    # against fixtures/
+./scripts/run-and-log.sh /path/to/files      # against your own .cii file(s)/folder
+```
+Both write a timestamped log under `test-logs\` (Windows) / `test-logs/` (macOS/Linux) — e.g.
+`test-logs/2026-08-24_112417-run.log` — plus a copy of Conduit's output file for each input it
+ran against. When it finishes it prints the exact log path and the `git add`/commit/push you need;
+follow that, then tell Claude which run to look at. `test-logs/` isn't gitignored on purpose —
+these are meant to be committed when you want a review, not silently discarded — but it's your
+call which runs are worth keeping; delete the ones that aren't before committing.
+
 ---
 
 # Reference (for making changes to Conduit itself)
@@ -179,7 +260,7 @@ dotnet build
 dotnet test
 ```
 
-`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 30 tests, all
+`dotnet test` runs the full xUnit suite (`tests/Conduit.Tests`) — currently 79 tests, all
 expected to pass on every commit. A failing test blocks the change; there are no known-flaky or
 skipped tests in this project.
 
@@ -190,7 +271,42 @@ skipped tests in this project.
   restraint is added, and the malformed-file parse-error path. Uses the committed fixtures under
   `fixtures/*.cii`.
 - `tests/Conduit.Tests/Heuristics/SpanLimitCalculatorTests.cs` — the beam-theory max-span formula,
-  including the real-`#$ ALLOWBLS`-vs-default-constant fallback behavior.
+  including the real-`#$ ALLOWBLS`-vs-default-constant fallback behavior. All geometry here is
+  millimetre-scale — Conduit's default unit system (see `docs/neutral-file/WALKTHROUGH.md`'s
+  `#$ UNITS` section).
+- `tests/Conduit.Tests/NeutralFiles/ElementSectionFormatTests.cs` — the `#$ ELEMENTS` record's
+  exact byte layout, checked against both `NeutralFileFixtureBuilder`'s output and all 3 real
+  samples in `fixtures/real-samples/`, plus `UnitsSection.Parse`'s CNVLEN-based metric/English
+  detection. Guards specifically against the class of bug that made `iecho.exe` reject a
+  Conduit-generated file (a real-format field written where the real samples use plain integers)
+  — see `docs/neutral-file/WALKTHROUGH.md` for the full field-by-field layout this checks against.
+- `tests/Conduit.Tests/NeutralFiles/SectionCountConsistencyTests.cs` — checks that a count-gated
+  section's line count actually matches its own `#$ CONTROL` field (e.g. `#$ WIND` vs.
+  `NumWindLoads`), for both the real samples and Conduit's own fixture output. Guards against a
+  second confirmed class of `iecho.exe`-rejection bug: a count/content mismatch here doesn't error
+  at the mismatched section itself, it desyncs the reader and surfaces as an error several
+  sections later.
+- `tests/Conduit.Tests/NeutralFiles/Miscel1FormatTests.cs` — checks `#$ MISCEL_1`'s trailing
+  hanger-table-defaults/execution-options block (present unconditionally, unlike everything else
+  in the section) against the byte layout confirmed from the real samples — a third confirmed
+  class of the same "content missing where the reader expects it unconditionally" bug.
+- `tests/Conduit.Tests/NeutralFiles/BendFormatTests.cs` — `#$ BEND` record byte layout, the
+  corner-element pointer wiring (1-based, matching `bendNodes`' order), `#$ CONTROL`'s `NumBends`
+  count, and the no-bends case (empty section, all-zero pointers).
+- `tests/Conduit.Tests/NeutralFiles/RestraintFormatTests.cs` — `Restraint.CreateSingleDof`'s
+  rigid-stiffness and direction-cosine correctness, and `NeutralFile.AddRestraint`'s
+  owner-element-pointer wiring: `ToNode`-preferred, `FromNode`-fallback for a run's first node, and
+  the collision-avoidance case (two restraints that would otherwise both want the same connecting
+  element) that reproduces the exact scenario behind the "no restraints appear" bug report.
+- `tests/Conduit.Tests/Heuristics/ElementSplitterTests.cs` — the element-splitting math (the
+  user's own worked example: a 25550 mm span against a 6446.76 mm max allowable span splits into
+  four 6000 mm elements plus a 1550 mm remainder, four new interior nodes), the exact-multiple and
+  already-fits no-op cases, and — a real bug this caught — that a bend pointer on the original
+  element's `ToNode` only survives on the final chunk, not every interior one. Also covers the
+  minimum-chunk-near-a-bend constraint (a too-short remainder next to a bend gets merged into the
+  previous chunk; the same remainder next to a non-bend node is left alone), and that a restraint
+  pointer on the original element survives on the correct chunk (first if it belongs to the
+  `FromNode`, last if the `ToNode`) rather than being duplicated or lost across the split.
 - `tests/Conduit.Tests/Heuristics/SupportTypeClassifierTests.cs` — rest/guide/anchor
   classification rules in isolation.
 - `tests/Conduit.Tests/Heuristics/SupportPlacerTests.cs` — the run-walking placement algorithm:
@@ -198,8 +314,11 @@ skipped tests in this project.
   the riser-guide trigger condition (a guide is placed when the riser element itself causes the
   span overflow — not "every vertical segment always gets one", see SPEC.md's "Known open
   decisions" for why).
-- `tests/Conduit.Tests/Optimization/OptimizationLoopTests.cs` — the iterate-and-adjust loop against
-  `MockStressSolver`, including the spring-candidate escalation path.
+- `tests/Conduit.Tests/Optimization/OptimizationLoopTests.cs` — the iterate-and-adjust loop
+  against `MockStressSolver`: adding intermediate rest supports at existing nodes, splitting an
+  overlong span with none into evenly-spaced chunks (per direct instruction) and resolving it,
+  and reporting (not escalating — no spring logic in the MVP) the genuinely irreducible case
+  (a max allowable span under 1 m, too small for even one chunk).
 - `tests/Conduit.Tests/Configuration/CaesarConfigReaderTests.cs` and `CaesarConfigTests.cs` — the
   `caesar.cfg` parser (against the real example at `fixtures/caesar.cfg`) and the
   config-vs-default piping-code fallback (`CaesarConfig.EffectiveCode`).
@@ -239,11 +358,37 @@ files together):
 ```bash
 mkdir -p /tmp/conduit-check && cp fixtures/straight-run.cii fixtures/caesar.cfg /tmp/conduit-check/
 dotnet run --project src/Conduit.Cli -- optimize /tmp/conduit-check/straight-run.cii /tmp/conduit-check/out.cii
-# expect: "Piping code assumed: B31.3_2020 (from caesar.cfg)" and the material-database line
+# expect: "Piping code assumed: B31.3_2024 (from caesar.cfg)" and the material-database line
 
 dotnet run --project src/Conduit.Cli -- optimize fixtures/straight-run.cii /tmp/out-noconfig.cii
 # expect: "Piping code assumed: B31.3_2024 (default — no caesar.cfg DEFAULT_CODE found)"
 ```
+
+## Real sample files and the loop test case
+
+`fixtures/real-samples/` holds three real CAESAR II-exported `.cii` files the user explicitly
+authorized committing (unlike every other real file shared during this project, which stays
+local-only) — useful as ground truth for neutral-file structure/byte-layout questions, and safe
+to point `run-and-log.sh` or a manual `iecho.exe` test at directly.
+
+`fixtures/loop-50m-3d.cii` is a synthetic, Conduit-generated file: a straight 50 m leg in X with a
+3D expansion loop (up in Y, out in Z, back down, back in Z) at the midpoint, in millimetre-scale
+geometry matching the real samples' unit convention. It exists specifically to test whether
+`iecho.exe` accepts a Conduit-generated file — run it through iecho on your own CAESAR II machine
+and report back what happens. **Confirmed working as of 2026-08-26**: after three real-world test
+rounds found and fixed three structural bugs (the `#$ ELEMENTS` color/visibility line, a
+`#$ WIND`/`#$ CONTROL` count mismatch, and a missing `#$ MISCEL_1` trailing block — see
+`docs/neutral-file/WALKTHROUGH.md`), a `NeutralFileFixtureBuilder`-generated file converts
+successfully through `iecho.exe` on a real CAESAR II install. The file's geometry was also
+corrected afterward (a proper expansion loop with bends, not the original open zigzag) — if you
+change the fixture builder in a way that touches file structure again, re-verify against
+`iecho.exe` the same way.
+
+**`docs/neutral-file/WALKTHROUGH.md`** is the step-by-step, field-by-field guide to the neutral
+file format itself — what every section and field means, confirmed against both
+`reference/NeutralFile-v15.pdf` and these real samples' actual bytes, including every format
+gotcha found so far. Read it before changing anything about how Conduit reads or writes a `.cii`
+file.
 
 ## Adding or changing a fixture
 

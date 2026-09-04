@@ -1,3 +1,5 @@
+using Conduit.Core.Heuristics;
+
 namespace Conduit.Core.Stress;
 
 /// <summary>
@@ -7,10 +9,11 @@ namespace Conduit.Core.Stress;
 /// </summary>
 /// <param name="FromNode">The node bounding the start of the checked span.</param>
 /// <param name="ToNode">The node bounding the end of the checked span.</param>
-/// <param name="ActualSpan">The actual unsupported length between the two nodes.</param>
-/// <param name="AllowableSpan">The max allowable span computed for that stretch of pipe.</param>
+/// <param name="Axis">Which of the model's per-axis accumulators (see <see cref="SupportPlacer"/>) this finding is for.</param>
+/// <param name="ActualSpan">The actual unsupported length between the two nodes on <paramref name="Axis"/>, in millimetres.</param>
+/// <param name="AllowableSpan">The max allowable span for <paramref name="Axis"/> (already includes the 2x vertical multiplier where applicable), in millimetres.</param>
 /// <param name="Message">A human-readable explanation, surfaced in the CLI summary.</param>
-public sealed record StressFinding(int FromNode, int ToNode, double ActualSpan, double AllowableSpan, string Message)
+public sealed record StressFinding(int FromNode, int ToNode, PipeAxis Axis, double ActualSpan, double AllowableSpan, string Message)
 {
     /// <summary>Utilisation ratio — actual span over allowable span. Above 1.0 means the span check failed.</summary>
     public double Ratio => AllowableSpan > 0 ? ActualSpan / AllowableSpan : double.PositiveInfinity;

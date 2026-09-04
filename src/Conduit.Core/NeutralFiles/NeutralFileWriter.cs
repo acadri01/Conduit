@@ -3,10 +3,18 @@ namespace Conduit.Core.NeutralFiles;
 /// <summary>Writes a <see cref="NeutralFile"/> back out as a CAESAR II neutral file (<c>.cii</c>).</summary>
 public static class NeutralFileWriter
 {
+    /// <summary>
+    /// CAESAR II's own neutral files always use CRLF line endings (confirmed against real
+    /// exported <c>.cii</c> files) — <c>iecho.exe</c> and CAESAR II itself are Windows/Fortran
+    /// heritage tools that expect this convention. Writing LF-only, even on Linux, produces a
+    /// file those tools reject; <see cref="NeutralFileReader.Read"/> tolerates either (via
+    /// <see cref="File.ReadAllLines(string)"/>), so this asymmetry was silently downgrading
+    /// CRLF input to LF output on every round-trip.
+    /// </summary>
     public static void Write(NeutralFile file, string path)
     {
         var lines = ToLines(file);
-        File.WriteAllText(path, string.Join('\n', lines) + "\n");
+        File.WriteAllText(path, string.Join("\r\n", lines) + "\r\n");
     }
 
     public static List<string> ToLines(NeutralFile file)

@@ -1,13 +1,17 @@
 namespace Conduit.Core.NeutralFiles;
 
 /// <summary>
-/// One record from <c>#$ ELEMENTS</c> — a pipe (or other) element between two nodes. This is a
-/// read-only projection: Conduit never adds or modifies pipe elements, so the source
-/// <c>#$ ELEMENTS</c> block is always written back verbatim from its raw lines, never
-/// regenerated from this model.
+/// One record from <c>#$ ELEMENTS</c> — a pipe (or other) element between two nodes. Elements are
+/// normally read-only passthrough (unmodified elements' raw lines are left exactly as read), but
+/// <see cref="NeutralFile.ReplaceElement"/> can splice new elements in — e.g. splitting an
+/// overlong span into evenly-spaced chunks with a new node at each interior boundary, per direct
+/// instruction — surgically, without touching any other element's raw lines.
 /// </summary>
 public sealed class Element
 {
+    /// <summary>Every element record is a fixed 15-line block, regardless of content: 53 reals (9 lines), name, line number, color/visibility, 15 pointer ints (3 lines).</summary>
+    public const int LinesPerElement = 15;
+
     /// <summary>All 53 real values from the element's basic-data block, in vendor-doc order (0-based).</summary>
     public required IReadOnlyList<double> RealValues { get; init; }
 
@@ -19,6 +23,9 @@ public sealed class Element
     /// nozzle/equipment check.
     /// </summary>
     public required IReadOnlyList<int> AuxiliaryPointers { get; init; }
+
+    /// <summary>0-based index of the restraint pointer within <see cref="AuxiliaryPointers"/> (vendor doc's pointer #4).</summary>
+    public const int RestraintPointerIndex = 3;
 
     public int FromNode => (int)RealValues[0];
     public int ToNode => (int)RealValues[1];
@@ -40,6 +47,29 @@ public sealed class Element
 
     /// <summary>1-based pointer into <c>#$ ALLOWBLS</c> (0 = none).</summary>
     public int AllowableStressPointer => AuxiliaryPointers[9];
+
+    /// <summary>
+    /// 1-based pointer into <c>#$ SIF&amp;TEES</c> (0 = none) — the vendor doc's "Pointer to
+    /// Intersection Auxiliary field". Set on the element whose <see cref="ToNode"/> is the
+    /// tee/intersection node, the same convention as the bend pointer. Confirmed against a real
+    /// user-supplied sample: a node can carry this pointer (needing SIF/tee treatment) without
+    /// having branch geometry (node degree 2, no third element) — CAESAR marks some fittings as
+    /// intersections independent of whether a branch pipe is modeled in the same file — so this is
+    /// the correct signal for "is this a tee" (per direct instruction), not node degree.
+    /// </summary>
+    public int IntersectionPointer => AuxiliaryPointers[10];
+
+    /// <summary>
+    /// 1-based pointer into <c>#$ RIGID</c> (0 = none) — the vendor doc's "Pointer to Rigid
+    /// Element Auxiliary field". Set on the element that <i>is</i> the rigid (e.g. a flange or
+    /// piece of in-line equipment modeled as a weighted rigid body rather than pipe) — per direct
+    /// instruction (2026-09-03): "Any node with a connecting rigid with weight should not have a
+    /// support placed on it," after a real run placed one at the starting node of a flange.
+    /// </summary>
+    public int RigidPointer => AuxiliaryPointers[1];
+
+    /// <summary>1-based pointer into <c>#$ REDUCERS</c> (0 = none) — the vendor doc's "Pointer to Reducer Auxiliary field," another real geometric discontinuity a support should keep clear of, per direct instruction (2026-09-03).</summary>
+    public int ReducerPointer => AuxiliaryPointers[12];
 
     /// <summary>1-based pointer into <c>#$ EQUIPMNT</c> (0 = none).</summary>
     public int EquipmentCheckPointer => AuxiliaryPointers[14];
@@ -64,6 +94,27 @@ public sealed class Element
             elements.Add(new Element { RealValues = real, Name = name, LineNumber = lineNumber, AuxiliaryPointers = pointers });
         }
         return elements;
+    }
+
+    /// <summary>
+    /// The inverse of <see cref="ParseMany"/>'s per-element format — used both by
+    /// <c>NeutralFileFixtureBuilder</c> (test fixtures) and <see cref="NeutralFile.ReplaceElement"/>
+    /// (production element-splitting), so the two can never format-drift apart the way the
+    /// color/visibility line once did.
+    /// </summary>
+    public IEnumerable<string> ToRawLines()
+    {
+        var lines = new List<string>();
+        lines.AddRange(FixedWidth.FormatRealLines(RealValues));
+        lines.Add(FixedWidth.FormatLengthPrefixedString(Name));
+        lines.Add(FixedWidth.FormatLengthPrefixedString(LineNumber));
+        // Line color/line visibility: NeutralFile-v15.pdf labels this (2X, 6G13.6) — real-value
+        // format — but all 3 real samples (fixtures/real-samples/*.cii) write it as plain integers
+        // ("-1 -1", no decimal/E-notation) instead. See QUESTIONS.md's "ELEMENTS color/visibility
+        // line" entry.
+        lines.AddRange(FixedWidth.FormatIntLines([-1, -1]));
+        lines.AddRange(FixedWidth.FormatIntLines(AuxiliaryPointers.Select(p => (long)p).ToList()));
+        return lines;
     }
 
     private static string RequireLine(IReadOnlyList<string> lines, int lineIndex)

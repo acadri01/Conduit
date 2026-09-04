@@ -1,0 +1,5 @@
+# CAESAR II neutral files (.cii) always use CRLF line endings — confirmed against real
+# CAESAR II-exported files. iecho.exe and CAESAR II itself are Windows/Fortran-heritage
+# tools that expect this convention; LF-only output is silently rejected. Pin it explicitly
+# so no local core.autocrlf setting or editor normalizes these files on checkout/commit.
+*.cii text eol=crlf

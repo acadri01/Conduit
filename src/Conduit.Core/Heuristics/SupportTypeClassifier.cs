@@ -10,6 +10,9 @@ public readonly record struct SupportCandidateContext(
     bool IsVerticalSegment,
     double DistanceToNearestRunEndpoint);
 
+/// <summary>A classification decision paired with the plain-language reason it was made — surfaced in Conduit's output so every placement is explainable, not just stated.</summary>
+public readonly record struct SupportClassification(SupportType Type, string Reason);
+
 /// <summary>
 /// Classifies a candidate support location as rest/guide/anchor at initial placement time.
 ///
@@ -22,30 +25,27 @@ public readonly record struct SupportCandidateContext(
 /// equipment nozzle connection", since nozzle/equipment data isn't modeled in v1.</item>
 /// <item>Everything else is a plain <see cref="SupportType.Rest"/>.</item>
 /// </list>
-/// <see cref="SupportType.SpringCandidate"/> is deliberately not assigned here — it's an
-/// escalation the iterate-and-adjust loop applies to an already-placed support when the span
-/// heuristic alone can't satisfy <c>IStressSolver</c> (see <c>OptimizationLoop</c>), not an
-/// initial classification. A rule like "flag as spring whenever the span approaches the max
-/// allowable span" would fire on almost every rest support by construction, since placement
-/// spaces supports at/under that same limit — that would make the rule meaningless, not useful.
 /// </summary>
 public static class SupportTypeClassifier
 {
     /// <summary>Fraction of the max allowable span, from a run endpoint, treated as "near equipment".</summary>
     public const double NozzleProximityFraction = 0.15;
 
-    public static SupportType Classify(SupportCandidateContext context, double maxAllowableSpan)
+    public static SupportClassification Classify(SupportCandidateContext context, double maxAllowableSpan)
     {
         if (context.IsVerticalSegment)
         {
-            return SupportType.Guide;
+            return new SupportClassification(SupportType.Guide,
+                "segment runs along the model's vertical axis — a rest can't restrain a vertical run against gravity along its own axis, so a guide is used instead");
         }
 
         if (maxAllowableSpan > 0 && context.DistanceToNearestRunEndpoint <= maxAllowableSpan * NozzleProximityFraction)
         {
-            return SupportType.Anchor;
+            return new SupportClassification(SupportType.Anchor,
+                $"within {NozzleProximityFraction:P0} of the max allowable span ({context.DistanceToNearestRunEndpoint:F2} mm of {maxAllowableSpan:F2} mm) " +
+                "from a run endpoint — treated as near an equipment nozzle connection, so an anchor is used");
         }
 
-        return SupportType.Rest;
+        return new SupportClassification(SupportType.Rest, "a plain vertical rest is sufficient — not on a vertical segment and not near a run endpoint/equipment connection");
     }
 }

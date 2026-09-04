@@ -13,7 +13,7 @@ public class CaesarConfigReaderTests
         var config = CaesarConfigReader.Read(FixturePath());
 
         Assert.Equal(false, config.ZAxisUp);
-        Assert.Equal("B31.3_2020", config.DefaultCode);
+        Assert.Equal("B31.3_2024", config.DefaultCode);
         Assert.Equal("SYSTEM", config.SystemDirectoryName);
         Assert.Equal("UMAT1.UMD", config.UserMaterialFileName);
         Assert.Equal("AISC89.BIN", config.StructuralDatabaseFileName);
