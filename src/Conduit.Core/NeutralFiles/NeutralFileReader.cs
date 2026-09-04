@@ -40,6 +40,11 @@ public static class NeutralFileReader
             ? new List<NozzleLimit>()
             : NozzleLimit.ParseMany(equipmntBlock.RawLines, control.NumEquipmentChecks);
 
+        var rigidBlock = FindBlock(blocks, "RIGID");
+        var rigidElements = rigidBlock is null
+            ? new List<RigidElement>()
+            : RigidElement.ParseMany(rigidBlock.RawLines, control.NumRigids);
+
         var miscel1Block = FindBlock(blocks, "MISCEL_1");
         var materialIds = miscel1Block is null
             ? new List<int>()
@@ -58,6 +63,7 @@ public static class NeutralFileReader
             MaterialIds = materialIds,
             AllowableStresses = allowableStresses,
             NozzleLimits = nozzleLimits,
+            RigidElements = rigidElements,
             Units = units,
         };
     }

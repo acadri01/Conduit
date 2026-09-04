@@ -17,38 +17,43 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: optional recheck — `MaterialLibrary` now covers all 399 materials, confirmed by
-automated tests, none blocking.**
+**Status: please retest — fixes for the flange/rigid bug you reported, plus two open design
+questions batched in QUESTIONS.md that need your answer before the next round can proceed on
+them.**
 
-Per your request ("I would like to have all the materials in the database"), `MaterialLibrary`
-went from 2 entries to all 399 in the UMAT1 printout — extracted programmatically, sanity-checked,
-and spot-checked (not hand-typed). Two real data-quality issues found along the way: an extraction
-bug (fixed) where a blank cell in the source table shifted a later column's value into the wrong
-field, and a genuine issue in CAESAR's own database (materials #9/#12 list an invalid negative
-"cold modulus" — now `null` rather than embedded). Allowable stress is still only real for
-materials #106/#107 — cross-referencing the other 397 against B31.3-2024's own allowable-stress
-table is real follow-up work, not attempted this round (a material without its own allowable
-stress falls back to #106's). Full detail in QUESTIONS.md's "Implemented: all 399 materials in
-`MaterialLibrary`" entry.
-
-This only affects `SpanLimitCalculator`'s *fallback* values — used when a file has no
-`#$ ALLOWBLS` record for an element, or when its own material isn't #106/#107 (real files usually
-carry their own `#$ ALLOWBLS` data, so this may not change anything for your actual projects). To
-recheck: rerun the three example fixtures —
+Your last report (restraint-free `44002.cii`, plus the loop-2d/loop-50m-3d/fig6-8/NEWTEST runs)
+found a real bug: a support landed at the starting node of a flange. That's fixed — any node
+touching a weighted rigid element (either of its two ends), a bend, a tee, or a reducer now keeps a
+flat 250 mm clearance, per your instruction. Rests now also get a bundled hold-down (`Y`/`Z`
+instead of `+Y`/`+Z`) with `Friction = 0.15`, per your instruction. Please rerun the same files you
+tested last time:
 ```
+dotnet run --project src/Conduit.Cli -- optimize fixtures/real-samples/44002.cii out-44002.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/NEWTEST.cii out-newtest.cii
 ```
-(confirmed byte-identical to before this round on this end, since none of them use a material
-outside #106/#107) then, if you're able, run each `out-*.cii` through `iecho.exe` and reopen in
-CAESAR II's GUI to confirm independently. If you have a real project using a material other than
-#106/#107 and no `#$ ALLOWBLS` data, that would be a genuinely useful test of the new coverage —
-happy to take a look at the output if you'd like to share one.
+On this end, `44002.cii` now PASSes with 1 support at node 145 (not the earlier 75/175, and clear
+of every one of the file's real weighted-rigid nodes) — worth comparing against your own rerun.
+Your prior verification outputs for all five are now committed at
+`fixtures/real-samples/verification/out-*.cii` for side-by-side comparison. As always, if you're
+able to run any `out-*.cii` through `iecho.exe` and reopen it in CAESAR II's GUI, that's the
+strongest independent check.
 
-Still open, not part of this round's ask: applying the SIF at a tee, and the guide direction-cosine
-question — see SPEC.md's "## Milestones" section (M2) for these, batched as consult items with
-starting proposals already posted (see QUESTIONS.md).
+**Two design questions are waiting on your answer** (both spelled out in full, with a concrete
+proposal each, in QUESTIONS.md — nothing further will be built on either until you weigh in):
+1. You noted the placer "prefers existing element breaks" and asked it to "set itself regardless
+   of what already exists." A design is proposed (split at the ideal max-span position whenever
+   reusing an existing node would waste more than 250 mm of the allowable span) — the one open
+   point is whether 250 mm is the right "close enough, don't bother splitting" tolerance, or
+   whether you'd rather it always split fresh with no tolerance at all. See QUESTIONS.md's
+   "BLOCKING... self-computed support spacing" entry.
+2. You asked for "a simple beam calculation model to determine the stresses at the bends and in
+   the support locations" so hold-downs don't over-restrain rising lines. A scope is proposed
+   (expansion-only beam-theory check using the material data already wired into `MaterialLibrary`)
+   — the one open point is which specific formula/table in `reference/` to pin it to. See
+   QUESTIONS.md's "Scoping proposal... beam/expansion-stress model" entry.
 
 # Step-by-step: test Conduit on your own machine
 

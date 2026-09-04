@@ -24,6 +24,9 @@ public sealed class NeutralFile
     /// <summary>Nozzle/equipment load limits from <c>#$ EQUIPMNT</c>.</summary>
     public required IReadOnlyList<NozzleLimit> NozzleLimits { get; init; }
 
+    /// <summary>Rigid elements from <c>#$ RIGID</c> — look up an element's via <see cref="TryGetRigidElement"/>.</summary>
+    public required IReadOnlyList<RigidElement> RigidElements { get; init; }
+
     /// <summary>This file's length-unit conversion, from <c>#$ UNITS</c> (defaults to <see cref="UnitsSection.Metric"/>).</summary>
     public required UnitsSection Units { get; init; }
 
@@ -135,6 +138,13 @@ public sealed class NeutralFile
     {
         var pointer = element.AllowableStressPointer;
         return pointer > 0 && pointer <= AllowableStresses.Count ? AllowableStresses[pointer - 1] : null;
+    }
+
+    /// <summary>Resolves an element's <c>#$ RIGID</c> record via its 1-based pointer, or null if it has none.</summary>
+    public RigidElement? TryGetRigidElement(Element element)
+    {
+        var pointer = element.RigidPointer;
+        return pointer > 0 && pointer <= RigidElements.Count ? RigidElements[pointer - 1] : null;
     }
 
     /// <summary>

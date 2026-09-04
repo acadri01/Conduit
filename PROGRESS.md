@@ -644,3 +644,26 @@ running status log Claude appends to (skim this from mobile)
   direction). No correctness fix needed; added MaterialLibrary.AllMaterials + a regression test
   (NoMaterial_HoldsTheCaesarNullSentinelOrANegativeValueAsRealData) as a durable guard against a
   future regeneration ingesting the sentinel. 109/109 tests passing.
+- 2026-09-03: fixed the reported bug (support placed at a flange's starting node) by parsing
+  `#$ RIGID`/`#$ REDUCERS` pointers (new `RigidElement`, `Element.RigidPointer`/`ReducerPointer`)
+  and replacing the old bend/tee-only exclusion zone with a flat 250 mm `DiscontinuityClearanceMillimetres`
+  covering bends, tees, weighted rigids, and reducers uniformly, per direct instruction. Both
+  endpoints of a weighted-rigid element are excluded, not just its ToNode, matching the real bug.
+  Self-caught a vacuous first regression test (real-file-based, passed even with the fix disabled)
+  via the standard revert-and-check rigor discipline; replaced with a synthetic test that does fail
+  pre-fix. Verified against the real, restraint-free `fixtures/real-samples/44002.cii` (now
+  committed, replacing the old restrained copy) — no support lands near any of its 9 real
+  weighted-rigid nodes.
+- 2026-09-03: `RestraintTypeMapper.Map(SupportType.Rest, izup)` now emits bidirectional `Y`/`Z`
+  (bundled rest+hold-down) instead of one-directional `+Y`/`+Z`, and `Restraint`'s DOF construction
+  sets `Friction = 0.15` on any `Y`/`Z` restraint — both per direct instruction, the friction value
+  ground-truthed against the previously-committed `44002.cii`'s own real `Friction = 0.15` field.
+  113/113 tests passing.
+- 2026-09-03: committed the user's own restraint-free `44002.cii` (replacing the old committed
+  copy) and their 5 local verification-run outputs under `fixtures/real-samples/verification/`,
+  per direct instruction ("nice to have each of them in the folder for verification").
+- 2026-09-03: logged two consult-first placement-logic items in QUESTIONS.md per CLAUDE.md's
+  one-support-type-at-a-time rule rather than implementing unilaterally: (1) self-computed support
+  spacing instead of preferring existing element breaks — a concrete design is proposed, pending
+  confirmation of the reuse tolerance; (2) a scoping proposal for the simple beam/expansion-stress
+  model that gates hold-down narrowing, pending which `reference/` source to pin the formula to.

@@ -41,6 +41,7 @@ public sealed class Restraint
         dof.Node = node;
         dof.RawTypeCode = (int)type;
         dof.Stiffness = rigidStiffness;
+        dof.Friction = FrictionFor(type);
         (dof.DirectionCosineX, dof.DirectionCosineY, dof.DirectionCosineZ) = DirectionCosineFor(type);
         return restraint;
     }
@@ -66,6 +67,7 @@ public sealed class Restraint
             dof.Node = node;
             dof.RawTypeCode = (int)types[i];
             dof.Stiffness = rigidStiffness;
+            dof.Friction = FrictionFor(types[i]);
             (dof.DirectionCosineX, dof.DirectionCosineY, dof.DirectionCosineZ) = DirectionCosineFor(types[i]);
         }
         return restraint;
@@ -86,6 +88,25 @@ public sealed class Restraint
             or RestraintType.Zrod or RestraintType.PlusZrod or RestraintType.MinusZrod
             or RestraintType.Z2 or RestraintType.PlusZ2 or RestraintType.MinusZ2 => (0, 0, 1),
         _ => (0, 0, 0),
+    };
+
+    /// <summary>
+    /// Friction coefficient for a vertical rest/hold-down restraint — 0.15, per direct instruction
+    /// (2026-09-03): "The rest supports should actually have a friction coefficient of .15, this
+    /// may be applied to the Y support as well," confirmed against real data: the committed
+    /// <c>fixtures/real-samples/44002.cii</c> already carries a <c>+Y</c> restraint with
+    /// <c>Friction = 0.15</c> at node 35. Scoped to the plain vertical rest/hold-down/combined
+    /// family (<c>Y</c>/<c>+Y</c>/<c>-Y</c> and their <c>Z</c>-axis equivalents for an
+    /// <c>Izup=1</c> model) — not the rod/snubber/2-way variants, which are physically different
+    /// support mechanisms with no sliding-friction concept in the same sense. Every other
+    /// restraint type (guide, line stop, anchor, X-axis...) is left at 0, matching what every real
+    /// sample's non-Y/Z restraint carries.
+    /// </summary>
+    private static double FrictionFor(RestraintType type) => type switch
+    {
+        RestraintType.Y or RestraintType.PlusY or RestraintType.MinusY
+            or RestraintType.Z or RestraintType.PlusZ or RestraintType.MinusZ => 0.15,
+        _ => 0.0,
     };
 
     public static List<Restraint> ParseMany(IReadOnlyList<string> lines, int count)

@@ -59,6 +59,18 @@ public sealed class Element
     /// </summary>
     public int IntersectionPointer => AuxiliaryPointers[10];
 
+    /// <summary>
+    /// 1-based pointer into <c>#$ RIGID</c> (0 = none) — the vendor doc's "Pointer to Rigid
+    /// Element Auxiliary field". Set on the element that <i>is</i> the rigid (e.g. a flange or
+    /// piece of in-line equipment modeled as a weighted rigid body rather than pipe) — per direct
+    /// instruction (2026-09-03): "Any node with a connecting rigid with weight should not have a
+    /// support placed on it," after a real run placed one at the starting node of a flange.
+    /// </summary>
+    public int RigidPointer => AuxiliaryPointers[1];
+
+    /// <summary>1-based pointer into <c>#$ REDUCERS</c> (0 = none) — the vendor doc's "Pointer to Reducer Auxiliary field," another real geometric discontinuity a support should keep clear of, per direct instruction (2026-09-03).</summary>
+    public int ReducerPointer => AuxiliaryPointers[12];
+
     /// <summary>1-based pointer into <c>#$ EQUIPMNT</c> (0 = none).</summary>
     public int EquipmentCheckPointer => AuxiliaryPointers[14];
 

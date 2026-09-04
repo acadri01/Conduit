@@ -16,7 +16,14 @@ namespace Conduit.Core.Heuristics;
 /// </summary>
 public enum SupportType
 {
-    /// <summary>A one-directional vertical rest — resists sagging under gravity but allows the pipe to lift off (e.g. under thermal growth). CAESAR II's <c>+Y</c>.</summary>
+    /// <summary>
+    /// A vertical rest — resists sagging under gravity. Properly a one-directional restraint
+    /// (CAESAR II's <c>+Y</c>, allowing the pipe to lift off under e.g. thermal growth), but
+    /// <see cref="RestraintTypeMapper"/> maps it to the bidirectional <c>Y</c> by default as of
+    /// direct instruction (2026-09-03) — Conduit's own rests are placed with a hold-down bundled
+    /// in from the start, not as a plain one-directional rest, until a real stress check justifies
+    /// narrowing a specific one back down.
+    /// </summary>
     Rest,
 
     /// <summary>A one-directional restraint against lifting off (the opposite of <see cref="Rest"/>) — combined with a rest, this is CAESAR II's bidirectional <c>Y</c>.</summary>

@@ -68,7 +68,8 @@ public class OptimizationLoopTests
         var result = OptimizationLoop.Run(file, new MockStressSolver());
 
         Assert.True(result.Passed);
-        Assert.Contains(file.Restraints, r => r.Node == 15 && r.Dofs[0].Type == RestraintType.PlusY);
+        // Y, not PlusY — a rest is placed with a hold-down bundled in by default (2026-09-03).
+        Assert.Contains(file.Restraints, r => r.Node == 15 && r.Dofs[0].Type == RestraintType.Y);
         Assert.True(file.Restraints.Count > 3, "the overlong second leg should have gained its own interior restraints");
     }
 

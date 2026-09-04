@@ -27,22 +27,25 @@ public sealed record PlacedSupport(int Node, SupportType Type, RestraintType Res
 /// direct instruction went) is this file's own reversible, logged extension — the alternative
 /// (guides not resetting horizontal accumulators, or vice versa) seemed like an arbitrary
 /// asymmetry with no stated reason to prefer it.</item>
-/// <item><b>Bend/tee corner exclusion.</b> A support is never placed directly on a bend corner
-/// (<c>#$ ELEMENTS</c>' own bend pointer) or a tee/intersection node — per direct instruction
-/// (2026-09-01, "determine a tee by its tee/sif pointer, not by the actual geometry"), this is the
-/// real <c>#$ SIF&amp;TEES</c> pointer (<see cref="Element.IntersectionPointer"/>), not node degree:
-/// a real user-supplied sample showed 3 of 4 actual intersections have no branch geometry at all
-/// (a fitting needing SIF treatment with no modeled branch pipe in this file), which a
-/// degree-based guess would have missed. (Node degree is still used, separately, by
-/// <see cref="SplitIntoRuns"/> to recognize a genuine topological branch run — a different
-/// question from "should a support avoid this specific node.") Also excluded: within
-/// <see cref="ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres"/>
-/// of a bend/tee. When an overflow is detected at an excluded node, the placer backs off to the nearest
-/// eligible node already passed since the last reset, if any; if none exists in the zone (e.g. a
-/// single overlong element ending right at a bend, with no interior node at all), no support is
-/// placed there — left as an unresolved failure for <see cref="Optimization.OptimizationLoop"/>'s
-/// reactive <see cref="ElementSplitter"/> fallback to resolve by introducing a new node, exactly
-/// as it already does for the "single overlong element, no existing node" case.</item>
+/// <item><b>Discontinuity clearance (flat 250 mm, per direct instruction 2026-09-03).</b> A support
+/// is never placed directly on, or within <see cref="DiscontinuityClearanceMillimetres"/> of, a
+/// bend corner (<c>#$ ELEMENTS</c>' own bend pointer), a tee/intersection node (the real
+/// <c>#$ SIF&amp;TEES</c> pointer, <see cref="Element.IntersectionPointer"/> — not node degree, per
+/// direct instruction 2026-09-01: a real user-supplied sample showed 3 of 4 actual intersections
+/// have no branch geometry at all, which a degree-based guess would have missed; node degree is
+/// still used, separately, by <see cref="SplitIntoRuns"/> to recognize a genuine topological branch
+/// run), a node touching a weighted rigid element (<see cref="Element.RigidPointer"/>, both its
+/// <c>FromNode</c> and <c>ToNode</c> — after a real report of a support landing at the *starting*
+/// node of a flange, which a `ToNode`-only check would have missed), or a reducer
+/// (<see cref="Element.ReducerPointer"/>). This replaced an earlier bend/tee-only, OD-dependent
+/// clearance (<c>ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres</c>) with one flat
+/// distance covering every discontinuity type uniformly, per direct instruction: "keep a 250 mm
+/// margin on each side of a support for any discontinuities in the piping, such as tees, rigid
+/// elements, bends, reducers, and anything else I have not thought of." When an overflow is
+/// detected at an excluded node, the placer backs off to the nearest eligible node already passed
+/// since the last reset, if any; if none exists in the zone (e.g. a single overlong element ending
+/// right at a bend, with no interior node at all), it splits the offending element itself (see the
+/// "splits during the initial pass" item below) rather than leaving it unresolved.</item>
 /// <item><b>Guide at every (eligible) rest.</b> Per direct instruction ("I think we can use a
 /// guide at every rest, unless it comes very close to a directional change... No need to define
 /// this right now"): every plain horizontal rest also gets a co-located guide. Since eligible
@@ -81,6 +84,18 @@ public static class SupportPlacer
 
     /// <summary>Multiplier applied to the horizontal max allowable span when checking a vertical run's own accumulated length, per direct instruction.</summary>
     public const double VerticalSpanMultiplier = 2.0;
+
+    /// <summary>
+    /// A support must sit at least this far from any real piping discontinuity — a bend, tee,
+    /// weighted rigid element (e.g. a flange), or reducer — per direct instruction (2026-09-03):
+    /// "keep a 250 mm margin on each side of a support for any discontinuities in the piping, such
+    /// as tees, rigid elements, bends, reducers, and anything else I have not thought of." A flat
+    /// value, not the OD-dependent tangent-length-plus-buffer <see cref="ElementSplitter"/> uses
+    /// for its own, different concern (a physically viable minimum chunk size when splitting near
+    /// a bend) — those two clearances answer different questions and were kept independent rather
+    /// than merged.
+    /// </summary>
+    public const double DiscontinuityClearanceMillimetres = 250.0;
 
     public static List<PlacedSupport> PlaceSupports(NeutralFile file)
     {
@@ -183,7 +198,13 @@ public static class SupportPlacer
         double CumulativeVertical,
         double AlongPath,
         bool IsBend,
-        bool IsTee);
+        bool IsTee,
+        bool IsRigidWithWeight,
+        bool IsReducer)
+    {
+        /// <summary>Any real piping discontinuity a support must keep <see cref="DiscontinuityClearanceMillimetres"/> clear of.</summary>
+        public bool IsDiscontinuity => IsBend || IsTee || IsRigidWithWeight || IsReducer;
+    }
 
     private static void PlaceSupportsForRun(
         NeutralFile file,
@@ -198,17 +219,15 @@ public static class SupportPlacer
         var runEndNode = run[^1].ToNode;
         var runLength = run.Sum(e => e.Length) * toMillimetres;
         var positions = nozzleNodePositions.Count > 0 ? file.ComputeNodePositions() : null;
-        var outsideDiameterMillimetres = run[0].OutsideDiameter * toMillimetres;
-        var clearance = ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres(outsideDiameterMillimetres);
 
-        var nodes = BuildRunNodes(run, izup, toMillimetres);
-        var exclusionZones = nodes.Where(n => n.IsBend || n.IsTee).Select(n => n.AlongPath).ToList();
+        var nodes = BuildRunNodes(file, run, izup, toMillimetres);
+        var exclusionZones = nodes.Where(n => n.IsDiscontinuity).Select(n => n.AlongPath).ToList();
 
         bool IsEligible(RunNode n) =>
             n.Node != runStartNode && n.Node != runEndNode
-            && !n.IsBend && !n.IsTee
+            && !n.IsDiscontinuity
             && !alreadySupported.Contains(n.Node)
-            && exclusionZones.All(z => Math.Abs(n.AlongPath - z) >= clearance);
+            && exclusionZones.All(z => Math.Abs(n.AlongPath - z) >= DiscontinuityClearanceMillimetres);
 
         var baseA = 0.0;
         var baseB = 0.0;
@@ -466,8 +485,23 @@ public static class SupportPlacer
         }
     }
 
-    private static List<RunNode> BuildRunNodes(List<Element> run, int izup, double toMillimetres)
+    private static List<RunNode> BuildRunNodes(NeutralFile file, List<Element> run, int izup, double toMillimetres)
     {
+        // Precomputed up front (not per-element below) because a weighted rigid excludes *both*
+        // of its own endpoints, not just the one RunNode is otherwise keyed by (an element's
+        // ToNode) — per direct instruction (2026-09-03), after a real report of a support landing
+        // at the *starting* node of a flange (that flange element's FromNode, which nothing
+        // "ends" at from this run's own walk, so it would otherwise never get flagged).
+        var weightedRigidNodes = new HashSet<int>();
+        foreach (var element in run)
+        {
+            if (file.TryGetRigidElement(element) is { Weight: not 0 })
+            {
+                weightedRigidNodes.Add(element.FromNode);
+                weightedRigidNodes.Add(element.ToNode);
+            }
+        }
+
         var nodes = new List<RunNode>(run.Count);
         double cumA = 0, cumB = 0, cumVertical = 0, alongPath = 0;
 
@@ -490,7 +524,12 @@ public static class SupportPlacer
             // fitting needing SIF treatment without a modeled branch pipe), which node degree
             // alone would have missed entirely.
             var isTee = element.IntersectionPointer != 0;
-            nodes.Add(new RunNode(element.ToNode, element, axis, cumA, cumB, cumVertical, alongPath, isBend, isTee));
+            // A massless rigid (weight 0 — confirmed to occur in real files, e.g. a zero-length
+            // tie) isn't a real equipment-weight discontinuity in the sense meant, so it doesn't
+            // exclude a node — only a rigid with real weight does (see weightedRigidNodes above).
+            var isRigidWithWeight = weightedRigidNodes.Contains(element.ToNode);
+            var isReducer = element.ReducerPointer != 0;
+            nodes.Add(new RunNode(element.ToNode, element, axis, cumA, cumB, cumVertical, alongPath, isBend, isTee, isRigidWithWeight, isReducer));
         }
 
         return nodes;

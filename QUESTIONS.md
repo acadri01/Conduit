@@ -2537,3 +2537,187 @@ record.
 **Next step**: none blocking — this was verification of existing behavior plus a regression test,
 prompted by the reminder. The general convention is already documented in
 `docs/neutral-file/WALKTHROUGH.md`'s file-level rules for future field-parsing work.
+
+## Shipped: rigid/reducer discontinuity clearance, and hold-down-bundled-with-rest by default (2026-09-03)
+
+Real feedback from `acadri01`'s own local runs (loop-2d/loop-50m-3d/fig6-8/44002/NEWTEST logs, plus
+a restraint-free `44002.cii` and their own verification output files) drove three fixes, all
+shipped and tested this round:
+
+**1. Fixed the reported bug: a support landed at the starting node of a flange.** Root cause: the
+element auxiliary pointer array's index 1 (`#$ RIGID`, per `reference/NeutralFile-v15.pdf`) was
+never parsed, so `SupportPlacer` had no way to know a node was structurally a weighted rigid
+(equipment mass, not just pipe) rather than ordinary pipe. Added `RigidElement`/`RigidPointer`
+parsing, plus `ReducerPointer` (index 12, `#$ REDUCERS`) for the same reason. Per direct
+instruction — "Any node with a connecting rigid with weight should not have a support placed on
+it" and "keep a 250 mm margin on each side of a support for any discontinuities in the piping,
+such as tees, rigid elements, bends, reducers" — replaced the old bend/tee-only, OD-dependent
+exclusion zone with a flat `DiscontinuityClearanceMillimetres = 250.0` clearance around bends,
+tees, weighted rigids, *and* reducers uniformly. Caught and fixed a real gap of my own during
+implementation (not from the user): the first pass only excluded a weighted rigid's `ToNode`, which
+would have missed the actual reported bug (a support at the rigid's *FromNode*, "starting node") —
+fixed by precomputing both endpoints of every weighted-rigid element in `BuildRunNodes` and
+`OptimizationLoop.TryPickMidpointNode`. Verified end-to-end against the real, restraint-free
+`fixtures/real-samples/44002.cii` (now committed, replacing the old restrained version) via the
+CLI: no support lands on or near any of the file's 9 real weighted-rigid-touching nodes.
+
+Also caught a real gap in my own test coverage via this project's standard "revert the fix, confirm
+the test fails" rigor check: the first regression test set
+(`RigidWeightExclusionTests`, checked against `44002.cii`'s real geometry) still passed with the
+exclusion logic completely disabled — that fixture's specific span lengths never happen to force a
+placement decision near a weighted-rigid node, so it was documentation, not protection. Added a
+second, synthetic test (`SupportPlacerTests.NeverPlacesASupportOnEitherEndOfAConnectingRigidElementWithRealWeight`)
+that hand-constructs a rigid pointer and a custom `RigidElements` list to force the exact scenario;
+confirmed *this* one does fail when the exclusion is disabled, then restored the fix. 113/113 tests
+passing.
+
+**2. Hold-downs bundled with rests by default.** Per direct instruction — "we will start by placing
+hold-downs together with rest supports on the initial pass... this can be done by setting Y instead
+of +Y" — `RestraintTypeMapper.Map(SupportType.Rest, izup)` now emits bidirectional `Y`/`Z` (a
+combined rest+hold-down) instead of one-directional `+Y`/`+Z`, "until a real stress check justifies
+narrowing... back down" (see item 3 below — that stress check doesn't exist yet).
+
+**3. Friction = 0.15 on Y/Z restraints.** Per direct instruction ("The rest supports should
+actually have a friction coefficient of .15... this may be applied to the Y support as well"), and
+ground-truthed against the *previously-committed* `44002.cii`'s own `#$ RESTRANT` record at node 35
+(`Friction = 0.15` on a `PlusY` restraint, confirming both the field's position and the value).
+`Restraint.CreateSingleDof`/`CreateMultiDof` now set `Dof.Friction = 0.15` for any `Y`/`PlusY`/
+`MinusY`/`Z`/`PlusZ`/`MinusZ` restraint, `0.0` otherwise.
+
+**Also committed** (per direct instruction — "I think it is nice to have each of them in the
+folder for verification"): the user's own restraint-free `44002.cii` replaces the old committed
+copy, and their 5 local verification-run outputs (loop-2d, loop-50m-3d, fig6-8, 44002, NEWTEST) are
+committed under `fixtures/real-samples/verification/` as reference-only files (not wired into any
+automated test — they're the user's own CLI output, kept for cross-checking).
+
+**Next step**: none blocking for these three. See the next entry for the fourth item from the same
+report (self-computed support spacing), which is a stop-and-ask per CLAUDE.md's placement-logic
+rule rather than something to ship unilaterally.
+
+## BLOCKING (placement-logic, needs your confirmation before implementing): self-computed support spacing instead of preferring existing element breaks (2026-09-03)
+
+The same report included a fourth, distinct point: **"It also seems like the program prefers
+existing element breaks. I would prefer that it set itself regardless of what already exists."**
+
+This is real and reproducible in the current algorithm. Today, when a run's accumulated span first
+exceeds the max allowable at some node, `SupportPlacer` backs off to whichever *existing* node was
+last passed while still under the threshold — even if that existing node is far short of the ideal,
+full-span position, simply because it happens to already be there. It only computes its own ideal
+split point (via `ElementSplitter`) as a last resort, when literally no existing node is usable at
+all (the "genuinely stuck" case — the whole zone back to the last reset is excluded by a
+bend/tee/rigid/reducer). So today's rule is "prefer an existing break, however short of ideal;
+compute one from scratch only if truly stuck" — the reverse of what's being asked.
+
+**Why I'm not just flipping this unilaterally**, even under the standing decide-and-proceed rule:
+CLAUDE.md's own override for support-placement logic says positioning ("what makes a location a
+rest, hold-down, guide, line stop, or anchor, **and where**") is defined one type at a time, with
+you consulted on the logic *before* it's implemented — not decided unilaterally. This one is
+squarely "and where." It's also a wide-blast-radius change: nearly every existing placement test
+(`RunWithOneIntermediateNode_EndsUpSupportedAndPassing`, `OverlongSegmentPastAnAddedRestSupport_...`,
+`StraightRun_PassesAfterInitialPlacement`, etc.) uses fixtures with an existing intermediate node at
+some fraction of the max span (0.5x, 0.6x...) specifically to test "reuse the one node that's
+there" — under a literal "always compute fresh, ignore what exists" reading, most of these would
+need their expected node numbers rewritten (a new, computed node instead of the existing one), which
+is a real behavior change worth confirming rather than guessing the exact mechanics of.
+
+**The concrete design I'd implement, pending your OK** (all machinery for this already exists —
+`ElementSplitter`/`TrySplitElement` already do exactly this "ideal-position" computation for the
+"genuinely stuck" case; this generalizes when it's used, not what it does):
+
+- When an overflow is detected, compute the *ideal* position on the overflowing axis: exactly
+  `max-allowable-span` past the last reset point (this is always inside the current — overflowing —
+  element, since by definition the *previous* node didn't yet exceed the threshold).
+- Compare that to what today's "back off to the last existing eligible node" would achieve. If that
+  existing node's own span (from the last reset) already comes within
+  `DiscontinuityClearanceMillimetres` (250 mm — reusing the same clearance scale already
+  established for discontinuities, so there's no second magic number) of the ideal, keep using it
+  as-is (today's behavior, unchanged) — this covers "an existing break already happens to be right
+  about where the support belongs" without pointlessly splitting right next to it.
+- Otherwise (the existing node would waste more than 250 mm of the allowable span, or there's no
+  eligible existing node in the zone at all — today's already-implemented "stuck" case), split the
+  current element at the ideal position via the same `ElementSplitter` machinery already in use,
+  placing the new support (and, for a Rest, its companion guide) at the new interior node instead.
+- Falls back to the existing "use whatever existing node is available" behavior only if the split
+  itself isn't possible (pipe too small to chunk at all — the same edge case
+  `UnsplittableElement_IsStillReportedRatherThanLoopedForever` already covers).
+
+**Open point I don't want to guess on**: is 250 mm the right "close enough to not bother splitting"
+tolerance, or would you rather it always split fresh regardless of how close an existing node
+already is (i.e., no reuse tolerance at all — every placement is a fresh, computed node unless it
+lands exactly on an existing one)? The difference only matters when an existing break is already
+within a few hundred mm of the ideal spot; either way, the "far-short existing breaks get ignored"
+behavior you asked for is the same.
+
+**Next step once you confirm (either the 250 mm tolerance, "no tolerance, always split," or a
+different number)**: implement the design above in `SupportPlacer.PlaceSupportsForRun` (the overflow
+branch around the `previousEligible`/`target` logic), update the existing placement tests whose
+expected node numbers change as a direct, intended consequence (not a regression — e.g.
+`RunWithOneIntermediateNode_EndsUpSupportedAndPassing` would then expect a new, computed node past
+node 15 rather than node 15 itself), and re-verify against the real `44002.cii`/`NEWTEST.cii`
+fixtures and the user's own verification-run outputs already committed under
+`fixtures/real-samples/verification/`.
+
+## Scoping proposal (not built this round): the simple beam/expansion-stress model (2026-09-03)
+
+The same report's fifth point continues the M2 thread SPEC.md already has open ("rest positioning
+mainly governed by sustained stress; horizontal guide/hold-down spacing mainly by expansion
+stress... these heuristics may be determined later. Set a placeholder for this currently if
+required"): **"we need to create a simple beam calculation model to determine the stresses at the
+bends and in the support locations... to ensure that hold-downs are not opposing rising lines to an
+extent greater than allowed."** Now that hold-downs are bundled with every rest by default (this
+round's item 2 above), this is no longer a "nice to have later" — it's the actual gate that's
+supposed to decide when a bundled hold-down should be narrowed back down to a plain rest, per the
+instruction underlying that change: hold-downs "with the rest" *unless* "the stresses are not
+passing for the placement."
+
+**Why this is scoped, not built, this round**: it's genuinely new engineering surface (a stress
+calculation, not a placement heuristic), and CLAUDE.md's own carve-out for spring logic ("no spring
+logic of any kind... if a task seems to call for it, skip that part and note why") is a reminder
+that new structural-analysis scope gets flagged, not rushed — this is the same category of decision
+(a real engineering model with real correctness stakes) even though it isn't spring logic itself.
+
+**What's already available to build on** (from the M2 thread's prior investigation, still current):
+- `#$ ELEMENTS` carries real per-element temperature data (confirmed against all 4 real samples).
+- `MaterialLibrary` (399 materials) already resolves elastic modulus and, for the subset with a
+  populated value, thermal expansion coefficient by the element's real `RRMAT` ID — the two
+  material properties a beam-theory expansion check needs are already wired in, just not consumed
+  by anything yet.
+- `SpanLimitCalculator` already has the per-run geometry (axis, cumulative length, OD/wall) a beam
+  model would walk the same way.
+
+**Concrete proposal, pending your OK to build it:**
+1. **Scope to exactly what's asked**: a simplified beam-theory *expansion* stress check (not a
+   general sustained/occasional stress solver — that's what M4/M5's real CAESAR II validation path
+   is for) run only at hold-down candidates on a rising (non-horizontal-dominant) line, per the
+   literal ask ("hold-downs are not opposing rising lines").
+2. **Model**: per run, compute unrestrained thermal growth `ΔL = α × ΔT × L` for the vertical run
+   between its two nearest resets (existing anchors/supports), using the element's resolved
+   material `α` and its own real temperature field for `ΔT`. Where `α` is `null` (a material
+   outside B31.3's 200, or a genuinely unlisted field), fall back to material #106's value with a
+   note in the reason string — same fallback pattern `SpanLimitCalculator` already uses for
+   allowable stress.
+3. **Check**: treat a candidate hold-down as "opposing" the rise if restraining that growth would
+   require a reaction force exceeding a fraction of the pipe's own allowable stress translated to
+   an equivalent bending/axial limit at the nearest bend — full formula to be pinned to a specific
+   textbook/code reference (`reference/` PDFs, per CLAUDE.md's primary-source rule) rather than
+   invented from memory; I have not yet identified which specific formula in the existing
+   `reference/` material this maps to and want to confirm that reference before writing the
+   check, not guess at a beam formula unilaterally.
+4. **Outcome**: when the check fails, narrow that node's mapped restraint from `Y`/`Z`
+   (rest+hold-down) back to `+Y`/`+Z` (plain rest) and say why in the `PlacedSupport.Reason`
+   string, rather than silently dropping the hold-down.
+5. **Out of scope for this pass** (flagged, not built): occasional/seismic and true accidental-blast
+   load cases (the user's own stated reason hold-downs exist at all — "required for accidental
+   blast scenarios" — but a full blast-load stress check is a materially larger model than the
+   expansion-only check above); this stays a known gap, not silently assumed handled.
+
+**Open question I need before starting**: which specific formula/table in `reference/` (the B31.3
+PDF's own stress-intensification/flexibility sections, or a specific textbook chapter among the
+ones already committed) should the beam/reaction-force check be pinned to? I'd rather ask than pick
+one and have it be wrong the way the UMAT1 code-ID guess was in an earlier round.
+
+**Next step once you answer**: implement the model above against the named reference, add a new
+`HoldDownStressCheck`-style component (exact naming/placement TBD, likely alongside
+`SpanLimitCalculator` in `Conduit.Core/Heuristics`), wire it into `SupportPlacer`'s hold-down
+narrowing decision, and add regression tests against both a synthetic rising-line fixture and the
+real `fig6-8-example.cii` (which already has a real riser leg).

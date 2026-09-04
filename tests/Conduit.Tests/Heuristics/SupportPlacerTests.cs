@@ -234,6 +234,51 @@ public class SupportPlacerTests
         Assert.DoesNotContain(placed, p => p.Node == 20);
     }
 
+    /// <summary>
+    /// Per direct instruction (2026-09-03), after a real run placed a support at the starting node
+    /// of a flange: a node with a connecting rigid element that has real weight must never get a
+    /// support, on <i>either</i> of the rigid's own endpoints — not just the one
+    /// <see cref="SupportPlacer"/>'s own per-element walk happens to key a position by. This test
+    /// puts the weighted rigid on the 20-&gt;30 element (so node 20, its FromNode — the "starting
+    /// node" scenario from the real report — is excluded even though no element "ends" there with
+    /// the rigid pointer itself) and confirms both node 20 and node 30 are refused.
+    /// </summary>
+    [Fact]
+    public void NeverPlacesASupportOnEitherEndOfAConnectingRigidElementWithRealWeight()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            Seg(10, 20, 24000, 0, 0),
+            Seg(20, 30, 2000, 0, 0),
+            Seg(30, 40, 24000, 0, 0),
+        };
+        var built = NeutralFileFixtureBuilder.Build(segments, [10, 40], izup: 0);
+
+        var original = built.Elements.Single(e => e.FromNode == 20 && e.ToNode == 30);
+        var pointers = original.AuxiliaryPointers.ToArray();
+        pointers[1] = 1; // the rigid pointer — 1-based, into the RigidElements list below
+        var withRigid = new Element { RealValues = original.RealValues, Name = original.Name, LineNumber = original.LineNumber, AuxiliaryPointers = pointers };
+        built.Elements[built.Elements.IndexOf(original)] = withRigid;
+
+        var file = new NeutralFile
+        {
+            Blocks = built.Blocks,
+            Control = built.Control,
+            Elements = built.Elements,
+            NodeNames = built.NodeNames,
+            Restraints = built.Restraints,
+            MaterialIds = built.MaterialIds,
+            AllowableStresses = built.AllowableStresses,
+            NozzleLimits = built.NozzleLimits,
+            RigidElements = [new RigidElement { Weight = 400, Type = 2 }], // a real weight, like the flange in fixtures/real-samples/44002.cii
+            Units = built.Units,
+        };
+
+        var placed = SupportPlacer.PlaceSupports(file);
+
+        Assert.DoesNotContain(placed, p => p.Node is 20 or 30);
+    }
+
     [Fact]
     public void PlanarJog_GetsNoSupportsInsideTheJogItself()
     {

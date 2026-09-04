@@ -230,14 +230,16 @@ public static class OptimizationLoop
     /// <summary>
     /// Picks the node closest to the segment's midpoint, excluding the segment's own bounding
     /// nodes and — per direct instruction ("Any element with a bend pointer shouldn't have a
-    /// restraint"), after a real report of exactly this happening — any bend or tee/intersection
-    /// node, plus the same bend-clearance buffer <see cref="ElementSplitter"/> and
-    /// <see cref="SupportPlacer"/> already use. Tee detection uses the real
-    /// <c>#$ SIF&amp;TEES</c> pointer (<see cref="Element.IntersectionPointer"/>), not node degree —
-    /// per direct instruction (2026-09-01), matching <see cref="SupportPlacer"/>'s own switch (see
-    /// its class doc comment for why node degree alone isn't reliable). This mirrors
-    /// <see cref="SupportPlacer"/>'s own exclusion rule so a support added reactively here can't
-    /// land somewhere the initial pass would have refused to.
+    /// restraint"), after a real report of exactly this happening — any real piping discontinuity
+    /// (bend, tee/intersection, weighted rigid element, or reducer — the same set
+    /// <see cref="SupportPlacer"/> excludes, extended 2026-09-03 to cover a real report of a
+    /// support landing at a flange's node), plus <see cref="SupportPlacer.DiscontinuityClearanceMillimetres"/>'s
+    /// flat 250 mm buffer on each side. Tee detection uses the real <c>#$ SIF&amp;TEES</c> pointer
+    /// (<see cref="Element.IntersectionPointer"/>), not node degree — per direct instruction
+    /// (2026-09-01), matching <see cref="SupportPlacer"/>'s own switch (see its class doc comment
+    /// for why node degree alone isn't reliable). This mirrors <see cref="SupportPlacer"/>'s own
+    /// exclusion rule so a support added reactively here can't land somewhere the initial pass
+    /// would have refused to.
     /// </summary>
     private static int? TryPickMidpointNode(NeutralFile file, List<Element> segment)
     {
@@ -256,20 +258,36 @@ public static class OptimizationLoop
             positions.Add((element.ToNode, element, alongPath));
         }
 
+        // A weighted rigid excludes *both* of its own endpoints, not just whichever one this
+        // segment's own per-element walk happens to key a position by — see
+        // SupportPlacer.BuildRunNodes's matching precomputation for why (a real report of a
+        // support at a flange's *starting* node, its owning element's FromNode).
+        var weightedRigidNodes = new HashSet<int>();
+        foreach (var element in segment)
+        {
+            if (file.TryGetRigidElement(element) is { Weight: not 0 })
+            {
+                weightedRigidNodes.Add(element.FromNode);
+                weightedRigidNodes.Add(element.ToNode);
+            }
+        }
+
+        bool IsDiscontinuity((int Node, Element Element, double AlongPath) p) =>
+            p.Element.AuxiliaryPointers[0] != 0 || p.Element.IntersectionPointer != 0
+            || p.Element.ReducerPointer != 0 || weightedRigidNodes.Contains(p.Node);
+
         var exclusionZones = positions
-            .Where(p => p.Element.AuxiliaryPointers[0] != 0 || p.Element.IntersectionPointer != 0)
+            .Where(IsDiscontinuity)
             .Select(p => p.AlongPath)
             .ToList();
 
         bool IsExcluded((int Node, Element Element, double AlongPath) p)
         {
-            if (p.Element.AuxiliaryPointers[0] != 0 || p.Element.IntersectionPointer != 0)
+            if (IsDiscontinuity(p))
             {
                 return true;
             }
-            var outsideDiameterMillimetres = p.Element.OutsideDiameter * toMillimetres;
-            var clearance = ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres(outsideDiameterMillimetres);
-            return exclusionZones.Any(z => Math.Abs(p.AlongPath - z) < clearance);
+            return exclusionZones.Any(z => Math.Abs(p.AlongPath - z) < SupportPlacer.DiscontinuityClearanceMillimetres);
         }
 
         var half = alongPath / 2.0;

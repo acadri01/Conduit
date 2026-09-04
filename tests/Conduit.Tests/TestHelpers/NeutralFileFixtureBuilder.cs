@@ -124,6 +124,7 @@ public static class NeutralFileFixtureBuilder
             MaterialIds = segments.Select(_ => 1).ToList(),
             AllowableStresses = AllowableStress.ParseMany(allowblsBlock.RawLines, 1),
             NozzleLimits = [],
+            RigidElements = [],
             Units = units,
         };
 

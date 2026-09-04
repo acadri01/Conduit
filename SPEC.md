@@ -777,6 +777,41 @@ milestone.
     any material missing its own. 108/108 tests passing; the three real fixtures are still
     byte-identical (they use #106, whose 138 MPa was already correct). See QUESTIONS.md's "Shipped:
     real B31.3 allowable stress for 200 materials..." entry.
+  - **Update (2026-09-03): rigid/reducer discontinuity clearance, hold-down bundled with rest,
+    friction = 0.15.** Real feedback from the user's own local runs against a restraint-free
+    `44002.cii` reported a support landing at the starting node of a flange. Root cause: the
+    element auxiliary pointer array's rigid (`#$ RIGID`, index 1) and reducer (`#$ REDUCERS`,
+    index 12) pointers were never parsed. Fixed by adding `RigidElement`/`Element.RigidPointer`/
+    `Element.ReducerPointer`, and replacing the old bend/tee-only, OD-dependent exclusion zone with
+    a flat `DiscontinuityClearanceMillimetres = 250.0` clearance uniformly covering bends, tees,
+    weighted rigids, and reducers — per direct instruction ("keep a 250 mm margin on each side of a
+    support for any discontinuities in the piping, such as tees, rigid elements, bends, reducers,
+    and anything else I have not thought of"). Both endpoints of a weighted-rigid element are
+    excluded (not just its `ToNode`), matching the real reported bug. Also per direct instruction:
+    `RestraintTypeMapper.Map(SupportType.Rest, izup)` now emits bidirectional `Y`/`Z` (a bundled
+    rest+hold-down) instead of one-directional `+Y`/`+Z` — "we will start by placing hold-downs
+    together with rest supports on the initial pass... this can be done by setting Y instead of
+    +Y" — and `Restraint`'s DOF construction sets `Friction = 0.15` on any `Y`/`Z` restraint,
+    ground-truthed against the previously-committed `44002.cii`'s own real `Friction = 0.15` value.
+    113/113 tests passing. Full detail, including a self-caught test-rigor gap (the first
+    real-file-based regression test set was found vacuous via the standard "revert the fix, confirm
+    the test fails" check, replaced with a synthetic test that does fail pre-fix), in QUESTIONS.md's
+    "Shipped: rigid/reducer discontinuity clearance..." entry.
+  - **Open (consult), logged 2026-09-03**: the same report's fourth point — "the program prefers
+    existing element breaks... I would prefer that it set itself regardless of what already
+    exists" — is a genuine placement-*positioning* logic change (CLAUDE.md's "and where" carve-out)
+    with wide test blast-radius. A concrete design (split at the ideal max-span position whenever
+    reusing an existing node would waste more than the 250 mm clearance's worth of budget) is
+    proposed in QUESTIONS.md's "BLOCKING... self-computed support spacing" entry, pending
+    confirmation of the reuse tolerance before implementing.
+  - **Open (consult), logged 2026-09-03**: the report's fifth point continues this milestone's
+    already-open expansion-stress thread — "we need to create a simple beam calculation model to
+    determine the stresses at the bends and in the support locations... to ensure that hold-downs
+    are not opposing rising lines to an extent greater than allowed." Now that hold-downs are
+    bundled by default, this is the actual gate for narrowing one back to a plain rest. A scoping
+    proposal (expansion-only beam-theory check, using `MaterialLibrary`'s already-wired elastic
+    modulus/thermal expansion coefficient) is in QUESTIONS.md's "Scoping proposal... beam/
+    expansion-stress model" entry, pending which `reference/` source to pin the formula to.
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means
