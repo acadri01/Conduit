@@ -2721,3 +2721,20 @@ one and have it be wrong the way the UMAT1 code-ID guess was in an earlier round
 `SpanLimitCalculator` in `Conduit.Core/Heuristics`), wire it into `SupportPlacer`'s hold-down
 narrowing decision, and add regression tests against both a synthetic rising-line fixture and the
 real `fig6-8-example.cii` (which already has a real riser leg).
+
+## Received, not yet actioned: hand-drawn riser diagram (2026-09-04)
+
+You posted a sketch (no caption) on the PR: an L-shaped run — horizontal leg at height `y`, up a
+riser of height `Δy`, horizontal again — with a `Rest` and a `Hold-down` marked at the *same* point
+at both the riser's base corner and its top corner, `x1`/`x2` labeling the horizontal spans before/
+after the riser, and a dashed curve arriving at the top corner (read as an unrestrained-displacement
+path being pulled to the restrained node by the hold-down).
+
+This plausibly answers one or both of the two open items above (or is a distinct third point), but
+I don't want to guess at placement logic from a sketch alone — in particular, whether the Rest+
+Hold-down pair is meant to sit *directly on* the riser's corner/bend node, which would need an
+explicit exception to the current 250 mm bend-exclusion rule. Asked for confirmation on the PR
+(three specific readings) rather than implementing an interpretation.
+
+**Next step once you answer**: fold the confirmed reading into whichever of the two proposals above
+it resolves (or add a new entry if it's a distinct third point), then implement.
