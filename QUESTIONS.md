@@ -2801,3 +2801,28 @@ calculation over segments already being walked. Still not started — the one re
 round; still logged in the "Scoping proposal" entry above.
 
 122/122 tests passing.
+
+## Resolved: no standalone hold-downs; beam model must derive forces/stresses together (2026-09-04)
+
+Follow-up to the reply above: "There should not be standalone hold-downs. We need to derive the
+logic for the forces and stresses together."
+
+**Standalone hold-down — confirmed already never produced, now made structurally impossible.**
+`SupportTypeClassifier` never emitted `SupportType.HoldDown` (its own doc comment already said so
+— it only ever assigns Rest/Guide/Anchor), and nothing else in the codebase or test suite
+referenced it either; it existed purely as an unused enum member with a dead mapper case
+("for whenever that narrower case is actually needed" — a case that, per this instruction, should
+never arise). Removed `SupportType.HoldDown` and `RestraintTypeMapper`'s corresponding
+`MinusY`/`MinusZ` mapping case entirely, rather than leaving dead code that invites exactly the
+mistake being warned against. The real (and only) hold-down mechanism stays what it already was:
+bundled into a rest as bidirectional `Y`/`Z` (`RestraintTypeMapper.Map(SupportType.Rest, ...)`), and
+a future stress check narrows that back down to a plain one-directional rest (`+Y`/`+Z`) when it
+would over-restrain expansion — never to a hold-down standing alone. 122/122 tests passing (no test
+referenced the removed member, so none needed updating).
+
+**"Derive the logic for the forces and stresses together"** — refines, but doesn't yet unblock,
+the still-open beam/expansion-stress model above: sustained stress (rest positioning) and expansion
+stress (hold-down narrowing) need to come out of one coupled calculation, not two independent
+heuristics computed separately. Folded into `RestraintTypeMapper`'s class doc comment as part of
+the standing design record. Still waiting on which `reference/` source to pin the actual formula
+to before starting to build it.

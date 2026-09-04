@@ -97,10 +97,12 @@ public sealed class Restraint
     /// data: the committed <c>fixtures/real-samples/44002.cii</c> already carries a <c>+Y</c>
     /// restraint with <c>Friction = 0.15</c> at node 35. Corrected 2026-09-04, per direct
     /// instruction — "Only the rest supports should have the friction coefficients" — to exclude
-    /// a *standalone* hold-down (<c>-Y</c>/<c>-Z</c>, from <see cref="SupportType.HoldDown"/> used
-    /// on its own, not the bundled combination): a rest resists gravity by sliding along the
-    /// support surface (hence friction); a plain hold-down resists uplift and isn't a sliding
-    /// contact in the same sense. The bundled <c>Y</c>/<c>Z</c> (rest+hold-down together, from
+    /// a *standalone* hold-down (<c>-Y</c>/<c>-Z</c> on its own, not the bundled combination; per
+    /// the same round's "There should not be standalone hold-downs," this restraint type code is
+    /// never actually produced by Conduit's own placement — this exclusion documents the intended
+    /// invariant regardless): a rest resists gravity by sliding along the support surface (hence
+    /// friction); a plain hold-down resists uplift and isn't a sliding contact in the same sense.
+    /// The bundled <c>Y</c>/<c>Z</c> (rest+hold-down together, from
     /// <see cref="RestraintTypeMapper.Map"/>'s default <see cref="SupportType.Rest"/> mapping) and
     /// the plain one-directional rest (<c>+Y</c>/<c>+Z</c>) both still get it — both are, at
     /// bottom, a rest. Not the rod/snubber/2-way variants either, which are physically different

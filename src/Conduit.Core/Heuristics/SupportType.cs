@@ -8,11 +8,16 @@ namespace Conduit.Core.Heuristics;
 ///
 /// <para>The real taxonomy (per review) is rest, hold-down, guide, and line stop, with an anchor
 /// being their combination (equivalently: the single <c>ANC</c> restraint code, or <c>Y</c> +
-/// <c>GUIDE</c> + <c>LIM</c> together). <see cref="HoldDown"/> and <see cref="LineStop"/> are
-/// included here for a complete vocabulary, but v1's <c>SupportTypeClassifier</c> doesn't
-/// currently produce them — it only ever assigns <see cref="Rest"/>, <see cref="Guide"/>, or
-/// <see cref="Anchor"/> — since it has no signal yet for when a hold-down or line stop is needed
-/// specifically (that needs the loads/travel data a real stress check would provide).</para>
+/// <c>GUIDE</c> + <c>LIM</c> together). There is deliberately no standalone <c>HoldDown</c> member
+/// here — per direct instruction (2026-09-04): "There should not be standalone hold-downs." A
+/// hold-down only ever exists bundled with a rest (<see cref="Rest"/>'s bidirectional <c>Y</c>/
+/// <c>Z</c> mapping); a future stress check narrows that back down to a plain one-directional rest
+/// when a hold-down would over-restrain the pipe's own expansion, never to a hold-down standing
+/// alone. <see cref="LineStop"/> is included here for a complete vocabulary, but v1's
+/// <c>SupportTypeClassifier</c> doesn't currently produce it — it only ever assigns
+/// <see cref="Rest"/>, <see cref="Guide"/>, or <see cref="Anchor"/> — since it has no signal yet
+/// for when a line stop is needed specifically (that needs the loads/travel data a real stress
+/// check would provide).</para>
 /// </summary>
 public enum SupportType
 {
@@ -25,9 +30,6 @@ public enum SupportType
     /// narrowing a specific one back down.
     /// </summary>
     Rest,
-
-    /// <summary>A one-directional restraint against lifting off (the opposite of <see cref="Rest"/>) — combined with a rest, this is CAESAR II's bidirectional <c>Y</c>.</summary>
-    HoldDown,
 
     /// <summary>A guide — restrains lateral movement, allows axial travel. Used on vertical runs.</summary>
     Guide,

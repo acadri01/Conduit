@@ -685,3 +685,10 @@ running status log Claude appends to (skim this from mobile)
   `OverlongSegmentPastAnAddedRestSupport_AlsoGetsSplitAndPasses` test fails, restored). 122/122
   tests passing; all 4 real fixtures byte-identical; `NEWTEST.cii` shows improved intermediate
   spacing (still `FAIL` on the same 3 genuinely irreducible spans).
+- 2026-09-04: per direct instruction ("There should not be standalone hold-downs. We need to
+  derive the logic for the forces and stresses together"), removed `SupportType.HoldDown` and its
+  `RestraintTypeMapper` mapping case entirely — confirmed dead (never produced by
+  `SupportTypeClassifier`, unreferenced elsewhere) rather than just documented as unused, so the
+  invariant is now structurally enforced. Folded "derive forces and stresses together" (one coupled
+  sustained/expansion-stress model, not independent heuristics) into the still-open beam-model
+  QUESTIONS.md entry. 122/122 tests passing (no test referenced the removed member).

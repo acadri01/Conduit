@@ -824,6 +824,16 @@ milestone.
     beam-theory check, using `MaterialLibrary`'s already-wired elastic modulus/thermal expansion
     coefficient) is in QUESTIONS.md's "Scoping proposal... beam/expansion-stress model" entry,
     pending which `reference/` source to pin the formula to (not answered this round).
+  - **Update (2026-09-04): no standalone hold-downs.** Per direct instruction — "There should not
+    be standalone hold-downs. We need to derive the logic for the forces and stresses together" —
+    removed `SupportType.HoldDown` and its `RestraintTypeMapper` mapping entirely: it was already
+    dead (`SupportTypeClassifier` never produced it, nothing else referenced it), so this makes the
+    "no standalone hold-down" invariant structurally impossible to violate rather than just
+    documented. A hold-down only ever exists bundled into a rest's bidirectional `Y`/`Z`; the
+    still-open beam model (above) is what will narrow that back to a plain rest, never to a
+    standalone hold-down. "Derive the logic for the forces and stresses together" — sustained and
+    expansion stress as one coupled calculation, not two independent heuristics — is folded into
+    that same open item. 122/122 tests passing.
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means
