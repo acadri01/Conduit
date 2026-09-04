@@ -68,8 +68,14 @@ public class OptimizationLoopTests
         var result = OptimizationLoop.Run(file, new MockStressSolver());
 
         Assert.True(result.Passed);
-        // Y, not PlusY — a rest is placed with a hold-down bundled in by default (2026-09-03).
-        Assert.Contains(file.Restraints, r => r.Node == 15 && r.Dofs[0].Type == RestraintType.Y);
+        // Node 15 (at 0.5x maxSpan) is *not* reused — it's too far short of the ideal, full-span
+        // position to be worth it (per direct instruction, 2026-09-04: "the program prefers
+        // existing element breaks... set itself regardless of what already exists", with a 100 mm
+        // reuse tolerance). The overlong second leg is split at the computed ideal position
+        // instead, landing a fresh node (30) there — Y, not PlusY, since a rest is placed with a
+        // hold-down bundled in by default (2026-09-03).
+        Assert.DoesNotContain(file.Restraints, r => r.Node == 15);
+        Assert.Contains(file.Restraints, r => r.Node == 30 && r.Dofs[0].Type == RestraintType.Y);
         Assert.True(file.Restraints.Count > 3, "the overlong second leg should have gained its own interior restraints");
     }
 

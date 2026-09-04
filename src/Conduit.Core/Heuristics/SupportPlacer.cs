@@ -63,15 +63,22 @@ public sealed record PlacedSupport(int Node, SupportType Type, RestraintType Res
 /// recognized yet — narrower than the fully general case, per "one thing at a time."</item>
 /// <item><b>Splits during the initial pass, not reactively (per direct instruction, 2026-09-01:
 /// "I would not like the placement to be done during a walk. It would be better if the initial
-/// pass identified the same placements as we currently have").</b> When an overflow is detected
-/// and there's no eligible node anywhere in the zone to back off to (the current node is itself
-/// excluded — a bend/tee or its clearance — and nothing eligible came before it since the last
-/// reset), <see cref="SupportPlacer"/> now splits the offending element itself
+/// pass identified the same placements as we currently have").</b> When an overflow is detected,
+/// <see cref="SupportPlacer"/> computes the *ideal* position on the overflowing axis — exactly the
+/// max allowable span past the last reset — and only backs off to the last eligible node already
+/// passed on that axis when that node's own achieved span is already within
+/// <see cref="SpanReuseToleranceMillimetres"/> of the ideal; otherwise (including when nothing
+/// eligible exists in the zone at all — the current node is itself excluded, and nothing eligible
+/// came before it since the last reset) it splits the offending element itself
 /// (<see cref="ElementSplitter"/>, same two-tier chunking and restraint-pointer-preservation math
 /// <see cref="Optimization.OptimizationLoop"/>'s reactive fallback already used), placing a support
-/// at each new interior node inline. <see cref="Optimization.OptimizationLoop"/>'s own reactive
-/// `Adjust`/`TrySplit` path stays in place as a safety net for whatever this pass still misses, but
-/// should trigger rarely to never for cases this pass's own model already covers.</item>
+/// at each new interior node inline. Per direct instruction (2026-09-04): "the program prefers
+/// existing element breaks. I would prefer that it set itself regardless of what already exists...
+/// We can set a 100 mm tolerance for the splitting" — this replaced an earlier version that always
+/// preferred any existing eligible node, however far short of the ideal position, and only split as
+/// a last resort. <see cref="Optimization.OptimizationLoop"/>'s own reactive `Adjust`/`TrySplit`
+/// path stays in place as a safety net for whatever this pass still misses, but should trigger
+/// rarely to never for cases this pass's own model already covers.</item>
 /// <item>A "run" is a contiguous stretch of <see cref="NeutralFile.Elements"/> (in file order)
 /// between two nodes that already carry an anchor (<see cref="RestraintType.Anc"/>) restraint.
 /// Elements before the first anchor or after the last aren't part of any run and are skipped.</item>
@@ -96,6 +103,24 @@ public static class SupportPlacer
     /// than merged.
     /// </summary>
     public const double DiscontinuityClearanceMillimetres = 250.0;
+
+    /// <summary>
+    /// How close an existing eligible node's own achieved span must already be to the ideal,
+    /// full-max-allowable-span position before it's reused as-is, rather than splitting the
+    /// overflowing element to land a new node exactly at that ideal position — per direct
+    /// instruction (2026-09-04): "It also seems like the program prefers existing element breaks.
+    /// I would prefer that it set itself regardless of what already exists... We can set a 100 mm
+    /// tolerance for the splitting." Below this tolerance, reusing the existing node wastes a
+    /// negligible fraction of the allowable span (not worth a needless extra node); above it, the
+    /// existing node is treated as "too far short" and a fresh split is preferred instead. The
+    /// existing bend-radius/OD-based minimum chunk size near a bend
+    /// (<see cref="ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres"/>, called from
+    /// <see cref="ElementSplitter.Split"/> itself) still applies on top of this — confirmed
+    /// unaffected by this constant, per the same instruction ("the minimum bend lengths must also
+    /// apply"): it answers a different question (how short a chunk `ElementSplitter` is willing to
+    /// create), not whether to split in the first place.
+    /// </summary>
+    public const double SpanReuseToleranceMillimetres = 100.0;
 
     public static List<PlacedSupport> PlaceSupports(NeutralFile file)
     {
@@ -422,47 +447,67 @@ public static class SupportPlacer
                 continue;
             }
 
-            // Prefer backing off to the last eligible node passed *on the overflowing axis*
-            // since the last reset — placing there keeps this stretch's span at or under the max
-            // allowable, whereas placing at the current (already-overflowing) node would not.
-            // Only fall back to the current node when there's no earlier same-axis candidate at
-            // all (e.g. this is the first element since the last reset, or the whole zone up to
-            // here has been excluded — including a single overlong element with no interior node
-            // of its own, like a lone riser).
-            var previousEligible = overflowAxis switch
+            // Per direct instruction (2026-09-04): "the program prefers existing element breaks.
+            // I would prefer that it set itself regardless of what already exists... We can set a
+            // 100 mm tolerance for the splitting." Compute the ideal position on the overflowing
+            // axis (exactly the max allowable span past the last reset — always inside the current,
+            // overflowing element, since the *previous* node didn't yet exceed the threshold), and
+            // only fall back to backing off to the last eligible node passed *on the overflowing
+            // axis* when that node's own achieved span already comes within
+            // <see cref="SpanReuseToleranceMillimetres"/> of that ideal — otherwise split the
+            // overflowing element itself to land a new node there instead of settling for an
+            // existing break that wastes a meaningful fraction of the allowable span just because
+            // it happens to already exist.
+            var axis = overflowAxis.Value;
+            var maxSpanHere = SpanLimitCalculator.ComputeMaxSpan(file, node.ElementEndingHere);
+            var thresholdHere = axis == PipeAxis.Vertical ? maxSpanHere * VerticalSpanMultiplier : maxSpanHere;
+            var baseForAxis = axis switch
+            {
+                PipeAxis.Vertical => baseVertical,
+                PipeAxis.HorizontalA => baseA,
+                _ => baseB,
+            };
+
+            var previousEligible = axis switch
             {
                 PipeAxis.Vertical => previousEligibleVertical,
                 PipeAxis.HorizontalA => previousEligibleA,
                 _ => previousEligibleB,
             };
             var target = previousEligible ?? (eligibleHere ? node : (RunNode?)null);
-            if (target is not { } t)
+
+            var targetAxisValue = target is { } tgt ? axis switch
             {
-                // Genuinely stuck: no eligible node anywhere in this zone (the current node is
-                // itself excluded — a bend/tee or its clearance — and nothing eligible came before
-                // it since the last reset). Split the offending element itself rather than leaving
-                // it for OptimizationLoop's reactive fallback to discover later.
-                var axis = overflowAxis.Value;
-                var maxSpanHere = SpanLimitCalculator.ComputeMaxSpan(file, node.ElementEndingHere);
-                var thresholdHere = axis == PipeAxis.Vertical ? maxSpanHere * VerticalSpanMultiplier : maxSpanHere;
+                PipeAxis.Vertical => tgt.CumulativeVertical,
+                PipeAxis.HorizontalA => tgt.CumulativeA,
+                _ => tgt.CumulativeB,
+            } : (double?)null;
+            var targetWastesBudget = targetAxisValue is not { } achieved
+                || thresholdHere - (achieved - baseForAxis) > SpanReuseToleranceMillimetres;
+
+            if (targetWastesBudget)
+            {
                 var beforeCumulative = axis switch
                 {
                     PipeAxis.Vertical => i == 0 ? 0.0 : nodes[i - 1].CumulativeVertical,
                     PipeAxis.HorizontalA => i == 0 ? 0.0 : nodes[i - 1].CumulativeA,
                     _ => i == 0 ? 0.0 : nodes[i - 1].CumulativeB,
                 };
-                var baseForAxis = axis switch
-                {
-                    PipeAxis.Vertical => baseVertical,
-                    PipeAxis.HorizontalA => baseA,
-                    _ => baseB,
-                };
                 var remainingBudget = thresholdHere - (beforeCumulative - baseForAxis);
-                if (remainingBudget > 0)
+                if (remainingBudget > 0 && TrySplitElement(node, axis, thresholdHere, remainingBudget))
                 {
-                    TrySplitElement(node, axis, thresholdHere, remainingBudget);
+                    continue;
                 }
-                continue; // if splitting wasn't possible either, left as an unresolved failure — same as before
+            }
+
+            if (target is not { } t)
+            {
+                // Genuinely stuck: no eligible node anywhere in this zone (the current node is
+                // itself excluded — a bend/tee or its clearance — and nothing eligible came before
+                // it since the last reset), and splitting wasn't possible either (e.g. the max span
+                // rounds down to too small a chunk). Left as an unresolved failure for
+                // OptimizationLoop's reactive fallback, same as before.
+                continue;
             }
 
             PlaceAt(t);

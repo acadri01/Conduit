@@ -797,21 +797,33 @@ milestone.
     real-file-based regression test set was found vacuous via the standard "revert the fix, confirm
     the test fails" check, replaced with a synthetic test that does fail pre-fix), in QUESTIONS.md's
     "Shipped: rigid/reducer discontinuity clearance..." entry.
-  - **Open (consult), logged 2026-09-03**: the same report's fourth point — "the program prefers
-    existing element breaks... I would prefer that it set itself regardless of what already
-    exists" — is a genuine placement-*positioning* logic change (CLAUDE.md's "and where" carve-out)
-    with wide test blast-radius. A concrete design (split at the ideal max-span position whenever
-    reusing an existing node would waste more than the 250 mm clearance's worth of budget) is
-    proposed in QUESTIONS.md's "BLOCKING... self-computed support spacing" entry, pending
-    confirmation of the reuse tolerance before implementing.
-  - **Open (consult), logged 2026-09-03**: the report's fifth point continues this milestone's
-    already-open expansion-stress thread — "we need to create a simple beam calculation model to
-    determine the stresses at the bends and in the support locations... to ensure that hold-downs
-    are not opposing rising lines to an extent greater than allowed." Now that hold-downs are
-    bundled by default, this is the actual gate for narrowing one back to a plain rest. A scoping
-    proposal (expansion-only beam-theory check, using `MaterialLibrary`'s already-wired elastic
-    modulus/thermal expansion coefficient) is in QUESTIONS.md's "Scoping proposal... beam/
-    expansion-stress model" entry, pending which `reference/` source to pin the formula to.
+  - **Update (2026-09-04): self-computed support spacing, shipped.** The same report's fourth point
+    — "the program prefers existing element breaks... I would prefer that it set itself regardless
+    of what already exists" — is now implemented, per the user's confirmed 100 mm reuse tolerance.
+    `SupportPlacer.PlaceSupportsForRun`'s overflow-resolution branch computes the ideal position on
+    the overflowing axis and only reuses an existing eligible node when its own achieved span is
+    already within `SpanReuseToleranceMillimetres` (100 mm) of that ideal; otherwise it splits the
+    overflowing element at the computed position instead. Confirmed the existing bend-radius/OD-
+    based minimum chunk size (`ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres`) stays
+    independently in force, unaffected — the user's "the minimum bend lengths must also apply"
+    check held. Also, per the same round: friction (0.15) is now narrowed to rest-only restraints
+    — a *standalone* hold-down (`-Y`/`-Z`) no longer gets it — per "Only the rest supports should
+    have the friction coefficients." 122/122 tests passing; all 4 real fixtures byte-identical
+    (none had an existing-node candidate more than 100 mm short of ideal); `NEWTEST.cii` (still
+    `FAIL`, same 3 irreducible spans) shows better-spaced intermediate nodes than before. Full
+    detail in QUESTIONS.md's "Resolved and shipped: self-computed support spacing..." entry.
+  - **Open (consult), logged 2026-09-03, refined 2026-09-04**: the report's fifth point continues
+    this milestone's already-open expansion-stress thread — "we need to create a simple beam
+    calculation model to determine the stresses at the bends and in the support locations... to
+    ensure that hold-downs are not opposing rising lines to an extent greater than allowed." Now
+    that hold-downs are bundled by default, this is the actual gate for narrowing one back to a
+    plain rest. The user's 2026-09-04 follow-up confirmed the segment definition ("expansion has to
+    be considered for all straight-line segments... only disrupted by a change in direction (bend
+    or tee)") maps directly onto `SupportPlacer`'s existing per-axis accumulator concept, so no new
+    geometry logic is needed for that part. Still not built — a scoping proposal (expansion-only
+    beam-theory check, using `MaterialLibrary`'s already-wired elastic modulus/thermal expansion
+    coefficient) is in QUESTIONS.md's "Scoping proposal... beam/expansion-stress model" entry,
+    pending which `reference/` source to pin the formula to (not answered this round).
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means

@@ -91,21 +91,27 @@ public sealed class Restraint
     };
 
     /// <summary>
-    /// Friction coefficient for a vertical rest/hold-down restraint — 0.15, per direct instruction
-    /// (2026-09-03): "The rest supports should actually have a friction coefficient of .15, this
-    /// may be applied to the Y support as well," confirmed against real data: the committed
-    /// <c>fixtures/real-samples/44002.cii</c> already carries a <c>+Y</c> restraint with
-    /// <c>Friction = 0.15</c> at node 35. Scoped to the plain vertical rest/hold-down/combined
-    /// family (<c>Y</c>/<c>+Y</c>/<c>-Y</c> and their <c>Z</c>-axis equivalents for an
-    /// <c>Izup=1</c> model) — not the rod/snubber/2-way variants, which are physically different
+    /// Friction coefficient for a rest (including the bundled rest+hold-down combination) — 0.15,
+    /// per direct instruction (2026-09-03): "The rest supports should actually have a friction
+    /// coefficient of .15, this may be applied to the Y support as well," confirmed against real
+    /// data: the committed <c>fixtures/real-samples/44002.cii</c> already carries a <c>+Y</c>
+    /// restraint with <c>Friction = 0.15</c> at node 35. Corrected 2026-09-04, per direct
+    /// instruction — "Only the rest supports should have the friction coefficients" — to exclude
+    /// a *standalone* hold-down (<c>-Y</c>/<c>-Z</c>, from <see cref="SupportType.HoldDown"/> used
+    /// on its own, not the bundled combination): a rest resists gravity by sliding along the
+    /// support surface (hence friction); a plain hold-down resists uplift and isn't a sliding
+    /// contact in the same sense. The bundled <c>Y</c>/<c>Z</c> (rest+hold-down together, from
+    /// <see cref="RestraintTypeMapper.Map"/>'s default <see cref="SupportType.Rest"/> mapping) and
+    /// the plain one-directional rest (<c>+Y</c>/<c>+Z</c>) both still get it — both are, at
+    /// bottom, a rest. Not the rod/snubber/2-way variants either, which are physically different
     /// support mechanisms with no sliding-friction concept in the same sense. Every other
     /// restraint type (guide, line stop, anchor, X-axis...) is left at 0, matching what every real
-    /// sample's non-Y/Z restraint carries.
+    /// sample's non-rest restraint carries.
     /// </summary>
     private static double FrictionFor(RestraintType type) => type switch
     {
-        RestraintType.Y or RestraintType.PlusY or RestraintType.MinusY
-            or RestraintType.Z or RestraintType.PlusZ or RestraintType.MinusZ => 0.15,
+        RestraintType.Y or RestraintType.PlusY
+            or RestraintType.Z or RestraintType.PlusZ => 0.15,
         _ => 0.0,
     };
 

@@ -667,3 +667,21 @@ running status log Claude appends to (skim this from mobile)
   spacing instead of preferring existing element breaks — a concrete design is proposed, pending
   confirmation of the reuse tolerance; (2) a scoping proposal for the simple beam/expansion-stress
   model that gates hold-down narrowing, pending which `reference/` source to pin the formula to.
+- 2026-09-04: user posted a hand-drawn riser sketch with no caption; replied on the PR describing my
+  reading and asking 3 targeted questions (bend-node exception? beam-model geometry setup? standing
+  placement rule?) rather than guessing, since it touches placement logic directly.
+- 2026-09-04: user answered both open items plus the sketch in one comment. Shipped: (1)
+  self-computed support spacing at a confirmed 100 mm reuse tolerance
+  (`SpanReuseToleranceMillimetres`) — `SupportPlacer` now splits at the ideal max-span position
+  instead of backing off to an existing node more than 100 mm short of it; confirmed the existing
+  bend-radius minimum-chunk-size logic stays independently in force. (2) Friction narrowed to
+  rest-only restraints (`Restraint.FrictionFor` no longer matches standalone `MinusY`/`MinusZ`),
+  per "Only the rest supports should have the friction coefficients" — added dedicated test
+  coverage (`RestraintFormatTests.CreateSingleDof_SetsFriction_OnlyForARest`, friction had none
+  before). (3) Decoded the sketch: rest+hold-down sits `x1` *away from* the bend, not on it — no
+  bend-node placement exception needed; confirms the beam model (still not built, pending which
+  `reference/` source to use) is what determines when a hold-down gets dropped near a rising line.
+  Rigor-checked the spacing fix (reverted, confirmed the updated
+  `OverlongSegmentPastAnAddedRestSupport_AlsoGetsSplitAndPasses` test fails, restored). 122/122
+  tests passing; all 4 real fixtures byte-identical; `NEWTEST.cii` shows improved intermediate
+  spacing (still `FAIL` on the same 3 genuinely irreducible spans).

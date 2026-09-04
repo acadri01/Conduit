@@ -55,6 +55,30 @@ public class RestraintFormatTests
         Assert.Equal((0, 0, 0), (restraint.Dofs[0].DirectionCosineX, restraint.Dofs[0].DirectionCosineY, restraint.Dofs[0].DirectionCosineZ));
     }
 
+    /// <summary>
+    /// Friction = 0.15 for a rest, including the bundled rest+hold-down combination (<c>Y</c>/
+    /// <c>Z</c>) and a plain one-directional rest (<c>+Y</c>/<c>+Z</c>) — ground-truthed against
+    /// <c>fixtures/real-samples/44002.cii</c>'s real <c>+Y</c> restraint at node 35. A *standalone*
+    /// hold-down (<c>-Y</c>/<c>-Z</c>) gets 0.0, per direct instruction (2026-09-04): "Only the
+    /// rest supports should have the friction coefficients."
+    /// </summary>
+    [Theory]
+    [InlineData(RestraintType.Y, 0.15)]
+    [InlineData(RestraintType.PlusY, 0.15)]
+    [InlineData(RestraintType.Z, 0.15)]
+    [InlineData(RestraintType.PlusZ, 0.15)]
+    [InlineData(RestraintType.MinusY, 0.0)]
+    [InlineData(RestraintType.MinusZ, 0.0)]
+    [InlineData(RestraintType.Gui, 0.0)]
+    [InlineData(RestraintType.Anc, 0.0)]
+    [InlineData(RestraintType.X, 0.0)]
+    public void CreateSingleDof_SetsFriction_OnlyForARest(RestraintType type, double expectedFriction)
+    {
+        var restraint = Restraint.CreateSingleDof(60, type, rigidStiffness: 1.0);
+
+        Assert.Equal(expectedFriction, restraint.Dofs[0].Friction);
+    }
+
     [Fact]
     public void AddRestraint_SetsOwningElementsPointer_ToNodeMatchPreferred()
     {

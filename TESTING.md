@@ -17,43 +17,44 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: please retest — fixes for the flange/rigid bug you reported, plus two open design
-questions batched in QUESTIONS.md that need your answer before the next round can proceed on
-them.**
+**Status: please retest — self-computed spacing and the friction narrowing you confirmed are now
+shipped; one design question (the beam/expansion-stress model's reference source) is still open.**
 
-Your last report (restraint-free `44002.cii`, plus the loop-2d/loop-50m-3d/fig6-8/NEWTEST runs)
-found a real bug: a support landed at the starting node of a flange. That's fixed — any node
-touching a weighted rigid element (either of its two ends), a bend, a tee, or a reducer now keeps a
-flat 250 mm clearance, per your instruction. Rests now also get a bundled hold-down (`Y`/`Z`
-instead of `+Y`/`+Z`) with `Friction = 0.15`, per your instruction. Please rerun the same files you
-tested last time:
+You answered both open items from last round in one comment, plus decoded your riser sketch for
+me. Shipped this round:
+- **Self-computed spacing, at your confirmed 100 mm tolerance.** `SupportPlacer` now splits at the
+  ideal max-span position instead of backing off to an existing node more than 100 mm short of it —
+  no longer "prefers existing element breaks." Confirmed the existing bend-radius minimum-chunk-size
+  rule stays in force independently, per your "the minimum bend lengths must also apply" note.
+- **Friction narrowed to rest-only.** A standalone hold-down no longer carries `Friction = 0.15`,
+  per "Only the rest supports should have the friction coefficients" — only a rest (including the
+  bundled rest+hold-down `Y`/`Z`) does.
+- **Sketch decoded**: confirmed the rest+hold-down pair sits `x1`/`x2` away from each bend, not on
+  it — no exception to the 250 mm discontinuity clearance was needed.
+
+Please rerun the same files you tested before:
 ```
 dotnet run --project src/Conduit.Cli -- optimize fixtures/real-samples/44002.cii out-44002.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-2d.cii out-loop2d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-loop3d.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
-dotnet run --project src/Conduit.Cli -- optimize fixtures/NEWTEST.cii out-newtest.cii
+dotnet run --project src/Conduit.Cli -- optimize fixtures/real-samples/NEWTEST.cii out-newtest.cii
 ```
-On this end, `44002.cii` now PASSes with 1 support at node 145 (not the earlier 75/175, and clear
-of every one of the file's real weighted-rigid nodes) — worth comparing against your own rerun.
-Your prior verification outputs for all five are now committed at
-`fixtures/real-samples/verification/out-*.cii` for side-by-side comparison. As always, if you're
-able to run any `out-*.cii` through `iecho.exe` and reopen it in CAESAR II's GUI, that's the
-strongest independent check.
+On this end, all 4 of the first fixtures produce byte-identical placements to before this round
+(none had an existing-node candidate more than 100 mm short of ideal, so the new tolerance didn't
+change anything for them). `NEWTEST.cii` still `FAIL`s on the same 3 genuinely irreducible spans as
+before, but several of its intermediate support nodes shifted to better-spaced positions — worth
+comparing against your own rerun and the previous `fixtures/real-samples/verification/out-*.cii`.
+As always, if you're able to run any `out-*.cii` through `iecho.exe` and reopen it in CAESAR II's
+GUI, that's the strongest independent check.
 
-**Two design questions are waiting on your answer** (both spelled out in full, with a concrete
-proposal each, in QUESTIONS.md — nothing further will be built on either until you weigh in):
-1. You noted the placer "prefers existing element breaks" and asked it to "set itself regardless
-   of what already exists." A design is proposed (split at the ideal max-span position whenever
-   reusing an existing node would waste more than 250 mm of the allowable span) — the one open
-   point is whether 250 mm is the right "close enough, don't bother splitting" tolerance, or
-   whether you'd rather it always split fresh with no tolerance at all. See QUESTIONS.md's
-   "BLOCKING... self-computed support spacing" entry.
-2. You asked for "a simple beam calculation model to determine the stresses at the bends and in
-   the support locations" so hold-downs don't over-restrain rising lines. A scope is proposed
-   (expansion-only beam-theory check using the material data already wired into `MaterialLibrary`)
-   — the one open point is which specific formula/table in `reference/` to pin it to. See
-   QUESTIONS.md's "Scoping proposal... beam/expansion-stress model" entry.
+**One design question is still waiting on your answer**: the beam/expansion-stress model. You
+confirmed the segment definition ("expansion has to be considered for all straight-line
+segments... only disrupted by a change in direction") — that maps onto machinery `SupportPlacer`
+already has, so no new geometry logic is needed there. What's still open is which specific
+`reference/` source (a B31.3 PDF section, or a textbook chapter) the actual sustained/expansion
+stress formula should be pinned to — see QUESTIONS.md's "Scoping proposal... beam/expansion-stress
+model" entry. Nothing further will be built on it until that's answered.
 
 # Step-by-step: test Conduit on your own machine
 

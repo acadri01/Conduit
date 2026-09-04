@@ -2738,3 +2738,66 @@ explicit exception to the current 250 mm bend-exclusion rule. Asked for confirma
 
 **Next step once you answer**: fold the confirmed reading into whichever of the two proposals above
 it resolves (or add a new entry if it's a distinct third point), then implement.
+
+## Resolved and shipped: self-computed support spacing (100 mm tolerance), friction narrowed to rest-only, and the sketch decoded (2026-09-04)
+
+You answered all three open items from the previous round in one comment. Implemented and shipped:
+
+**1. Self-computed spacing — shipped with a 100 mm reuse tolerance.** Per "We can set a 100 mm
+tolerance for the splitting" — `SupportPlacer.PlaceSupportsForRun`'s overflow-resolution branch now
+computes the ideal position on the overflowing axis (exactly the max allowable span past the last
+reset) and only backs off to an existing eligible node when that node's own achieved span already
+comes within `SpanReuseToleranceMillimetres` (100 mm) of the ideal; otherwise it splits the
+overflowing element at the computed ideal position instead, exactly as it already did for the
+"genuinely stuck, nothing exists at all" case. Confirmed via the standard revert-and-check rigor
+discipline (temporarily forced the reuse check to always pass, confirmed
+`OverlongSegmentPastAnAddedRestSupport_AlsoGetsSplitAndPasses` then fails, restored the fix).
+
+**"Of course, the minimum bend lengths must also apply"**: confirmed this is already satisfied and
+unaffected — `ElementSplitter.ComputeMinimumChunkLengthNearBendMillimetres` (the OD-dependent
+minimum chunk size near a bend corner) is still called from inside `ElementSplitter.Split` itself,
+completely independent of both this new 100 mm reuse tolerance and the earlier 250 mm discontinuity
+clearance (see `DiscontinuityClearanceMillimetres`'s own doc comment — those two were deliberately
+kept separate, and this confirms that separation was the right call).
+
+Test blast radius was smaller than feared: only one existing test's expected node number changed
+(`OverlongSegmentPastAnAddedRestSupport_AlsoGetsSplitAndPasses` — node 15, at 0.5x the max span,
+is no longer reused; a fresh node 30 near the ideal position gets the support instead), because
+most other placement tests' existing nodes already sit right at (or past) the ideal position, which
+was always within tolerance either way. All 4 real fixtures (`loop-2d`, `loop-50m-3d`, `fig6-8`,
+`44002`) produce byte-identical placements to before this change — none of them had an
+existing-node candidate more than 100 mm short of ideal. `NEWTEST.cii` (still `FAIL`, same 3
+genuinely irreducible spans as before) shows the new logic actually doing real work on complex real
+data: several intermediate node numbers shifted to better-spaced positions than the old
+existing-node-preferring logic chose.
+
+**2. Friction narrowed to rest-only.** Per "Only the rest supports should have the friction
+coefficients" — `Restraint.FrictionFor` no longer matches `MinusY`/`MinusZ` (a *standalone*
+hold-down, from `SupportType.HoldDown` used on its own): only `Y`/`PlusY`/`Z`/`PlusZ` (a rest, and
+the bundled rest+hold-down combination `RestraintTypeMapper.Map` emits by default) get 0.15.
+Re: "supports in the z direction are usually not rest supports... only y" — confirmed this was
+already correctly handled: `RestraintTypeMapper.Map(SupportType.Rest, izup)` only ever emits `Z`
+when the file's own `#$ CONTROL` izup flag says Z *is* the vertical axis for that model (izup=1);
+for every real fixture on hand (izup=0), Conduit never emits a Z-type rest at all. Added
+`RestraintFormatTests.CreateSingleDof_SetsFriction_OnlyForARest` (9 cases) — friction had zero test
+coverage before this round, for either the original 0.15 addition or this narrowing.
+
+**3. The sketch, decoded.** Your follow-up explanation corrects my reading: the rest+hold-down pair
+sits `x1` *away from* the bend, not on it — "a horizontal segment x1 ranging from a rest and
+hold-down **to** a bend," not at the bend itself. So no exception to the 250 mm discontinuity
+clearance is needed; the sketch is illustrating the physics the beam model (below) needs to check —
+`x1`/`x2` (the distance from each support pair to the shared riser) determine the reaction force
+each pair sees from the riser's thermal growth `Δy`, and "restraints grouped together" confirms
+keeping rest+hold-down bundled at one node (already how `RestraintTypeMapper.Rest` works), not
+splitting them across separate nodes chosen by separate heuristics.
+
+**4. Beam model — segment definition confirmed, still not built.** "The expansion has to be
+considered for all straight-line segments... composed of several elements... only disrupted by a
+change in direction (bend or tee)" — this maps directly onto the per-axis accumulator concept
+`SupportPlacer` already tracks internally (a maximal run of same-direction elements between two
+resets), so the beam model's segment boundaries won't need new geometry logic, just a new
+calculation over segments already being walked. Still not started — the one remaining open point
+(which `reference/` source to pin the sustained/expansion stress formula to) wasn't answered this
+round; still logged in the "Scoping proposal" entry above.
+
+122/122 tests passing.
