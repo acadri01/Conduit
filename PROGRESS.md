@@ -692,3 +692,13 @@ running status log Claude appends to (skim this from mobile)
   invariant is now structurally enforced. Folded "derive forces and stresses together" (one coupled
   sustained/expansion-stress model, not independent heuristics) into the still-open beam-model
   QUESTIONS.md entry. 122/122 tests passing (no test referenced the removed member).
+- 2026-09-07: diagnosed GitHub Issue #7 (NEWTEST.cii still FAILs on main). Root cause confirmed by
+  direct inspection: the file has zero restraints of any kind (empty `#$ RESTRANT`, empty
+  `#$ EQUIPMNT`) — `SupportPlacer.GetFixedNodes` only recognizes an `Anc` restraint as a run
+  boundary, so with none present `SplitIntoRuns` produces zero runs and `SupportPlacer`'s entire
+  refined model (bend/tee/rigid clearance, self-computed spacing) never runs at all; every result
+  in the log is `OptimizationLoop`'s older, cruder reactive fallback treating the whole model as one
+  span. Not a bug in anything shipped this round — a genuinely new gap (Conduit has never had to
+  decide where an anchor itself goes on a fully unrestrained model). Logged as a blocking
+  placement-logic question (three options) in QUESTIONS.md rather than guessing, since anchor
+  placement is the most consequential support-type decision in the taxonomy.
