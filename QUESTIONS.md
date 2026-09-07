@@ -2826,3 +2826,122 @@ stress (hold-down narrowing) need to come out of one coupled calculation, not tw
 heuristics computed separately. Folded into `RestraintTypeMapper`'s class doc comment as part of
 the standing design record. Still waiting on which `reference/` source to pin the actual formula
 to before starting to build it.
+
+## BLOCKING (placement-logic, needs your confirmation before implementing): NEWTEST.cii has zero restraints — SupportPlacer's whole model requires at least an anchor to define a run (2026-09-07)
+
+Filed as GitHub Issue #7: `NEWTEST.cii` still `FAIL`s (3 unresolved spans) on `main` after
+everything from PR #6. Diagnosed precisely, not guessed at:
+
+**Root cause, confirmed by direct inspection of the file and the code:**
+- `fixtures/real-samples/NEWTEST.cii`'s `#$ RESTRANT` section is **empty** — zero restraints of
+  any kind (no anchors, no rests, nothing) — and `#$ EQUIPMNT` is empty too, so there's no
+  equipment/nozzle signal either. Nothing in this file marks a single fixed point anywhere.
+- `SupportPlacer.GetFixedNodes` only ever recognizes a node as a run boundary via an existing
+  `RestraintType.Anc` restraint (`file.Restraints.SelectMany(r => r.Dofs).Where(d => d.IsUsed &&
+  d.Type == RestraintType.Anc)`). With zero restraints in the file, `fixedNodes` is empty, so
+  `SplitIntoRuns` never closes a `current` run into `runs` (the loop only does that when
+  `fixedNodes.Contains(element.ToNode)` — never true) — it produces **zero runs**.
+- With zero runs, `SupportPlacer.PlaceSupports` returns an empty list. This is directly confirmed
+  by the CLI's own log: `- Placed 0 initial support(s):` — every subsequent line in the output is
+  `OptimizationLoop`'s older, reactive `Adjust`/`TrySplit` fallback path treating the *entire*
+  model (node 100 through 1390) as one undifferentiated unsupported span, hunting for a resolution
+  with none of `SupportPlacer`'s refinements (bend/tee/rigid/reducer 250 mm clearance, per-axis
+  accumulation, the 100 mm self-computed ideal-spacing tolerance from this round). That's the real
+  explanation for why this file's placements look so different from the other 4 (`44002.cii`,
+  `loop-2d.cii`, `loop-50m-3d.cii`, `fig6-8-example.cii` — all of which have real anchors already)
+  and for why it gets stuck unresolved: the reactive fallback is a safety net for what
+  `SupportPlacer`'s own initial pass still misses, not a substitute for it when `SupportPlacer`
+  never gets a chance to run at all.
+
+**This isn't a bug in anything shipped this round** — it's a real, previously-unexercised gap:
+Conduit has never had to decide *where an anchor itself goes* on a model that provides none. Every
+fixture and every real user file so far has had at least the anchors already defined (equipment
+ties, structural fixed points), and Conduit's whole model has been "refine support spacing *between*
+given anchors," never "decide where the anchors are in the first place." Anchor placement is also
+the single most consequential support-type decision in the whole taxonomy — CLAUDE.md's
+consult-first rule applies squarely here, more than any of the rest/guide/hold-down questions
+answered so far.
+
+**Three ways this could go, pending your direction:**
+1. **Anchors are a real, load-bearing decision that needs its own engineering basis** (equipment
+   nozzle limits, structural tie-in points) and Conduit shouldn't guess — treat a restraint-free
+   input as out of scope for the MVP's placement pass, and `NEWTEST.cii` needs real anchors added
+   (wherever its actual physical fixed points are) before it's a fair test case. If this is it: I'd
+   need to know what `NEWTEST.cii`'s real anchor locations should be, or a rule for finding them
+   (e.g., always anchor at any node named/flagged as equipment in the source this file came from).
+2. **Infer implicit anchors from the model's own topology when none exist** — e.g., treat the
+   model's absolute first and last node as anchors by convention when the file has zero real ones,
+   so `SupportPlacer`'s real logic gets a chance to run instead of falling through to the weaker
+   reactive path. Simple and would fix this file immediately, but it's a real assumption (the
+   model's first/last node may not be a genuine fixed point) that should be confirmed, not guessed.
+3. **Something else** — e.g., a length/diameter-based heuristic, or requiring the *reactive*
+   fallback path to be brought up to the same standard as `SupportPlacer`'s initial pass instead
+   (bend/tee/rigid/reducer clearance, self-computed spacing) so a restraint-free file is handled
+   correctly however Conduit ends up entering that code path.
+
+**On the same issue's second question** ("where to place the limit stops, rests and hold-down
+placement for vertical segments... so that supports do not have excessive loads on them"): this is
+the same still-open beam/expansion-stress model from the two entries above (coupled sustained/
+expansion-stress calculation, per "we need to derive the logic for the forces and stresses
+together") — not a separate item. Still blocked on the same open point: which `reference/` source
+to pin the actual stress formula to.
+
+**Next step once you answer**: for option 1, get the real anchor locations (or a rule for finding
+them) and regenerate/fix `NEWTEST.cii`; for option 2, implement the first/last-node convention in
+`SupportPlacer.GetFixedNodes` (or a wrapper around it) with a clear log line noting the anchors were
+inferred, not real, and add a regression test against a synthetic zero-restraint fixture; for
+option 3, whatever the concrete rule turns out to be. Either way, re-verify against `NEWTEST.cii`
+and all 4 other real fixtures afterward.
+
+## Resolved and shipped: option 1 confirmed (require user input, no inference), plus a real architecture fix to the reactive fallback (2026-09-07)
+
+You answered both questions from the previous entry in one PR comment:
+
+**1. Anchor placement — option 1, no inference.** "We will require a user's input if there are no
+anchors or equipment. There will always be boundaries, and these are generally in terms of an
+anchor or a cnode anchor. If this does not exist, the user must provide the anchor position."
+Shipped: `OptimizationLoop.Run` now checks, before doing anything else, whether the file has any
+real boundary at all (`SupportPlacer.HasAnyAnchor` — any `Anc`-type restraint — or at least one
+`#$ EQUIPMNT` connection); if neither exists, it refuses cleanly with a message asking for an
+anchor position, rather than falling through to the reactive fallback and producing wrong,
+low-quality placements (the original NEWTEST.cii symptom).
+
+**On "cnode anchor" — researched, not guessed.** Per CLAUDE.md's always-consult-the-primary-source
+rule: `reference/NeutralFile-v15.pdf`'s `#$ RESTRANT` section documents a "Restraint connecting
+node" field (already parsed as `RestraintDof.ConnectingNode`, just never used for anything) — this
+is the CNODE mechanism. Ground-truthed against real data: `fixtures/real-samples/44002.cii` node
+230 has exactly one restraint with a nonzero connecting node (231), and its type is still `Anc`.
+So a "cnode anchor" is simply an `Anc`-type restraint that also carries a CNODE reference — already
+correctly recognized by `GetFixedNodes`'s existing `Type == RestraintType.Anc` check, which doesn't
+look at `ConnectingNode` at all. No separate detection code was needed for that half.
+
+**2. The architecture critique — you were right, fixed.** "Shouldn't the optimiser improve the
+initial placements? ... The optimiser is then not required, as it should be for improving the
+initial placements?" Investigated `OptimizationLoop`'s reactive `Adjust`/`TryPickMidpointNode` path
+precisely: it already shared `SupportPlacer`'s bend/tee/rigid/reducer discontinuity exclusion (that
+part was already consolidated in an earlier round), but its actual *node-selection* rule was a
+real, independently-drifted heuristic — "closest to the segment's geometric midpoint," measured
+along *total path length* (not the failing finding's own axis), with no concept of the allowable
+span at all. It could (and, in a constructed test, does) pick an existing node that's already past
+the allowable, purely because it's numerically central. Replaced it with the same rule
+`SupportPlacer`'s own initial pass uses: the last node (on the finding's own axis) still within
+budget, only backing off to one that wastes more than `SpanReuseToleranceMillimetres` when nothing
+closer is available — splitting instead, exactly mirroring `SupportPlacer.PlaceSupportsForRun`'s
+own `targetWastesBudget` branch, including its "fall back to the wasteful candidate if splitting
+isn't geometrically possible" behavior.
+
+Verified via the standard revert-and-check rigor discipline: temporarily restored the old
+"any eligible node, no budget check" selection, confirmed the new synthetic test
+(`ReactiveAdjust_PicksTheLastNodeWithinBudget_NotMerelyTheGeometricMidpoint`) fails, restored the
+fix. 124/124 tests passing; all 4 real fixtures with real anchors are still byte-identical (their
+own initial `SupportPlacer` pass already resolves everything, so the reactive path was never
+exercised by them either way — confirming the original design intent that it "should trigger
+rarely to never" once the initial pass is good enough, which this consolidation makes actually
+true rather than just documented).
+
+**Not done, deliberately out of scope for this round**: a *full* merge of the two engines (having
+`Adjust` literally re-invoke `SupportPlacer.PlaceSupportsForRun` instead of a second, parallel
+implementation of the same rule) — the node-*selection* rule is now identical, but the surrounding
+control flow (per-finding vs. per-run walk) is still two separate implementations that could still
+drift again on some future change. Flagged here rather than rushed, since a real merge touches
+control flow, not just a decision rule, and deserves its own focused pass.

@@ -357,9 +357,17 @@ respective `NeutralFiles/*.cs` classes.
   consultation per CLAUDE.md's support-placement-logic rule.
 - **CNODES**: a CAESAR II connection-point concept (reading forces/moments between elements at a
   shared node) — a CNODE-bearing node is explicitly *not* an anchor support and must be excluded
-  from future support-placement candidate logic. Not yet researched in the neutral-file format
-  itself (which section/field carries the CNODE number) — logged in QUESTIONS.md, not yet
-  implemented.
+  from future support-placement candidate logic. **Found (2026-09-07)**: the neutral-file field is
+  `#$ RESTRANT`'s "Restraint connecting node" (already parsed as `RestraintDof.ConnectingNode`,
+  index 5 of the 9-value DOF line, per `reference/NeutralFile-v15.pdf`) — a restraint whose type is
+  still whatever it is (e.g. `Anc`), just also carrying a nonzero connecting-node reference to
+  another point. Ground-truthed against `fixtures/real-samples/44002.cii` node 230: a real `Anc`
+  restraint with connecting node 231. `SupportPlacer.HasAnyAnchor`/`GetFixedNodes` already
+  correctly recognize this as a boundary (it checks restraint *type*, not `ConnectingNode`) — no
+  separate detection code was needed for anchor-boundary purposes. The original concern (excluding
+  a CNODE-bearing *non-restraint* node — one used purely for force/moment reporting between
+  elements, not carrying any restraint at all — from support-placement candidates) is still open;
+  not yet exercised by a real sample showing that specific case.
 - **Zero-weight rigid equipment** (per `44002.cii`'s note): elements modeling equipment as rigid
   with no weight should be ignored for support-placement purposes. Not yet implemented — logged in
   QUESTIONS.md, pending its own support-placement-logic consultation turn per CLAUDE.md.

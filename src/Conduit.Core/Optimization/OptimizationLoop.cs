@@ -23,6 +23,25 @@ public static class OptimizationLoop
     {
         var notes = new List<string>();
 
+        // Per direct instruction (2026-09-07): "We will require a user's input if there are no
+        // anchors or equipment. There will always be boundaries... If this does not exist, the
+        // user must provide the anchor position." A model with neither a real anchor restraint
+        // (plain or "cnode" — see SupportPlacer.HasAnyAnchor) nor a real #$ EQUIPMNT connection
+        // has no fixed point anywhere: SupportPlacer's own run-walking model can't place anything
+        // (zero runs), and running this loop's reactive fallback regardless — treating the whole
+        // model as one undifferentiated span, per a real report against NEWTEST.cii — produces
+        // wrong, low-quality results rather than a genuinely unresolvable one. Refuse cleanly
+        // instead of guessing where an anchor belongs.
+        if (!SupportPlacer.HasAnyAnchor(file) && file.NozzleLimits.Count == 0)
+        {
+            notes.Add("This file has no anchor restraint (plain or cnode) and no #$ EQUIPMNT " +
+                      "connection anywhere — Conduit has no fixed point to place supports from. " +
+                      "Please add at least one anchor restraint (or a real equipment/nozzle " +
+                      "connection) at the model's actual fixed boundary, then retry; Conduit will " +
+                      "not guess where an anchor belongs.");
+            return new OptimizationResult(false, 0, new StressResult(false, []), [], notes);
+        }
+
         var placements = SupportPlacer.PlaceSupports(file);
         // SupportPlacer can emit more than one PlacedSupport at the same node (e.g. a rest and
         // its co-located guide) — these belong in one #$ RESTRANT record with several DOF slots,
@@ -61,30 +80,59 @@ public static class OptimizationLoop
         return new OptimizationResult(result.Passed, iteration, result, placements, notes);
     }
 
+    /// <summary>
+    /// Resolves one failing <see cref="StressFinding"/> by adding a support. Per direct
+    /// instruction (2026-09-07) — "Shouldn't the optimiser improve the initial placements? ...
+    /// The optimiser is then not required, as it should be for improving the initial placements?"
+    /// — this now picks a node the same way <see cref="SupportPlacer"/>'s own initial pass does
+    /// (the ideal position — exactly the allowable span from this segment's start — reusing an
+    /// existing eligible node only when it's already within
+    /// <see cref="SupportPlacer.SpanReuseToleranceMillimetres"/> of that ideal, splitting
+    /// otherwise), rather than the previous, independently-maintained "closest to the geometric
+    /// midpoint" heuristic. That heuristic was a real, if unintentional, divergence from
+    /// <see cref="SupportPlacer"/>'s model in two ways: it measured distance along the segment's
+    /// *total* path length rather than <paramref name="finding"/>'s own axis (the two differ
+    /// whenever the segment has a cross-axis jog leg in it), and it had no concept of the actual
+    /// allowable span at all — it would happily reuse an existing node far short of ideal, or one
+    /// past it, as long as it was numerically closest to the midpoint. Rather than maintain two
+    /// independent node-selection algorithms that can silently drift apart (exactly what
+    /// happened here), this reuses the same ideal-position/reuse-tolerance decision the initial
+    /// pass already makes.
+    /// </summary>
     private static string Adjust(NeutralFile file, StressFinding finding)
     {
         var segment = GetSegmentElements(file.Elements, finding.FromNode, finding.ToNode);
 
-        var midpointNode = TryPickMidpointNode(file, segment);
-        if (midpointNode is { } node)
+        var candidate = FindBestExistingCandidate(file, segment, finding);
+        var wastesBudget = candidate is not { } c
+            || finding.AllowableSpan - c.AlongAxis > SupportPlacer.SpanReuseToleranceMillimetres;
+
+        if (wastesBudget)
         {
-            AddSupport(file, node, SupportType.Rest, file.Control.Izup);
-            return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) — " +
-                   $"added an intermediate rest support at node {node}.";
+            // No existing node is close enough to the ideal position (or none is eligible at
+            // all) — split whichever element is the *first* (in file order, from the zone's own
+            // start) to push finding.Axis's accumulated span past the allowable. Walking in
+            // order, not just picking the longest element, matters once a zone spans several
+            // elements: an earlier element may already have used up part of the budget (e.g. a
+            // short pre-bend remainder plus a short cross-axis jog leg), so the element that
+            // actually needs splitting isn't necessarily the longest one, and the split has to
+            // respect however much of the allowable span is already spent before it, not the
+            // full amount.
+            var splitNote = TrySplitAtFirstOverflow(file, segment, finding);
+            if (splitNote is not null)
+            {
+                return splitNote;
+            }
         }
 
-        // No existing node in the whole zone is a safe place for a support (every interior node
-        // is a bend/tee, or too close to one) — split whichever element is the *first* (in file
-        // order, from the zone's own start) to push finding.Axis's accumulated span past the
-        // allowable. Walking in order, not just picking the longest element, matters once a zone
-        // spans several elements: an earlier element may already have used up part of the budget
-        // (e.g. a short pre-bend remainder plus a short cross-axis jog leg), so the element that
-        // actually needs splitting isn't necessarily the longest one, and the split has to respect
-        // however much of the allowable span is already spent before it, not the full amount.
-        var splitNote = TrySplitAtFirstOverflow(file, segment, finding);
-        if (splitNote is not null)
+        if (candidate is { } chosen)
         {
-            return splitNote;
+            // Either the candidate was already close enough to ideal, or splitting wasn't
+            // possible (e.g. the max span rounds down to too small a chunk) — fall back to it
+            // even though it wastes some budget, matching SupportPlacer's own same fallback.
+            AddSupport(file, chosen.Node, SupportType.Rest, file.Control.Izup);
+            return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) — " +
+                   $"added an intermediate rest support at node {chosen.Node}.";
         }
 
         return $"Span {finding.FromNode}->{finding.ToNode} ({finding.ActualSpan:F2} mm > {finding.AllowableSpan:F2} mm) has no room " +
@@ -228,34 +276,52 @@ public static class OptimizationLoop
     }
 
     /// <summary>
-    /// Picks the node closest to the segment's midpoint, excluding the segment's own bounding
-    /// nodes and — per direct instruction ("Any element with a bend pointer shouldn't have a
-    /// restraint"), after a real report of exactly this happening — any real piping discontinuity
-    /// (bend, tee/intersection, weighted rigid element, or reducer — the same set
-    /// <see cref="SupportPlacer"/> excludes, extended 2026-09-03 to cover a real report of a
-    /// support landing at a flange's node), plus <see cref="SupportPlacer.DiscontinuityClearanceMillimetres"/>'s
-    /// flat 250 mm buffer on each side. Tee detection uses the real <c>#$ SIF&amp;TEES</c> pointer
+    /// Picks the best existing node to reuse for <paramref name="finding"/>, excluding the
+    /// segment's own bounding nodes and — per direct instruction ("Any element with a bend
+    /// pointer shouldn't have a restraint"), after a real report of exactly this happening — any
+    /// real piping discontinuity (bend, tee/intersection, weighted rigid element, or reducer —
+    /// the same set <see cref="SupportPlacer"/> excludes, extended 2026-09-03 to cover a real
+    /// report of a support landing at a flange's node), plus
+    /// <see cref="SupportPlacer.DiscontinuityClearanceMillimetres"/>'s flat 250 mm buffer on each
+    /// side, measured along the segment's real geometric path (discontinuities are physical, not
+    /// axis-specific). Tee detection uses the real <c>#$ SIF&amp;TEES</c> pointer
     /// (<see cref="Element.IntersectionPointer"/>), not node degree — per direct instruction
-    /// (2026-09-01), matching <see cref="SupportPlacer"/>'s own switch (see its class doc comment
-    /// for why node degree alone isn't reliable). This mirrors <see cref="SupportPlacer"/>'s own
-    /// exclusion rule so a support added reactively here can't land somewhere the initial pass
-    /// would have refused to.
+    /// (2026-09-01), matching <see cref="SupportPlacer"/>'s own switch. This mirrors
+    /// <see cref="SupportPlacer"/>'s own exclusion rule so a support added reactively here can't
+    /// land somewhere the initial pass would have refused to.
+    ///
+    /// <para>The candidate returned is the *last* eligible node (in file order) whose own
+    /// accumulated span on <paramref name="finding"/>'s own axis doesn't exceed
+    /// <paramref name="finding"/>'s allowable span — i.e. the same "last eligible node passed
+    /// before the overflow" <see cref="SupportPlacer"/>'s initial pass looks for, not merely
+    /// whichever node is numerically closest to the segment's geometric midpoint (the previous,
+    /// independently-drifted heuristic — see <see cref="Adjust"/>'s doc comment). Per-axis, not
+    /// total path length, since that's what <paramref name="finding"/>'s own span was measured
+    /// against; the two differ whenever the segment has a cross-axis jog leg in it. Returns null
+    /// (not just no candidate, but no along-axis position either) when nothing on the finding's
+    /// own axis is eligible at all.</para>
     /// </summary>
-    private static int? TryPickMidpointNode(NeutralFile file, List<Element> segment)
+    private static (int Node, double AlongAxis)? FindBestExistingCandidate(NeutralFile file, List<Element> segment, StressFinding finding)
     {
         if (segment.Count < 2)
         {
             return null; // a single element has no intermediate node to place a support at
         }
 
+        var izup = file.Control.Izup;
         var toMillimetres = file.Units.LengthToMillimetres;
 
         var alongPath = 0.0;
-        var positions = new List<(int Node, Element Element, double AlongPath)>();
+        var alongAxis = 0.0;
+        var positions = new List<(int Node, Element Element, double AlongPath, double AlongAxis)>();
         foreach (var element in segment)
         {
             alongPath += element.Length * toMillimetres;
-            positions.Add((element.ToNode, element, alongPath));
+            if (PipeAxisClassifier.Determine(element, izup) == finding.Axis)
+            {
+                alongAxis += element.Length * toMillimetres;
+            }
+            positions.Add((element.ToNode, element, alongPath, alongAxis));
         }
 
         // A weighted rigid excludes *both* of its own endpoints, not just whichever one this
@@ -272,7 +338,7 @@ public static class OptimizationLoop
             }
         }
 
-        bool IsDiscontinuity((int Node, Element Element, double AlongPath) p) =>
+        bool IsDiscontinuity((int Node, Element Element, double AlongPath, double AlongAxis) p) =>
             p.Element.AuxiliaryPointers[0] != 0 || p.Element.IntersectionPointer != 0
             || p.Element.ReducerPointer != 0 || weightedRigidNodes.Contains(p.Node);
 
@@ -281,7 +347,7 @@ public static class OptimizationLoop
             .Select(p => p.AlongPath)
             .ToList();
 
-        bool IsExcluded((int Node, Element Element, double AlongPath) p)
+        bool IsExcluded((int Node, Element Element, double AlongPath, double AlongAxis) p)
         {
             if (IsDiscontinuity(p))
             {
@@ -290,25 +356,26 @@ public static class OptimizationLoop
             return exclusionZones.Any(z => Math.Abs(p.AlongPath - z) < SupportPlacer.DiscontinuityClearanceMillimetres);
         }
 
-        var half = alongPath / 2.0;
         var lastNode = segment[^1].ToNode;
-        int? bestNode = null;
-        var bestDiff = double.MaxValue;
+        (int Node, double AlongAxis)? best = null;
 
         foreach (var p in positions)
         {
-            if (p.Node == lastNode || IsExcluded(p))
+            // A cross-axis node (e.g. a Z-jog leg while resolving a horizontal-A overflow) is
+            // never a candidate, even if its own AlongAxis cumulative happens to still be in
+            // budget (it doesn't move that cumulative at all, since it's not on this axis) —
+            // matching SupportPlacer's own lastEligibleA/B/Vertical tracking, which likewise only
+            // updates for a node whose own element is on the axis actually overflowing.
+            if (p.Node == lastNode || IsExcluded(p) || PipeAxisClassifier.Determine(p.Element, izup) != finding.Axis)
             {
-                continue; // the far bounding node, or a bend/tee (and its clearance zone) — not a valid placement
+                continue; // the far bounding node, a bend/tee (and its clearance zone), or a cross-axis node — not a valid placement
             }
-            var diff = Math.Abs(p.AlongPath - half);
-            if (diff < bestDiff)
+            if (p.AlongAxis <= finding.AllowableSpan)
             {
-                bestDiff = diff;
-                bestNode = p.Node;
+                best = (p.Node, p.AlongAxis); // keep walking — the latest one still in budget wins
             }
         }
 
-        return bestNode;
+        return best;
     }
 }

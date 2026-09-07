@@ -13,6 +13,92 @@ public class OptimizationLoopTests
     private static double Schedule40MaxSpan() =>
         SpanLimitCalculator.ComputeMaxSpan(NeutralFileFixtureBuilder.Schedule40Run(1, 2, 1).ToElement());
 
+    /// <summary>
+    /// Regression test for a real report (GitHub Issue #7): a file with zero restraints and zero
+    /// <c>#$ EQUIPMNT</c> connections (no fixed point anywhere) used to fall through to this
+    /// loop's reactive fallback, which treated the whole model as one undifferentiated span and
+    /// produced wrong, low-quality placements. Per direct instruction (2026-09-07): "We will
+    /// require a user's input if there are no anchors or equipment... the user must provide the
+    /// anchor position" — the loop now refuses cleanly instead, without running the solver at all.
+    /// </summary>
+    [Fact]
+    public void FileWithNoAnchorsOrEquipment_RefusesCleanly_RatherThanGuessing()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            NeutralFileFixtureBuilder.Schedule40Run(10, 20, 50000),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, anchorNodes: []);
+
+        var result = OptimizationLoop.Run(file, new MockStressSolver());
+
+        Assert.False(result.Passed);
+        Assert.Equal(0, result.Iterations);
+        Assert.Empty(result.InitialPlacements);
+        Assert.Empty(file.Restraints);
+        Assert.Contains(result.Notes, n => n.Contains("no fixed point", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Reports one fixed <see cref="StressFinding"/> on its first call (simulating a real solver
+    /// catching something the simplified span model's own initial pass didn't), then passes on
+    /// every call after — so <see cref="OptimizationLoop.Run"/>'s reactive <c>Adjust</c> path runs
+    /// exactly once, with fully controlled inputs, independent of what
+    /// <see cref="SupportPlacer"/>'s own initial pass already decided.
+    /// </summary>
+    private sealed class OneShotFindingSolver(StressFinding finding) : IStressSolver
+    {
+        private bool fired;
+
+        public StressResult Evaluate(NeutralFile file)
+        {
+            if (fired)
+            {
+                return StressResult.Pass();
+            }
+            fired = true;
+            return StressResult.FromFindings([finding]);
+        }
+    }
+
+    /// <summary>
+    /// Regression test for the "shouldn't the optimiser use the same logic as the initial
+    /// placement" critique (GitHub PR #8, 2026-09-07): the reactive <c>Adjust</c> path used to
+    /// pick whichever existing node was closest to the segment's *geometric* midpoint, with no
+    /// concept of the actual allowable span — it could (and, in this exact geometry, does) pick a
+    /// node that's already past the allowable, just because it happens to be numerically central.
+    /// It now mirrors <see cref="SupportPlacer"/>'s own model: the last node still within budget,
+    /// only backing off to one that "wastes" more than
+    /// <see cref="SupportPlacer.SpanReuseToleranceMillimetres"/> when nothing closer is available.
+    /// Segments are short enough that no real split is geometrically warranted (all comfortably
+    /// under the real max span), isolating the picking rule itself.
+    /// </summary>
+    [Fact]
+    public void ReactiveAdjust_PicksTheLastNodeWithinBudget_NotMerelyTheGeometricMidpoint()
+    {
+        var segments = new List<NeutralFileFixtureBuilder.PipeSegmentSpec>
+        {
+            NeutralFileFixtureBuilder.Schedule40Run(10, 20, 1000),
+            NeutralFileFixtureBuilder.Schedule40Run(20, 30, 1000),
+            NeutralFileFixtureBuilder.Schedule40Run(30, 40, 1000),
+            NeutralFileFixtureBuilder.Schedule40Run(40, 50, 1000),
+            NeutralFileFixtureBuilder.Schedule40Run(50, 60, 1000),
+        };
+        var file = NeutralFileFixtureBuilder.Build(segments, anchorNodes: [10, 60]);
+        var finding = new StressFinding(10, 60, PipeAxis.HorizontalA, ActualSpan: 5000, AllowableSpan: 1500, Message: "synthetic");
+        var solver = new OneShotFindingSolver(finding);
+
+        var result = OptimizationLoop.Run(file, solver);
+
+        Assert.Empty(result.InitialPlacements); // the run is well under the real max span — SupportPlacer's own pass adds nothing
+        // Node 30 sits at the geometric midpoint (2000 mm along a 4000 mm total between the two
+        // interior candidates 20 and 40) but is already past the 1500 mm allowable — the old
+        // "closest to midpoint" logic would have picked it regardless. Node 20 (1000 mm) is the
+        // last node still within the 1500 mm budget and is what the new logic picks instead.
+        Assert.Contains(file.Restraints, r => r.Node == 20);
+        Assert.DoesNotContain(file.Restraints, r => r.Node == 30);
+    }
+
     [Fact]
     public void StraightRun_PassesAfterInitialPlacement()
     {
