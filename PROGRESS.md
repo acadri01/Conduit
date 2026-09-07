@@ -702,3 +702,20 @@ running status log Claude appends to (skim this from mobile)
   decide where an anchor itself goes on a fully unrestrained model). Logged as a blocking
   placement-logic question (three options) in QUESTIONS.md rather than guessing, since anchor
   placement is the most consequential support-type decision in the taxonomy.
+- 2026-09-07: user answered on PR #8 — no anchor inference; Conduit must require the user to
+  supply anchor positions when a file has neither a real anchor (plain or "cnode," researched
+  against `reference/NeutralFile-v15.pdf`'s `#$ RESTRANT` connecting-node field, ground-truthed
+  against `44002.cii` node 230 — still an `Anc`-type restraint, already correctly recognized) nor
+  equipment. `OptimizationLoop.Run` now refuses cleanly with an actionable message instead of
+  running the reactive fallback blind. Also acted on the user's architecture critique
+  ("shouldn't the optimiser improve the initial placements?... The optimiser is then not
+  required"): the reactive fallback's own node-selection (`Adjust`/`TryPickMidpointNode`) was an
+  independently drifted "closest to geometric midpoint" heuristic, measured along total path
+  length rather than the failing finding's own axis, with no allowable-span concept at all —
+  consolidated it onto the same ideal-position/100mm-tolerance model `SupportPlacer`'s initial
+  pass uses (`FindBestExistingCandidate`), including restricting candidates to the finding's own
+  axis (mirroring `SupportPlacer`'s `lastEligibleA`/`B`/`Vertical` tracking). 124/124 tests
+  passing, rigor-checked (reverted, confirmed the new synthetic test
+  `ReactiveAdjust_PicksTheLastNodeWithinBudget_NotMerelyTheGeometricMidpoint` fails, restored);
+  all 4 real fixtures with real anchors byte-identical (their own initial pass already resolves
+  everything, so the reactive path was never exercised by them either way).

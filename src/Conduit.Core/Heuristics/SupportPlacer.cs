@@ -145,6 +145,21 @@ public static class SupportPlacer
             .Select(d => d.Node)
             .ToHashSet();
 
+    /// <summary>
+    /// Whether this file has at least one real anchor restraint. Includes a "cnode anchor" — an
+    /// <c>Anc</c> restraint that also carries a nonzero <c>#$ RESTRANT</c> connecting-node value
+    /// (<see cref="RestraintDof.ConnectingNode"/>, the vendor doc's "Restraint connecting node"
+    /// field) — since that's still <see cref="RestraintType.Anc"/> at the type level; confirmed
+    /// against a real example (<c>fixtures/real-samples/44002.cii</c> node 230, an <c>Anc</c>
+    /// restraint with connecting node 231), no separate detection was needed. Per direct
+    /// instruction (2026-09-07): "There will always be boundaries, and these are generally in
+    /// terms of an anchor or a cnode anchor. If this does not exist, the user must provide the
+    /// anchor position" — used by <see cref="Optimization.OptimizationLoop"/> to refuse cleanly,
+    /// rather than silently falling through to its own reactive fallback, when a file has neither
+    /// an anchor nor a real equipment connection anywhere in it.
+    /// </summary>
+    public static bool HasAnyAnchor(NeutralFile file) => GetFixedNodes(file).Count > 0;
+
     private static HashSet<int> GetSupportedNodes(NeutralFile file) =>
         file.Restraints
             .SelectMany(r => r.Dofs)

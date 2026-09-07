@@ -834,6 +834,28 @@ milestone.
     standalone hold-down. "Derive the logic for the forces and stresses together" — sustained and
     expansion stress as one coupled calculation, not two independent heuristics — is folded into
     that same open item. 122/122 tests passing.
+  - **Update (2026-09-07), GitHub Issue #7: anchor boundaries required, no inference; reactive
+    fallback consolidated onto SupportPlacer's own model.** A real report (`NEWTEST.cii`, a file
+    with zero restraints and zero `#$ EQUIPMNT`) surfaced two things. First, diagnosed: with no
+    real boundary anywhere, `SupportPlacer`'s run-walking model finds zero runs and does nothing,
+    silently handing 100% of the work to `OptimizationLoop`'s older reactive fallback, which
+    treated the whole model as one span and produced wrong results. Per direct instruction — "We
+    will require a user's input if there are no anchors or equipment... the user must provide the
+    anchor position" — `OptimizationLoop.Run` now refuses cleanly with an actionable message
+    instead. ("Cnode anchor" — a boundary via CAESAR's connecting-node/CNODE mechanism — was
+    researched against `reference/NeutralFile-v15.pdf`'s `#$ RESTRANT` "Restraint connecting node"
+    field and ground-truthed against `44002.cii`'s own real example: it's still an `Anc`-type
+    restraint, already correctly recognized.) Second, a real architecture gap the user called out
+    directly — "shouldn't the optimiser improve the initial placements?... The optimiser is then
+    not required" — `OptimizationLoop`'s reactive node-selection (`Adjust`) was an independently
+    drifted "closest to geometric midpoint" heuristic with no concept of the actual allowable span,
+    unlike `SupportPlacer`'s own calibrated ideal-position/`SpanReuseToleranceMillimetres` model.
+    Consolidated: the reactive path now picks nodes the same way the initial pass does. 124/124
+    tests passing, rigor-checked (reverted, confirmed the new synthetic test fails, restored); all
+    4 real fixtures with real anchors are byte-identical (their own initial pass already resolves
+    everything either way). A full merge of the two engines' surrounding control flow (not just
+    the node-selection rule) is flagged, not done, as a further follow-up. See QUESTIONS.md's
+    "Resolved and shipped: option 1 confirmed..." entry.
 - **M3 — Test-file tooling**, per the user's 2026-09-01 PR comment point 1: a concrete design
   proposal (CLI surface, JSON input format) is posted in QUESTIONS.md's "Proposed: M3
   fixture-generator CLI subcommand" entry, along with the actual implementation note — this means

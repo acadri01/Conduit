@@ -17,20 +17,19 @@ place to check for "what do you want me to test." Once you've reported back and 
 resolved, this section is replaced with whatever the next thing to verify is (or left saying
 there's nothing outstanding).
 
-**Status: please retest — self-computed spacing and the friction narrowing you confirmed are now
-shipped; one design question (the beam/expansion-stress model's reference source) is still open.**
+**Status: please retest — `NEWTEST.cii` now refuses cleanly instead of guessing, and the reactive
+fallback is consolidated onto the initial pass's own logic. One design question (the beam/
+expansion-stress model's reference source) is still open.**
 
-You answered both open items from last round in one comment, plus decoded your riser sketch for
-me. Shipped this round:
-- **Self-computed spacing, at your confirmed 100 mm tolerance.** `SupportPlacer` now splits at the
-  ideal max-span position instead of backing off to an existing node more than 100 mm short of it —
-  no longer "prefers existing element breaks." Confirmed the existing bend-radius minimum-chunk-size
-  rule stays in force independently, per your "the minimum bend lengths must also apply" note.
-- **Friction narrowed to rest-only.** A standalone hold-down no longer carries `Friction = 0.15`,
-  per "Only the rest supports should have the friction coefficients" — only a rest (including the
-  bundled rest+hold-down `Y`/`Z`) does.
-- **Sketch decoded**: confirmed the rest+hold-down pair sits `x1`/`x2` away from each bend, not on
-  it — no exception to the 250 mm discontinuity clearance was needed.
+You answered both open items from Issue #7/PR #8 in one comment. Shipped this round:
+- **No anchor inference — Conduit asks for anchor positions instead.** Per "We will require a
+  user's input if there are no anchors or equipment... the user must provide the anchor position,"
+  a file with neither a real anchor (plain or "cnode") nor an equipment connection now gets a
+  clear, actionable refusal instead of a silently wrong placement attempt.
+- **The reactive fallback now uses the same logic as the initial pass.** Per your "shouldn't the
+  optimiser improve the initial placements?" — the old "closest to geometric midpoint" heuristic
+  (no allowable-span concept, measured along total path rather than the failing axis) is replaced
+  with the same ideal-position/100 mm-tolerance model `SupportPlacer`'s own initial pass uses.
 
 Please rerun the same files you tested before:
 ```
@@ -40,13 +39,15 @@ dotnet run --project src/Conduit.Cli -- optimize fixtures/loop-50m-3d.cii out-lo
 dotnet run --project src/Conduit.Cli -- optimize fixtures/fig6-8-example.cii out-fig68.cii
 dotnet run --project src/Conduit.Cli -- optimize fixtures/real-samples/NEWTEST.cii out-newtest.cii
 ```
-On this end, all 4 of the first fixtures produce byte-identical placements to before this round
-(none had an existing-node candidate more than 100 mm short of ideal, so the new tolerance didn't
-change anything for them). `NEWTEST.cii` still `FAIL`s on the same 3 genuinely irreducible spans as
-before, but several of its intermediate support nodes shifted to better-spaced positions — worth
-comparing against your own rerun and the previous `fixtures/real-samples/verification/out-*.cii`.
-As always, if you're able to run any `out-*.cii` through `iecho.exe` and reopen it in CAESAR II's
-GUI, that's the strongest independent check.
+On this end, the first 4 fixtures produce byte-identical placements to before this round (they all
+have real anchors, and their own initial pass already resolves everything, so neither change
+affects them). `NEWTEST.cii` now stops immediately with: "This file has no anchor restraint (plain
+or cnode) and no #$ EQUIPMNT connection anywhere... Please add at least one anchor restraint... at
+the model's actual fixed boundary, then retry." If that matches what you intended, the next step is
+telling me where `NEWTEST.cii`'s real anchor(s) should be (or confirming it's meant to demonstrate
+exactly this refusal) so we can move forward with it. As always, if you're able to run any
+`out-*.cii` through `iecho.exe` and reopen it in CAESAR II's GUI, that's the strongest independent
+check.
 
 **One design question is still waiting on your answer**: the beam/expansion-stress model. You
 confirmed the segment definition ("expansion has to be considered for all straight-line

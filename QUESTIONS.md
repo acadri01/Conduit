@@ -2892,3 +2892,56 @@ them) and regenerate/fix `NEWTEST.cii`; for option 2, implement the first/last-n
 inferred, not real, and add a regression test against a synthetic zero-restraint fixture; for
 option 3, whatever the concrete rule turns out to be. Either way, re-verify against `NEWTEST.cii`
 and all 4 other real fixtures afterward.
+
+## Resolved and shipped: option 1 confirmed (require user input, no inference), plus a real architecture fix to the reactive fallback (2026-09-07)
+
+You answered both questions from the previous entry in one PR comment:
+
+**1. Anchor placement — option 1, no inference.** "We will require a user's input if there are no
+anchors or equipment. There will always be boundaries, and these are generally in terms of an
+anchor or a cnode anchor. If this does not exist, the user must provide the anchor position."
+Shipped: `OptimizationLoop.Run` now checks, before doing anything else, whether the file has any
+real boundary at all (`SupportPlacer.HasAnyAnchor` — any `Anc`-type restraint — or at least one
+`#$ EQUIPMNT` connection); if neither exists, it refuses cleanly with a message asking for an
+anchor position, rather than falling through to the reactive fallback and producing wrong,
+low-quality placements (the original NEWTEST.cii symptom).
+
+**On "cnode anchor" — researched, not guessed.** Per CLAUDE.md's always-consult-the-primary-source
+rule: `reference/NeutralFile-v15.pdf`'s `#$ RESTRANT` section documents a "Restraint connecting
+node" field (already parsed as `RestraintDof.ConnectingNode`, just never used for anything) — this
+is the CNODE mechanism. Ground-truthed against real data: `fixtures/real-samples/44002.cii` node
+230 has exactly one restraint with a nonzero connecting node (231), and its type is still `Anc`.
+So a "cnode anchor" is simply an `Anc`-type restraint that also carries a CNODE reference — already
+correctly recognized by `GetFixedNodes`'s existing `Type == RestraintType.Anc` check, which doesn't
+look at `ConnectingNode` at all. No separate detection code was needed for that half.
+
+**2. The architecture critique — you were right, fixed.** "Shouldn't the optimiser improve the
+initial placements? ... The optimiser is then not required, as it should be for improving the
+initial placements?" Investigated `OptimizationLoop`'s reactive `Adjust`/`TryPickMidpointNode` path
+precisely: it already shared `SupportPlacer`'s bend/tee/rigid/reducer discontinuity exclusion (that
+part was already consolidated in an earlier round), but its actual *node-selection* rule was a
+real, independently-drifted heuristic — "closest to the segment's geometric midpoint," measured
+along *total path length* (not the failing finding's own axis), with no concept of the allowable
+span at all. It could (and, in a constructed test, does) pick an existing node that's already past
+the allowable, purely because it's numerically central. Replaced it with the same rule
+`SupportPlacer`'s own initial pass uses: the last node (on the finding's own axis) still within
+budget, only backing off to one that wastes more than `SpanReuseToleranceMillimetres` when nothing
+closer is available — splitting instead, exactly mirroring `SupportPlacer.PlaceSupportsForRun`'s
+own `targetWastesBudget` branch, including its "fall back to the wasteful candidate if splitting
+isn't geometrically possible" behavior.
+
+Verified via the standard revert-and-check rigor discipline: temporarily restored the old
+"any eligible node, no budget check" selection, confirmed the new synthetic test
+(`ReactiveAdjust_PicksTheLastNodeWithinBudget_NotMerelyTheGeometricMidpoint`) fails, restored the
+fix. 124/124 tests passing; all 4 real fixtures with real anchors are still byte-identical (their
+own initial `SupportPlacer` pass already resolves everything, so the reactive path was never
+exercised by them either way — confirming the original design intent that it "should trigger
+rarely to never" once the initial pass is good enough, which this consolidation makes actually
+true rather than just documented).
+
+**Not done, deliberately out of scope for this round**: a *full* merge of the two engines (having
+`Adjust` literally re-invoke `SupportPlacer.PlaceSupportsForRun` instead of a second, parallel
+implementation of the same rule) — the node-*selection* rule is now identical, but the surrounding
+control flow (per-finding vs. per-run walk) is still two separate implementations that could still
+drift again on some future change. Flagged here rather than rushed, since a real merge touches
+control flow, not just a decision rule, and deserves its own focused pass.
